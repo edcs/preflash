@@ -1,0 +1,26 @@
+runtime/include/esp_err.h
+  s_82b4983a83db4b::t_e95c59fb14cd69 44-46
+  s_82b4983a83db4b::t_879955ce76cbdd 42-43,47
+runtime/src/os/tasks.cpp
+  s_82b4983a83db4b::t_e95c59fb14cd69 53-57
+runtime/src/os/timer.cpp
+  s_82b4983a83db4b::t_e95c59fb14cd69 6-11,16
+tests/runtime/os_test.cpp
+  s_82b4983a83db4b::t_d162cb5b63c060 102-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "56ff2128f4684039dbf4ce0a16e1a3780cd1c13a",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
