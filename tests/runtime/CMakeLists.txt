@@ -41,7 +41,8 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp)
 add_library(runtime_objs OBJECT ${RUNTIME_SOURCES})
 target_include_directories(runtime_objs PUBLIC ${RUNTIME_DIR}/include)
 target_compile_definitions(runtime_objs PUBLIC CONFIG_FREERTOS_HZ=1000)
-target_link_libraries(runtime_objs PUBLIC nlohmann_json::nlohmann_json lvgl)
+find_package(CURL REQUIRED)
+target_link_libraries(runtime_objs PUBLIC nlohmann_json::nlohmann_json lvgl CURL::libcurl)
 
 # Restarting re-executes the binary, so the test needs one it can afford to lose.
 add_executable(restart_helper helpers/restart_helper.cpp)

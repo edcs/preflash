@@ -9,6 +9,7 @@ file(GLOB PREFLASH_RUNTIME_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/src/bus/*.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/chips/*.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/audio/*.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/net/*.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/host/*.cpp)
 
 # A project without LVGL still gets the panel. The port and the BSP compile against
@@ -22,10 +23,12 @@ endif()
 
 add_library(preflash_runtime STATIC ${PREFLASH_RUNTIME_SOURCES})
 
+# libcurl comes with the macOS SDK and checks servers against the system's certificates.
+find_package(CURL REQUIRED)
 find_package(SDL2 CONFIG REQUIRED)
 # The app that links the runtime is defined a directory up, and must see the target too.
-set_target_properties(SDL2::SDL2 PROPERTIES IMPORTED_GLOBAL TRUE)
-target_link_libraries(preflash_runtime PRIVATE SDL2::SDL2)
+set_target_properties(SDL2::SDL2 CURL::libcurl PROPERTIES IMPORTED_GLOBAL TRUE)
+target_link_libraries(preflash_runtime PRIVATE SDL2::SDL2 CURL::libcurl)
 
 # Only the headers are used, so the folder named here doesn't exist, which leaves
 # its build out of it. The cache spares a download for every clean build folder.
