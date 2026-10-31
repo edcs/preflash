@@ -1,0 +1,263 @@
+runtime/idf/tools/cmake/replaced.cmake
+  s_82b4983a83db4b::t_d07615462b5a33 1-9
+tests/fixtures/mini_project/assets/hello.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/components/thing/startup.c
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-4
+tests/integration/build_fixture.sh
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-7,11-12,15-33,35-49,58-75,77-83,86-90,92,102-103,105-154
+  s_82b4983a83db4b::t_33ad69141f7ae5 91
+  s_82b4983a83db4b::t_ec8dfebf24e701 99-101
+  s_82b4983a83db4b::t_1d71e9472217b8 84
+  s_82b4983a83db4b::t_5f8adc52758018 85
+  s_82b4983a83db4b::t_a4266640b59893 34
+  s_82b4983a83db4b::t_e42fd646c96431 8-10,13-14,50-57,76,93-98,104
+runtime/idf/tools/gen_lv_config.py
+  s_82b4983a83db4b::t_d07615462b5a33 1-26
+runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_d07615462b5a33 1
+  s_82b4983a83db4b::t_31046936a349b4 20
+  s_82b4983a83db4b::t_112e709ff5c12c 3
+  s_82b4983a83db4b::t_802af91dcad5f7 4-5
+  s_82b4983a83db4b::t_e42fd646c96431 2,6-37
+runtime/src/host/main.cpp
+  s_82b4983a83db4b::t_d07615462b5a33 20-21,81,116
+  s_82b4983a83db4b::t_e42fd646c96431 1-19,22-80,82-102,107-115
+  s_82b4983a83db4b::t_d310f2c10e5a4b 103-106
+tests/fixtures/mini_project/managed_components/espressif__cmake_utilities/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-6
+tests/fixtures/mini_project/components/thing/include/thing.h
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-11
+tests/fixtures/mini_project/main/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-3
+tests/fixtures/mini_project/main/idf_component.yml
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-3
+tests/fixtures/mini_project/main/main.cpp
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-3,5-13,15-28,31-38,43
+  s_82b4983a83db4b::t_33ad69141f7ae5 39-41
+  s_82b4983a83db4b::t_1d71e9472217b8 4,29
+  s_82b4983a83db4b::t_092805df9f4e57 14,30
+  s_82b4983a83db4b::t_e42fd646c96431 42
+tests/fixtures/mini_project/managed_components/lvgl__lvgl/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/components/thing/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-10
+tests/fixtures/mini_project/assets/notes.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/bootloader_components/never_built/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/components/thing/thing.c
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-5
+tests/fixtures/mini_project/managed_components/lvgl__lvgl/src/core/lv_stand_in.c
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-20
+tests/fixtures/mini_project/managed_components/waveshare__some_board/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/sdkconfig
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-11
+  s_82b4983a83db4b::t_112e709ff5c12c 12
+runtime/idf/tools/cmake/project.cmake
+  s_82b4983a83db4b::t_d819194380be3f 193,205
+  s_82b4983a83db4b::t_33ad69141f7ae5 327-332,348
+  s_82b4983a83db4b::t_8e7eba86227061 350-353
+  s_82b4983a83db4b::t_d07615462b5a33 1-192,194-204,206-222,224-283,288,294-326,333-347,349,354-360,366-381
+  s_82b4983a83db4b::t_1d71e9472217b8 284-287
+  s_82b4983a83db4b::t_98aae9f72639d8 223
+  s_82b4983a83db4b::t_d01dc56f4e0462 361-365
+  s_82b4983a83db4b::t_e42fd646c96431 289-293
+tests/fixtures/mini_project/components/header_only/CMakeLists.txt
+  s_82b4983a83db4b::t_1d71e9472217b8 1
+tests/fixtures/mini_project/components/header_only/include/header_only.h
+  s_82b4983a83db4b::t_1d71e9472217b8 1-3
+tests/fixtures/mini_project/components/from_folder/CMakeLists.txt
+  s_82b4983a83db4b::t_aeb58dd9e1522c 1-3
+tests/fixtures/mini_project/components/from_folder/private/private_value.h
+  s_82b4983a83db4b::t_7b9cd84ef10b93 1-3
+tests/fixtures/mini_project/components/from_folder/src/excluded.c
+  s_82b4983a83db4b::t_23a2bcd25ac3bc 1
+tests/fixtures/mini_project/components/from_folder/src/found.c
+  s_82b4983a83db4b::t_46bf3f606f9207 1-3
+runtime/include/preflash/board.h
+  s_82b4983a83db4b::t_b7a1b276a0792f 1-35
+internal/board/testdata/typo.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-5
+runtime/src/host/board.cpp
+  s_82b4983a83db4b::t_b7a1b276a0792f 1-20,22-85
+  s_82b4983a83db4b::t_5bf0418e00d875 21
+tests/runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_c922c02499fdd4 7-9,55
+  s_82b4983a83db4b::t_b7a1b276a0792f 1,3-6,10-14,21-22,29-32,35,37-38,54,56-57
+  s_82b4983a83db4b::t_cb019ff0733133 39-43,45-53
+  s_82b4983a83db4b::t_b5215954a40895 2,15-20,23-28,33-34,36,44
+internal/board/testdata/loop-b.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-2
+tests/runtime/board_test.cpp
+  s_82b4983a83db4b::t_b7a1b276a0792f 1-54
+  s_82b4983a83db4b::t_079cf0246a88c9 55-63
+internal/board/testdata/snoozel-like.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-5
+boards/esp32-s3-touch-lcd-4b.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-20
+go.sum
+  s_82b4983a83db4b::t_ed70ed35cc149a 1-8
+boards.go
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-9
+internal/board/board.go
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-60,64-79,92-232
+  s_82b4983a83db4b::t_f74e4030545bfa 233-235
+  s_82b4983a83db4b::t_312b7afb87b982 61-63,80-91
+internal/board/testdata/missing-parent.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-2
+go.mod
+  s_82b4983a83db4b::t_d20e805aa74311 6-7,9-10
+  s_82b4983a83db4b::t_a9263fbab1bc70 4-5,8
+internal/board/testdata/loop-a.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-2
+internal/board/board_test.go
+  s_82b4983a83db4b::t_4e381058643dd4 66-74
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-65
+  s_82b4983a83db4b::t_697e960a47812d 75-88
+runtime/include/esp_err.h
+  s_82b4983a83db4b::t_31046936a349b4 1-41,48-52
+  s_82b4983a83db4b::t_e95c59fb14cd69 44-46
+  s_82b4983a83db4b::t_879955ce76cbdd 42-43,47
+runtime/include/esp_app_desc.h
+  s_82b4983a83db4b::t_31046936a349b4 1-32
+runtime/include/preflash/fail.h
+  s_82b4983a83db4b::t_31046936a349b4 1-5
+runtime/include/freertos/task.h
+  s_82b4983a83db4b::t_31046936a349b4 1-34
+runtime/src/os/fail.cpp
+  s_82b4983a83db4b::t_638fa111efe3d3 1-6,8-33,43-55
+  s_82b4983a83db4b::t_53ff19d9936a03 7,34-42
+tests/runtime/os_test.cpp
+  s_82b4983a83db4b::t_cb019ff0733133 1-37,40-102,110-118,120-130
+  s_82b4983a83db4b::t_112e709ff5c12c 119
+  s_82b4983a83db4b::t_d162cb5b63c060 103-109
+  s_82b4983a83db4b::t_883c8e47762e4f 38-39
+runtime/src/os/system.cpp
+  s_82b4983a83db4b::t_638fa111efe3d3 1-9,10-16,18,28-32,35,84-86
+  s_82b4983a83db4b::t_cb019ff0733133 17,19-27,34,39-40,42,44,46-83
+  s_82b4983a83db4b::t_112e709ff5c12c 33,36-38,41,43,45
+runtime/src/os/tasks.cpp
+  s_82b4983a83db4b::t_638fa111efe3d3 4,21-22,25-26,41
+  s_82b4983a83db4b::t_286ff6c03800a3 1-3,5-20,23-24,27-40,42-52,58-84
+  s_82b4983a83db4b::t_e95c59fb14cd69 53-57
+runtime/include/esp_timer.h
+  s_82b4983a83db4b::t_31046936a349b4 1-14
+runtime/src/os/timer.cpp
+  s_82b4983a83db4b::t_638fa111efe3d3 1-5,12-15,17-18
+  s_82b4983a83db4b::t_e95c59fb14cd69 6-11,16
+runtime/include/esp_random.h
+  s_82b4983a83db4b::t_31046936a349b4 1-13
+runtime/include/esp_log.h
+  s_82b4983a83db4b::t_31046936a349b4 1-32
+runtime/src/os/queues.cpp
+  s_82b4983a83db4b::t_638fa111efe3d3 1-58
+runtime/include/esp_system.h
+  s_82b4983a83db4b::t_31046936a349b4 1-35
+tests/runtime/helpers/restart_helper.cpp
+  s_82b4983a83db4b::t_cb019ff0733133 1-21
+runtime/include/esp_heap_caps.h
+  s_82b4983a83db4b::t_31046936a349b4 1-24
+runtime/include/freertos/FreeRTOS.h
+  s_82b4983a83db4b::t_31046936a349b4 1-27
+runtime/include/freertos/queue.h
+  s_82b4983a83db4b::t_31046936a349b4 1-18
+runtime/src/os/ticks.h
+  s_82b4983a83db4b::t_286ff6c03800a3 1-13
+runtime/include/nvs.h
+  s_82b4983a83db4b::t_469fd18a6e2adb 1-41
+runtime/include/preflash/control.h
+  s_82b4983a83db4b::t_469fd18a6e2adb 1-10,13-19,24
+  s_82b4983a83db4b::t_f4e786151b111e 11-12
+  s_82b4983a83db4b::t_e42fd646c96431 23
+  s_82b4983a83db4b::t_d310f2c10e5a4b 20-22
+runtime/include/nvs_flash.h
+  s_82b4983a83db4b::t_469fd18a6e2adb 1-16
+runtime/include/esp_console.h
+  s_82b4983a83db4b::t_469fd18a6e2adb 1-31,33,35-69
+  s_82b4983a83db4b::t_53ff19d9936a03 32,34
+tests/runtime/nvs_test.cpp
+  s_82b4983a83db4b::t_802af91dcad5f7 1-81,83-114,146-147,169-177,179-181
+  s_82b4983a83db4b::t_51396dcf4761cd 82,116,148-165,167-168,178
+runtime/src/storage/nvs.cpp
+  s_82b4983a83db4b::t_51396dcf4761cd 3,45-65,70,96-97,136-137,148,217,228-230,235
+  s_82b4983a83db4b::t_469fd18a6e2adb 1-2,4-44,68-69,72-74,83,87-95,98-135,138-143,146-147,149-168,170-174,176-180,182-184,187,192,194-206,208-216,218-227,231-234,236-247
+runtime/src/console/console.cpp
+  s_82b4983a83db4b::t_802af91dcad5f7 1-4,6-19,22-26,32-35,40-46,50-53,59,67-69,73-129,134,143,147,156,157,184,186-202,205-209,218-226,230-236,244-255,263-265
+  s_82b4983a83db4b::t_51396dcf4761cd 20-21,47-49,54-58,60-66,70-72,174,176-183,185,227-229,237-243
+  s_82b4983a83db4b::t_e42fd646c96431 5,27-31,36-39,130-133,135-142,144-146,148-155,158-173,175,203-204,216-217
+  s_82b4983a83db4b::t_d310f2c10e5a4b 210-215
+tests/runtime/console_test.cpp
+  s_82b4983a83db4b::t_51396dcf4761cd 37-64
+  s_82b4983a83db4b::t_802af91dcad5f7 1-36,65-93
+runtime/include/bsp/display.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-24
+runtime/include/bsp/esp-bsp.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-38
+runtime/include/esp_lvgl_port.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-79
+tests/runtime/lvgl/lv_conf.h
+  s_82b4983a83db4b::t_b5215954a40895 1-8
+runtime/include/esp_lcd_panel_io.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-14
+tests/fixtures/board.json
+  s_82b4983a83db4b::t_e42fd646c96431 1-7
+runtime/include/bsp/touch.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-21
+runtime/src/host/window.h
+  s_82b4983a83db4b::t_e42fd646c96431 1-15
+runtime/src/bsp/bsp.cpp
+  s_82b4983a83db4b::t_39855b109f8afe 1-62
+tests/integration/display.sh
+  s_82b4983a83db4b::t_e42fd646c96431 1-47,49-118
+  s_82b4983a83db4b::t_23575771ce95b0 48
+tests/fixtures/lvgl_project/CMakeLists.txt
+  s_82b4983a83db4b::t_e42fd646c96431 1-4
+runtime/include/preflash/touch.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-17
+runtime/src/display/esp_lcd.cpp
+  s_82b4983a83db4b::t_39855b109f8afe 1-57
+tests/fixtures/lvgl_project/main/main.cpp
+  s_82b4983a83db4b::t_e42fd646c96431 1-99
+tests/fixtures/lvgl_project/main/idf_component.yml
+  s_82b4983a83db4b::t_e42fd646c96431 1-3
+runtime/src/display/panel.cpp
+  s_82b4983a83db4b::t_39855b109f8afe 1-139
+runtime/src/host/window.cpp
+  s_82b4983a83db4b::t_e42fd646c96431 1-113
+runtime/include/preflash/panel.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-29
+tests/fixtures/lvgl_project/main/CMakeLists.txt
+  s_82b4983a83db4b::t_e42fd646c96431 1-3
+tests/fixtures/lvgl_project/sdkconfig
+  s_82b4983a83db4b::t_e42fd646c96431 1-112
+runtime/include/esp_lcd_types.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-12
+tests/integration/app.sh
+  s_82b4983a83db4b::t_e42fd646c96431 1-42
+runtime/include/esp_lcd_panel_ops.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-21
+tests/runtime/panel_test.cpp
+  s_82b4983a83db4b::t_b5215954a40895 1-227
+runtime/src/display/lvgl_port.cpp
+  s_82b4983a83db4b::t_39855b109f8afe 1-142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d26dd6e72193008a8c60fa02666bf2469d0e497f",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
