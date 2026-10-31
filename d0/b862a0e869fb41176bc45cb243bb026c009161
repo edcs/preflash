@@ -1,0 +1,41 @@
+runtime/src/chips/pcf85063.cpp
+  s_82b4983a83db4b::t_b74016b683899d 66
+tests/runtime/i2c_test.cpp
+  s_cf482d44fd4fac::t_533405c1d06360 6,89,91,99,111-143,217
+  s_cf482d44fd4fac::t_cf234a6b177221 214-216
+  s_cf482d44fd4fac::t_a2dadc99251ab4 218
+  s_cf482d44fd4fac::t_37066157651d12 207-213
+runtime/include/preflash/bus.h
+  s_cf482d44fd4fac::t_0d9313894aa08b 22-24
+runtime/src/bus/gpio.cpp
+  s_82b4983a83db4b::t_930d9c87ac899f 13-18,29-31
+  s_cf482d44fd4fac::t_1916d49259553a 10,63
+runtime/src/bus/i2c.cpp
+  s_cf482d44fd4fac::t_11bb5bdd127855 20-28,55-56,59
+tests/runtime/chips_test.cpp
+  s_cf482d44fd4fac::t_69577509239810 198-205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0b862a0e869fb41176bc45cb243bb026c009161",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    },
+    "s_cf482d44fd4fac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac5af433bf7907d0b",
+        "model": "unknown"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+runtime/src/bus/gpio.cpp
+  s_82b4983a83db4b::t_2e8d1b467190b8 38
+tests/runtime/chips_test.cpp
+  s_82b4983a83db4b::t_e64713a05f870e 368-370,375-378,381-383,397
+tests/runtime/i2c_test.cpp
+  s_82b4983a83db4b::t_60e86808d0fa33 165-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "26f0b676d9845ebfc3d2d05867b5c0370b5cb19b",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
