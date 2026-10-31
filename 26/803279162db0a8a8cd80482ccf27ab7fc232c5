@@ -1,0 +1,22 @@
+runtime/src/chips/pcf85063.cpp
+  h_13c4e797d6e9d2 76-81
+runtime/src/chips/register_chip.cpp
+  h_13c4e797d6e9d2 30-33
+runtime/src/chips/registry.cpp
+  h_13c4e797d6e9d2 6,41-42,44,51,53
+tests/runtime/chips_test.cpp
+  h_13c4e797d6e9d2 96-108,241-251
+tests/runtime/i2c_test.cpp
+  h_13c4e797d6e9d2 40-54,76,91,111,121,139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "26803279162db0a8a8cd80482ccf27ab7fc232c5",
+  "prompts": {},
+  "humans": {
+    "h_13c4e797d6e9d2": {
+      "author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
