@@ -92,6 +92,14 @@ wait_for_output "clicked" 2
 send "rotate 0"
 wait_for_output "rotated 0"
 
+# Sound is counted and never played, so a run with no output device doesn't hang.
+send "@sim audio"
+wait_for_output "audio samples written: 0"
+send "play"
+wait_for_output "played"
+send "@sim audio"
+wait_for_output "audio samples written: 3840"
+
 send "@sim touch 9999 0"
 wait_for_output "@sim touch needs x y"
 send "@sim shot /nonexistent/folder/shot.bmp"

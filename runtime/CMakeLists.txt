@@ -8,6 +8,7 @@ file(GLOB PREFLASH_RUNTIME_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/src/bsp/*.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/bus/*.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/chips/*.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/audio/*.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/host/*.cpp)
 
 # A project without LVGL still gets the panel. The port and the BSP compile against

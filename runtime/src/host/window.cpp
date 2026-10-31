@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <vector>
 
+#include "preflash/audio.h"
 #include "preflash/board.h"
 #include "preflash/panel.h"
 #include "preflash/touch.h"
@@ -68,6 +69,68 @@ Uint8 backlight_level() {
   return static_cast<Uint8>(std::lround(255 * std::sqrt(panel::brightness() / 100.0)));
 }
 
+// The device takes one fixed format and SDL converts what firmware writes to it,
+// since the codec's rate isn't known until firmware opens it, long after the window.
+constexpr int kDeviceRate = 48000;
+constexpr Uint8 kDeviceChannels = 2;
+constexpr int kBytesPerSample = 2;
+
+class SdlSink : public audio::Sink {
+ public:
+  explicit SdlSink(SDL_AudioDeviceID device) : device_(device) {}
+
+  void start(int rate, int channels) override {
+    if (stream_) SDL_FreeAudioStream(stream_);
+    stream_ = SDL_NewAudioStream(AUDIO_S16SYS, static_cast<Uint8>(channels), rate, AUDIO_S16SYS,
+                                 kDeviceChannels, kDeviceRate);
+    if (!stream_) std::fprintf(stderr, "preflash: no audio conversion: %s\n", SDL_GetError());
+  }
+
+  bool queue(const void* samples, size_t bytes) override {
+    if (!stream_ || SDL_AudioStreamPut(stream_, samples, static_cast<int>(bytes)) != 0)
+      return false;
+    const int ready = SDL_AudioStreamAvailable(stream_);
+    if (ready < 0) return false;
+    if (ready == 0) return true;
+    converted_.resize(static_cast<size_t>(ready));
+    const int got = SDL_AudioStreamGet(stream_, converted_.data(), ready);
+    if (got < 0) return false;
+    if (got == 0) return true;
+    return SDL_QueueAudio(device_, converted_.data(), static_cast<Uint32>(got)) == 0;
+  }
+
+  int queued_ms() override {
+    const Uint64 bytes_per_second = kDeviceRate * kDeviceChannels * kBytesPerSample;
+    return static_cast<int>(SDL_GetQueuedAudioSize(device_) * 1000ull / bytes_per_second);
+  }
+
+ private:
+  SDL_AudioDeviceID device_;
+  SDL_AudioStream* stream_ = nullptr;
+  std::vector<uint8_t> converted_;
+};
+
+// A Mac with no output device still runs the firmware: sound is counted and dropped.
+void open_audio() {
+  if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+    std::fprintf(stderr, "preflash: no audio, so sound is dropped: %s\n", SDL_GetError());
+    return;
+  }
+  SDL_AudioSpec want = {};
+  want.freq = kDeviceRate;
+  want.format = AUDIO_S16SYS;
+  want.channels = kDeviceChannels;
+  want.samples = 1024;
+  SDL_AudioSpec have;
+  const SDL_AudioDeviceID device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+  if (device == 0) {
+    std::fprintf(stderr, "preflash: no audio device, so sound is dropped: %s\n", SDL_GetError());
+    return;
+  }
+  SDL_PauseAudioDevice(device, 0);
+  audio::set_sink(new SdlSink(device));
+}
+
 }  // namespace
 
 void open() {
@@ -84,6 +147,7 @@ void open() {
   g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING,
                                 g_width, g_height);
   if (!g_texture) fail("couldn't make the panel's texture");
+  open_audio();
 }
 
 void run() {

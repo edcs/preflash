@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "freertos/task.h"
+#include "preflash/audio.h"
 #include "preflash/board.h"
 #include "preflash/chips.h"
 #include "preflash/control.h"
@@ -72,6 +73,10 @@ void control_shot(const std::vector<std::string>& args) {
   }
 }
 
+void control_audio(const std::vector<std::string>&) {
+  std::printf("audio samples written: %zu\n", preflash::audio_samples_written());
+}
+
 }  // namespace
 
 int main() {
@@ -92,6 +97,7 @@ int main() {
   if (!headless) preflash::window::open();
 
   preflash::add_control("touch", control_touch);
+  preflash::add_control("audio", control_audio);
   preflash::add_control("shot", control_shot);
   preflash::add_control("quit", [](std::vector<std::string>) { quit(0); });
   if (!preflash::start_console_reader()) {
