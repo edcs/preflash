@@ -208,7 +208,12 @@ esp_err_t esp_console_start_repl(esp_console_repl_t* handle) {
   auto* repl = static_cast<Repl*>(handle);
   if (repl->started) return ESP_ERR_INVALID_STATE;
   repl->started = true;
-  return xTaskCreate(repl_task, "console", 4096, repl, 2, nullptr) == pdPASS ? ESP_OK : ESP_FAIL;
+  if (xTaskCreate(repl_task, "console", 4096, repl, 2, nullptr) != pdPASS) {
+    // Leave the repl startable so the caller can retry.
+    repl->started = false;
+    return ESP_FAIL;
+  }
+  return ESP_OK;
 }
 
 }  // extern "C"

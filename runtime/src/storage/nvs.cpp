@@ -63,18 +63,27 @@ fs::path key_path(const Handle& h, const std::string& key) {
   return root() / file_name(h.name) / (file_name(key) + ".bin");
 }
 
-esp_err_t check_name(const char* name) {
+// Keys over the limit have their own error; a namespace over it is an invalid name.
+esp_err_t check_name(const char* name, esp_err_t too_long) {
   if (!name) return ESP_ERR_INVALID_ARG;
   const std::string s(name);
   if (s.empty()) return ESP_ERR_NVS_INVALID_NAME;
-  if (s.size() > kMaxNameLength) return ESP_ERR_NVS_KEY_TOO_LONG;
+  if (s.size() > kMaxNameLength) return too_long;
   return ESP_OK;
 }
 
-std::optional<Blob> read_file(const fs::path& path) {
+esp_err_t check_key(const char* key) { return check_name(key, ESP_ERR_NVS_KEY_TOO_LONG); }
+
+// A missing file is "not found"; a file that exists but can't be read is a failure.
+esp_err_t read_file(const fs::path& path, Blob& out) {
+  std::error_code ec;
+  const fs::file_status status = fs::status(path, ec);
+  if (status.type() == fs::file_type::not_found) return ESP_ERR_NVS_NOT_FOUND;
+  if (ec || status.type() != fs::file_type::regular) return ESP_FAIL;
   std::ifstream in(path, std::ios::binary);
-  if (!in) return std::nullopt;
-  return Blob(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+  if (!in) return ESP_FAIL;
+  out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+  return in.bad() ? ESP_FAIL : ESP_OK;
 }
 
 // Writes beside the target and renames, so a crash never leaves half a value.
@@ -132,7 +141,8 @@ esp_err_t nvs_flash_erase(void) {
 
 esp_err_t nvs_open(const char* name, nvs_open_mode_t mode, nvs_handle_t* out_handle) {
   if (!out_handle) return ESP_ERR_INVALID_ARG;
-  if (esp_err_t err = check_name(name)) return err;
+  if (mode != NVS_READONLY && mode != NVS_READWRITE) return ESP_ERR_INVALID_ARG;
+  if (esp_err_t err = check_name(name, ESP_ERR_NVS_INVALID_NAME)) return err;
   std::lock_guard<std::mutex> lock(g_mutex);
   if (!g_initialized) return ESP_ERR_NVS_NOT_INITIALIZED;
   const fs::path dir = root() / file_name(name);
@@ -156,29 +166,31 @@ void nvs_close(nvs_handle_t handle) {
 
 esp_err_t nvs_set_blob(nvs_handle_t handle, const char* key, const void* value, size_t length) {
   if (!value && length > 0) return ESP_ERR_INVALID_ARG;
-  if (esp_err_t err = check_name(key)) return err;
+  if (esp_err_t err = check_key(key)) return err;
   std::lock_guard<std::mutex> lock(g_mutex);
   Handle* h = find(handle);
   if (!h) return ESP_ERR_NVS_INVALID_HANDLE;
   if (h->read_only) return ESP_ERR_NVS_READ_ONLY;
   const auto* bytes = static_cast<const uint8_t*>(value);
-  h->pending[key] = Blob(bytes, bytes + length);
+  h->pending[key] = length == 0 ? Blob() : Blob(bytes, bytes + length);
   return ESP_OK;
 }
 
 esp_err_t nvs_get_blob(nvs_handle_t handle, const char* key, void* out_value, size_t* length) {
   if (!length) return ESP_ERR_INVALID_ARG;
-  if (esp_err_t err = check_name(key)) return err;
+  if (esp_err_t err = check_key(key)) return err;
   std::lock_guard<std::mutex> lock(g_mutex);
   Handle* h = find(handle);
   if (!h) return ESP_ERR_NVS_INVALID_HANDLE;
-  std::optional<Blob> value;
+  std::optional<Blob> pending;
+  Blob stored;
   if (auto it = h->pending.find(key); it != h->pending.end()) {
-    value = it->second;
-  } else {
-    value = read_file(key_path(*h, key));
+    pending = it->second;
+    if (!pending) return ESP_ERR_NVS_NOT_FOUND;
+  } else if (esp_err_t err = read_file(key_path(*h, key), stored)) {
+    return err;
   }
-  if (!value) return ESP_ERR_NVS_NOT_FOUND;
+  const Blob* value = pending ? &*pending : &stored;
   // A null buffer asks only for the size, as on a device.
   if (out_value) {
     if (*length < value->size()) {
@@ -192,7 +204,7 @@ esp_err_t nvs_get_blob(nvs_handle_t handle, const char* key, void* out_value, si
 }
 
 esp_err_t nvs_erase_key(nvs_handle_t handle, const char* key) {
-  if (esp_err_t err = check_name(key)) return err;
+  if (esp_err_t err = check_key(key)) return err;
   std::lock_guard<std::mutex> lock(g_mutex);
   Handle* h = find(handle);
   if (!h) return ESP_ERR_NVS_INVALID_HANDLE;

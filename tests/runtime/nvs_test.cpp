@@ -112,8 +112,37 @@ TEST_F(Nvs, EraseKeyRemovesAfterCommit) {
 
 TEST_F(Nvs, LongOrUnsafeNamesAreRefused) {
   nvs_handle_t h;
-  EXPECT_EQ(nvs_open("0123456789abcdef", NVS_READWRITE, &h), ESP_ERR_NVS_KEY_TOO_LONG);
+  EXPECT_EQ(nvs_open("0123456789abcdef", NVS_READWRITE, &h), ESP_ERR_NVS_INVALID_NAME);
   EXPECT_EQ(nvs_open("", NVS_READWRITE, &h), ESP_ERR_NVS_INVALID_NAME);
+  ASSERT_EQ(nvs_open("ns", NVS_READWRITE, &h), ESP_OK);
+  EXPECT_EQ(nvs_set_blob(h, "0123456789abcdef", "x", 1), ESP_ERR_NVS_KEY_TOO_LONG);
+  nvs_close(h);
+}
+
+TEST_F(Nvs, UnknownOpenModeIsRefused) {
+  nvs_handle_t h;
+  EXPECT_EQ(nvs_open("ns", static_cast<nvs_open_mode_t>(7), &h), ESP_ERR_INVALID_ARG);
+}
+
+TEST_F(Nvs, EmptyBlobWithNullBytesIsStored) {
+  nvs_handle_t h;
+  ASSERT_EQ(nvs_open("ns", NVS_READWRITE, &h), ESP_OK);
+  ASSERT_EQ(nvs_set_blob(h, "e", nullptr, 0), ESP_OK);
+  ASSERT_EQ(nvs_commit(h), ESP_OK);
+  size_t size = 9;
+  EXPECT_EQ(nvs_get_blob(h, "e", nullptr, &size), ESP_OK);
+  EXPECT_EQ(size, 0u);
+  nvs_close(h);
+}
+
+TEST_F(Nvs, UnreadableValueIsAFailureNotMissing) {
+  nvs_handle_t h;
+  ASSERT_EQ(nvs_open("ns", NVS_READWRITE, &h), ESP_OK);
+  fs::create_directories(dir_ / "nvs" / "ns" / "k.bin");
+  size_t size = 0;
+  EXPECT_EQ(nvs_get_blob(h, "k", nullptr, &size), ESP_FAIL);
+  EXPECT_EQ(nvs_get_blob(h, "other", nullptr, &size), ESP_ERR_NVS_NOT_FOUND);
+  nvs_close(h);
 }
 
 TEST_F(Nvs, NamesAreCaseSensitiveAndMayHoldSlashes) {
@@ -134,7 +163,7 @@ TEST_F(Nvs, NamesAreCaseSensitiveAndMayHoldSlashes) {
   EXPECT_EQ(nvs_get_blob(h, "../x", nullptr, &size), ESP_OK);
   nvs_close(h);
   EXPECT_EQ(nvs_open("ns", NVS_READONLY, &h), ESP_ERR_NVS_NOT_FOUND);
-  EXPECT_FALSE(fs::exists(dir_ / "x.bin"));
+  EXPECT_FALSE(fs::exists(dir_ / "nvs" / "x.bin"));
 }
 
 TEST_F(Nvs, EraseWipesEverything) {
