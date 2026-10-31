@@ -53,7 +53,12 @@ bool wait_for_room(audio::Sink* sink) {
 }  // namespace
 
 namespace audio {
-void set_sink(Sink* sink) { g_sink = sink; }
+void set_sink(Sink* sink) {
+  g_sink = sink;
+  // A new sink gets a fresh chance; only the one that failed is given up on.
+  std::lock_guard<std::mutex> hold(speaker().lock);
+  speaker().sink_gone = false;
+}
 }  // namespace audio
 
 size_t audio_samples_written() { return g_frames; }
@@ -71,8 +76,14 @@ esp_codec_dev_handle_t bsp_audio_codec_speaker_init(void) {
 
 int esp_codec_dev_open(esp_codec_dev_handle_t codec, esp_codec_dev_sample_info_t* fs) {
   if (codec != &preflash::speaker() || !fs) return ESP_CODEC_DEV_INVALID_ARG;
-  if (fs->bits_per_sample != 16 || fs->channel < 1 || fs->channel > 8 || fs->sample_rate == 0)
+  if (fs->bits_per_sample != 16 || fs->channel < 1 || fs->channel > 8 || fs->sample_rate == 0) {
+    std::fprintf(stderr,
+                 "preflash: audio format rejected: %d bits, %d channels, %u Hz (need 16 bits, "
+                 "1 to 8 channels, a nonzero rate)\n",
+                 static_cast<int>(fs->bits_per_sample), static_cast<int>(fs->channel),
+                 static_cast<unsigned>(fs->sample_rate));
     return ESP_CODEC_DEV_INVALID_ARG;
+  }
   preflash::Speaker& s = preflash::speaker();
   std::lock_guard<std::mutex> hold(s.lock);
   s.open = true;
@@ -103,12 +114,14 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
   if (codec != &preflash::speaker() || (!data && len > 0) || len < 0)
     return ESP_CODEC_DEV_INVALID_ARG;
   preflash::Speaker& s = preflash::speaker();
-  std::lock_guard<std::mutex> hold(s.lock);
+  std::unique_lock<std::mutex> hold(s.lock);
   if (!s.open) return ESP_CODEC_DEV_WRONG_STATE;
   const size_t frame_bytes = sizeof(int16_t) * static_cast<size_t>(s.channels);
   if (static_cast<size_t>(len) % frame_bytes != 0) return ESP_CODEC_DEV_INVALID_ARG;
   if (len == 0) return ESP_CODEC_DEV_OK;
 
+  const size_t frames = static_cast<size_t>(len) / frame_bytes;
+  size_t dropped = frames;
   if (preflash::g_sink && !s.sink_gone) {
     std::vector<int16_t> scaled(static_cast<size_t>(len) / sizeof(int16_t));
     std::memcpy(scaled.data(), data, static_cast<size_t>(len));
@@ -132,9 +145,17 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
         s.sink_gone = true;
         break;
       }
+      dropped -= n / frame_bytes;
     }
   }
-  preflash::g_frames += static_cast<size_t>(len) / frame_bytes;
+  preflash::g_frames += frames;
+  if (dropped > 0) {
+    // I2S takes sound at its sample rate. Firmware can time itself by the writes, so
+    // sound with nowhere to go still takes as long as it would to play.
+    const auto playing = std::chrono::microseconds(dropped * 1000000 / static_cast<size_t>(s.rate));
+    hold.unlock();
+    std::this_thread::sleep_for(playing);
+  }
   return ESP_CODEC_DEV_OK;
 }
 

@@ -1,0 +1,7 @@
+# The stock board with its backlight enable moved to a GPIO by a hardware mod.
+name: snoozel-4b
+extends: ESP32-S3-Touch-LCD-4B
+
+changes:
+  backlight:
+    enable: gpio43

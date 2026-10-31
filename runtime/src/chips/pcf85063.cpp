@@ -1,4 +1,8 @@
 #include <algorithm>
+#include <cstdlib>
+#include <ctime>
+#include <stdexcept>
+#include <string>
 
 #include "preflash/chips.h"
 
@@ -42,6 +46,24 @@ Pcf85063::Pcf85063() : RegisterChip("pcf85063") {
   counted_to_ = std::time(nullptr);
   std::tm t = {};
   gmtime_r(&counted_to_, &t);
+  // A chosen start lets a test boot firmware at any time of day. The clock runs on from it.
+  if (const char* start = std::getenv("PREFLASH_RTC_START")) {
+    std::tm chosen = {};
+    const char* end = strptime(start, "%Y-%m-%dT%H:%M:%SZ", &chosen);
+    if (!end || *end != '\0')
+      throw std::runtime_error(std::string("PREFLASH_RTC_START isn't a time like "
+                                           "2026-11-01T12:00:00Z: ") + start);
+    const std::time_t chosen_time = timegm(&chosen);
+    gmtime_r(&chosen_time, &t);
+    // strptime accepts dates like February 31st, which timegm rolls into March, and
+    // the chip's year register only holds 2000 to 2099.
+    char again[32];
+    std::strftime(again, sizeof(again), "%Y-%m-%dT%H:%M:%SZ", &t);
+    const int year = t.tm_year + 1900;
+    if (std::string(again) != start || year < 2000 || year > 2099)
+      throw std::runtime_error(std::string("PREFLASH_RTC_START isn't a real time from 2000 to "
+                                           "2099 like 2026-11-01T12:00:00Z: ") + start);
+  }
   set_fields(t);
   regs_[kWeekdays] = static_cast<uint8_t>(t.tm_wday);
 }

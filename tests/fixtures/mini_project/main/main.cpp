@@ -39,5 +39,7 @@ extern "C" void app_main(void) {
 #ifdef NDEBUG
   printf("asserts are off\n");
 #endif
+  // No include for this: the firmware's standard library brings it in.
+  printf("clamped=%d\n", std::clamp(9, 1, 3));
   printf("app_main finished\n");
 }

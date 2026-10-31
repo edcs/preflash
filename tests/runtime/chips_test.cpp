@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "bsp/esp-bsp.h"
+#include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "preflash/board.h"
 #include "preflash/bus.h"
@@ -155,6 +156,47 @@ TEST(Pcf85063, ReadsTheMacClockAsBcd) {
   gmtime_r(&seen, &t);
   EXPECT_EQ(regs[4], t.tm_wday);
   EXPECT_EQ(regs[6], bcd(t.tm_year - 100));
+}
+
+TEST(Pcf85063, StartsFromAChosenTime) {
+  setenv("PREFLASH_RTC_START", "2026-11-01T22:05:09Z", 1);
+  Pcf85063 rtc;
+  unsetenv("PREFLASH_RTC_START");
+  const uint8_t reg = 0x04;
+  ASSERT_TRUE(rtc.write({&reg, 1}));
+  std::array<uint8_t, 7> time{};
+  ASSERT_TRUE(rtc.read(time));
+  EXPECT_LE(time[0], 0x10);  // it runs on from there, and this test is quick
+  EXPECT_EQ(time[1], 0x05);
+  EXPECT_EQ(time[2], 0x22);
+  EXPECT_EQ(time[3], 0x01);
+  EXPECT_EQ(time[4], 0);  // a Sunday
+  EXPECT_EQ(time[5], 0x11);
+  EXPECT_EQ(time[6], 0x26);
+}
+
+TEST(Pcf85063, BadChosenTimeNamesTheVariable) {
+  setenv("PREFLASH_RTC_START", "noon", 1);
+  try {
+    Pcf85063 rtc;
+    ADD_FAILURE() << "accepted a bad time";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string(e.what()).find("PREFLASH_RTC_START"), std::string::npos);
+  }
+  unsetenv("PREFLASH_RTC_START");
+}
+
+TEST(Pcf85063, ImpossibleChosenTimesAreRejected) {
+  for (const char* bad : {"2026-02-31T12:00:00Z", "1999-12-31T23:59:59Z", "2100-01-01T00:00:00Z"}) {
+    setenv("PREFLASH_RTC_START", bad, 1);
+    try {
+      Pcf85063 rtc;
+      ADD_FAILURE() << "accepted " << bad;
+    } catch (const std::runtime_error& e) {
+      EXPECT_NE(std::string(e.what()).find("PREFLASH_RTC_START"), std::string::npos);
+    }
+  }
+  unsetenv("PREFLASH_RTC_START");
 }
 
 TEST(Pcf85063, WriteMovesTheClock) {
@@ -413,8 +455,12 @@ TEST(Backlight, EnablePinBlanksTheScreen) {
         const int lit = preflash::panel::brightness();
         fs::remove(path);
         if (lit != 70) _exit(1);
+        if (preflash::panel::backlight_status() != "brightness: 70 (pwm 70, enable gpio43 high)")
+          _exit(6);
         preflash::gpio_write(43, false);
         if (preflash::panel::brightness() != 0) _exit(2);
+        if (preflash::panel::backlight_status() != "brightness: 0 (pwm 70, enable gpio43 low)")
+          _exit(7);
         // Whatever the level, and it comes back without being set again.
         preflash::panel::set_brightness(100);
         if (preflash::panel::brightness() != 0) _exit(3);
@@ -423,6 +469,60 @@ TEST(Backlight, EnablePinBlanksTheScreen) {
         // Firmware's own setting isn't touched by the pin.
         preflash::gpio_write(43, false);
         if (bsp_display_brightness_get() != 100) _exit(5);
+        _exit(0);
+      },
+      testing::ExitedWithCode(0), "");
+  GTEST_FLAG_SET(death_test_style, "fast");
+}
+
+// Snoozel's order: hold the pin high (off, on an active-low backlight), set a level,
+// then release the hold. Own process, for the same reason as above.
+TEST(Backlight, HeldPinDecidesUntilReleased) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  EXPECT_EXIT(
+      {
+        const char* path = std::getenv("PREFLASH_BOARD");
+        std::ofstream(path) << R"({"name": "Test", "display": {"width": 16, "height": 8},
+                                   "i2c": [], "audio_codec": "none",
+                                   "backlight": {"pin": 4, "active_low": true}})";
+        if (preflash::panel::brightness() != 100) _exit(1);
+        gpio_reset_pin(GPIO_NUM_4);
+        gpio_set_direction(GPIO_NUM_4, GPIO_MODE_OUTPUT);
+        gpio_set_level(GPIO_NUM_4, 1);
+        gpio_hold_en(GPIO_NUM_4);
+        fs::remove(path);
+        if (preflash::panel::brightness() != 0) _exit(2);
+        bsp_display_brightness_set(60);  // the hold still wins over the PWM
+        if (preflash::panel::brightness() != 0) _exit(3);
+        gpio_hold_dis(GPIO_NUM_4);
+        if (preflash::panel::brightness() != 60) _exit(4);
+        _exit(0);
+      },
+      testing::ExitedWithCode(0), "");
+  GTEST_FLAG_SET(death_test_style, "fast");
+}
+
+// A board with an active-high backlight, driven as a plain output and then by PWM.
+TEST(Backlight, DirectOutputDecidesUntilPwmTakesOver) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  EXPECT_EXIT(
+      {
+        const char* path = std::getenv("PREFLASH_BOARD");
+        std::ofstream(path) << R"({"name": "Test", "display": {"width": 16, "height": 8},
+                                   "i2c": [], "audio_codec": "none",
+                                   "backlight": {"pin": 4, "active_low": false}})";
+        bsp_display_brightness_set(80);
+        fs::remove(path);
+        if (preflash::panel::brightness() != 80) _exit(1);
+        gpio_reset_pin(GPIO_NUM_4);  // firmware takes the pin back from the PWM
+        gpio_set_direction(GPIO_NUM_4, GPIO_MODE_OUTPUT);
+        gpio_set_level(GPIO_NUM_4, 0);
+        if (preflash::panel::brightness() != 0) _exit(2);
+        gpio_set_level(GPIO_NUM_4, 1);
+        if (preflash::panel::brightness() != 80) _exit(3);
+        gpio_set_level(GPIO_NUM_4, 0);
+        bsp_display_brightness_set(50);  // PWM owns it again
+        if (preflash::panel::brightness() != 50) _exit(4);
         _exit(0);
       },
       testing::ExitedWithCode(0), "");

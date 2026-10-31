@@ -7,7 +7,7 @@ namespace preflash::audio {
 // Where windowed audio goes. The window installs one on the main thread, which is
 // the only code that talks to SDL, and the codec model calls it from the writer's
 // thread. Without one, which is a headless run or a Mac with no audio device,
-// writes are counted and dropped.
+// writes are counted and dropped, taking as long as the sound would to play.
 class Sink {
  public:
   virtual ~Sink() = default;

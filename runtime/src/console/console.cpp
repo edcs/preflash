@@ -12,6 +12,7 @@
 
 #include "esp_console.h"
 #include "preflash/control.h"
+#include "preflash/fail.h"
 
 namespace {
 
@@ -207,7 +208,7 @@ int help_command(int, char**) {
 
 esp_err_t repl_del(esp_console_repl_t*) {
   // Deleting a running reader would mean stopping a blocked read; say so.
-  return ESP_ERR_NOT_SUPPORTED;
+  preflash_unsupported("esp_console_repl_del", "stopping the console reader is not simulated");
 }
 
 }  // namespace

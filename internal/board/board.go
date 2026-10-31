@@ -51,7 +51,31 @@ func Load(path string) (Board, error) {
 	if err != nil {
 		return Board{}, err
 	}
-	merged, err := loadMap(source{path: abs}, map[string]bool{})
+	return load(source{path: abs}, path)
+}
+
+// LoadStock reads the stock board with this name. It reports fs.ErrNotExist if
+// there isn't one.
+func LoadStock(name string) (Board, error) {
+	src, ok := stockBoard(name)
+	if !ok {
+		return Board{}, fmt.Errorf("no stock board called %q: %w", name, fs.ErrNotExist)
+	}
+	return load(src, name)
+}
+
+// Stock returns the stock boards' names.
+func Stock() []string {
+	var names []string
+	eachStock(func(s source, name string) bool {
+		names = append(names, name)
+		return true
+	})
+	return names
+}
+
+func load(src source, path string) (Board, error) {
+	merged, err := loadMap(src, map[string]bool{})
 	if err != nil {
 		return Board{}, err
 	}
@@ -170,19 +194,8 @@ func loadMap(src source, seen map[string]bool) (map[string]any, error) {
 
 // findParent looks for a stock board by name first, then a file next to the child.
 func findParent(child source, ext string) (source, error) {
-	entries, _ := fs.ReadDir(preflash.Boards, "boards")
-	for _, e := range entries {
-		p := "boards/" + e.Name()
-		data, err := fs.ReadFile(preflash.Boards, p)
-		if err != nil {
-			continue
-		}
-		var head struct {
-			Name string `yaml:"name"`
-		}
-		if yaml.Unmarshal(data, &head) == nil && head.Name == ext {
-			return source{path: p, embedded: true}, nil
-		}
+	if src, ok := stockBoard(ext); ok {
+		return src, nil
 	}
 	if !child.embedded {
 		p := ext
@@ -196,6 +209,37 @@ func findParent(child source, ext string) (source, error) {
 		}
 	}
 	return source{}, fmt.Errorf("%s: extends %q, which is neither a stock board name nor a file", child.path, ext)
+}
+
+func stockBoard(name string) (found source, ok bool) {
+	eachStock(func(s source, n string) bool {
+		if n == name {
+			found, ok = s, true
+		}
+		return !ok
+	})
+	return found, ok
+}
+
+// eachStock visits the stock boards until visit returns false.
+func eachStock(visit func(s source, name string) bool) {
+	entries, _ := fs.ReadDir(preflash.Boards, "boards")
+	for _, e := range entries {
+		p := "boards/" + e.Name()
+		data, err := fs.ReadFile(preflash.Boards, p)
+		if err != nil {
+			continue
+		}
+		var head struct {
+			Name string `yaml:"name"`
+		}
+		if yaml.Unmarshal(data, &head) != nil || head.Name == "" {
+			continue
+		}
+		if !visit(source{path: p, embedded: true}, head.Name) {
+			return
+		}
+	}
 }
 
 func deepMerge(dst, src map[string]any) {

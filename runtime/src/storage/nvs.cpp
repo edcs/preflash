@@ -92,6 +92,9 @@ bool write_file(const fs::path& path, const Blob& bytes) {
   {
     std::ofstream out(temp, std::ios::binary | std::ios::trunc);
     if (!out) return false;
+    // Values can be Wi-Fi credentials; only the user may read them.
+    std::error_code perm;
+    fs::permissions(temp, fs::perms::owner_read | fs::perms::owner_write, perm);
     out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     // Closing flushes; a failed flush must not reach the rename.
     out.close();

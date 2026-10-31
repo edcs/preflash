@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "esp_lcd_types.h"
@@ -16,6 +17,12 @@ void draw(int x1, int y1, int x2, int y2, const void* rgb565);
 void set_brightness(int pct);
 int brightness();        // what the screen shows, after any backlight enable pin
 int brightness_level();  // what firmware last set
+
+// One line saying how the backlight stands, naming the enable pin if the board has one.
+std::string backlight_status();
+
+// The project, or the board if nothing names it, and what the screen shows.
+std::string window_title();
 
 // Copies the whole panel. False, leaving out alone, if nothing changed since the last call.
 bool take_frame(std::vector<uint8_t>* out);

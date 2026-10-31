@@ -39,5 +39,10 @@ I2cBus& i2c_bus();
 // such a pin reads low, because the model has no pull resistors.
 void gpio_write(int pin, bool level);
 bool gpio_read(int pin);
+// Whether firmware drives the pin as an output, and whether it holds the pad's level.
+bool gpio_is_output(int pin);
+bool gpio_is_held(int pin);
+// Counts the times firmware has set the pin's direction, which takes it from any peripheral.
+int gpio_direction_epoch(int pin);
 
 }  // namespace preflash
