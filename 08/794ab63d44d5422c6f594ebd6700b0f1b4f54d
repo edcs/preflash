@@ -1,0 +1,18 @@
+runtime/include/preflash/control.h
+  h_13c4e797d6e9d2 24-27
+runtime/src/console/console.cpp
+  h_13c4e797d6e9d2 5,9,136-144,157-158,167-169,177,230-231
+tests/runtime/console_test.cpp
+  h_13c4e797d6e9d2 3,130-133,139-140,150-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "08794ab63d44d5422c6f594ebd6700b0f1b4f54d",
+  "prompts": {},
+  "humans": {
+    "h_13c4e797d6e9d2": {
+      "author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
