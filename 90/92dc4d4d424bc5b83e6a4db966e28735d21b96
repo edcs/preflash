@@ -1,0 +1,22 @@
+runtime/include/esp_http_client.h
+  h_13c4e797d6e9d2 145-146
+runtime/include/mbedtls/base64.h
+  h_13c4e797d6e9d2 24-27
+runtime/src/net/http.cpp
+  h_13c4e797d6e9d2 397,536-537,556
+runtime/src/net/wifi.cpp
+  h_13c4e797d6e9d2 23-24,237-240
+tests/runtime/net_test.cpp
+  h_13c4e797d6e9d2 544-579,689
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9092dc4d4d424bc5b83e6a4db966e28735d21b96",
+  "prompts": {},
+  "humans": {
+    "h_13c4e797d6e9d2": {
+      "author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
