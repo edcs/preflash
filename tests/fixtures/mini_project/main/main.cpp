@@ -11,6 +11,7 @@ extern const uint8_t hello_end[] asm("_binary_hello_txt_end");
 extern const uint8_t notes_start[] asm("_binary_notes_txt_start");
 extern const uint8_t notes_end[] asm("_binary_notes_txt_end");
 
+extern "C" int from_folder_value(void);
 extern "C" int lv_stand_in_os_none(void);
 extern "C" int lv_stand_in_color_depth(void);
 extern "C" int lv_stand_in_sdl(void);
@@ -26,6 +27,7 @@ extern "C" void app_main(void) {
   printf("CONFIG_IDF_TARGET=%s\n", CONFIG_IDF_TARGET);
   printf("thing=%d\n", thing_value());
   printf("header only=%d\n", HEADER_ONLY_VALUE);
+  printf("from folder=%d\n", from_folder_value());
   printf("embedded=%.*s\n", static_cast<int>(hello_end - hello_start), hello_start);
   // A text file ends in a NUL that counts towards its length, as on ESP-IDF.
   printf("embedded text=%s length=%d\n", notes_start, static_cast<int>(notes_end - notes_start));
