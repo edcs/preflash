@@ -9,7 +9,4 @@ void open();
 // Runs the window on the main thread until it's closed, which ends the process.
 [[noreturn]] void run();
 
-// Safe from any thread: reaches the panel by way of the window's event queue.
-void post_touch(int x, int y, bool down);
-
 }  // namespace preflash::window

@@ -40,9 +40,9 @@ std::optional<int> parse_number(const std::string& word) {
   return value;
 }
 
-// A press, on a thread that mustn't touch the window. With one open, it takes the
-// same route as the mouse; headless, there's no SDL to go through.
-void control_touch(bool headless, const std::vector<std::string>& args) {
+// A press straight into the touch queue, because this runs on the console task and
+// only the main thread may touch SDL.
+void control_touch(const std::vector<std::string>& args) {
   const auto x = args.size() >= 2 ? parse_number(args[0]) : std::nullopt;
   const auto y = args.size() >= 2 ? parse_number(args[1]) : std::nullopt;
   const auto ms = args.size() >= 3 ? parse_number(args[2]) : kDefaultPressMs;
@@ -51,16 +51,9 @@ void control_touch(bool headless, const std::vector<std::string>& args) {
     std::printf("@sim touch needs x y [ms], with x and y on the panel\n");
     return;
   }
-  const auto press = [&](bool down) {
-    if (headless) {
-      preflash::touch::push({*x, *y, down});
-    } else {
-      preflash::window::post_touch(*x, *y, down);
-    }
-  };
-  press(true);
+  preflash::touch::push({*x, *y, true});
   usleep(static_cast<useconds_t>(*ms) * 1000);
-  press(false);
+  preflash::touch::push({*x, *y, false});
 }
 
 void control_shot(const std::vector<std::string>& args) {
@@ -95,9 +88,7 @@ int main() {
   const bool headless = headless_env && std::strcmp(headless_env, "1") == 0;
   if (!headless) preflash::window::open();
 
-  preflash::add_control("touch", [headless](std::vector<std::string> args) {
-    control_touch(headless, args);
-  });
+  preflash::add_control("touch", control_touch);
   preflash::add_control("shot", control_shot);
   preflash::add_control("quit", [](std::vector<std::string>) { quit(0); });
   if (!preflash::start_console_reader()) {

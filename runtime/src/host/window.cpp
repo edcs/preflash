@@ -100,14 +100,4 @@ void run() {
   }
 }
 
-void post_touch(int x, int y, bool down) {
-  SDL_Event e{};
-  e.type = down ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
-  e.button.button = SDL_BUTTON_LEFT;
-  e.button.state = down ? SDL_PRESSED : SDL_RELEASED;
-  e.button.x = x;
-  e.button.y = y;
-  SDL_PushEvent(&e);
-}
-
 }  // namespace preflash::window
