@@ -1,0 +1,59 @@
+runtime/include/driver/gpio.h
+  s_82b4983a83db4b::t_b74016b683899d 1-2,5-80
+  s_82b4983a83db4b::t_ff55ba565e1f92 3-4
+tests/runtime/chips_test.cpp
+  s_82b4983a83db4b::t_cd581f75a79228 1-389
+runtime/src/bsp/bsp.cpp
+  s_82b4983a83db4b::t_b74016b683899d 63-79
+runtime/src/bus/i2c.cpp
+  s_82b4983a83db4b::t_b74016b683899d 1-90
+runtime/include/bsp/esp-bsp.h
+  s_82b4983a83db4b::t_b74016b683899d 7-8,16-18,23-26
+  s_82b4983a83db4b::t_f204aeb1a58928 27
+runtime/include/preflash/bus.h
+  s_82b4983a83db4b::t_b74016b683899d 1-41
+runtime/src/bus/gpio.cpp
+  s_82b4983a83db4b::t_b74016b683899d 1-85
+runtime/src/host/main.cpp
+  s_82b4983a83db4b::t_b74016b683899d 15,82
+runtime/include/preflash/chips.h
+  s_82b4983a83db4b::t_ff55ba565e1f92 42
+  s_82b4983a83db4b::t_b74016b683899d 1-41,43-101
+runtime/src/chips/qmi8658.cpp
+  s_82b4983a83db4b::t_b74016b683899d 1-5,7-27,29-36,39-41,44-55,57-92
+  s_82b4983a83db4b::t_ff55ba565e1f92 6,28,37-38,42-43,56
+runtime/src/chips/register_chip.cpp
+  s_82b4983a83db4b::t_b74016b683899d 1-35
+runtime/src/chips/registry.cpp
+  s_82b4983a83db4b::t_b74016b683899d 1-51
+runtime/include/driver/i2c_master.h
+  s_82b4983a83db4b::t_b74016b683899d 1-65
+runtime/src/display/panel.cpp
+  s_82b4983a83db4b::t_b74016b683899d 13,65-70
+runtime/src/chips/axp2101.cpp
+  s_82b4983a83db4b::t_b74016b683899d 1-5,7-24,30-54
+  s_82b4983a83db4b::t_ff55ba565e1f92 6,25-29
+tests/runtime/i2c_test.cpp
+  s_82b4983a83db4b::t_cd581f75a79228 1-162
+runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_b74016b683899d 9-10
+runtime/src/chips/pcf85063.cpp
+  s_82b4983a83db4b::t_ff55ba565e1f92 8,24-25
+  s_82b4983a83db4b::t_b74016b683899d 1-7,9-23,26-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ef32ee0c5e6b0714db347936f59cd2edd6eeaef9",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
