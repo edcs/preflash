@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -22,6 +23,7 @@ struct Speaker {
   std::mutex lock;
   bool open = false;
   int channels = 0;
+  int rate = 0;
   int volume = 100;
   bool sink_gone = false;
 };
@@ -75,6 +77,7 @@ int esp_codec_dev_open(esp_codec_dev_handle_t codec, esp_codec_dev_sample_info_t
   std::lock_guard<std::mutex> hold(s.lock);
   s.open = true;
   s.channels = fs->channel;
+  s.rate = static_cast<int>(fs->sample_rate);
   if (preflash::g_sink && !s.sink_gone)
     preflash::g_sink->start(static_cast<int>(fs->sample_rate), fs->channel);
   return ESP_CODEC_DEV_OK;
@@ -107,15 +110,28 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
   if (len == 0) return ESP_CODEC_DEV_OK;
 
   if (preflash::g_sink && !s.sink_gone) {
-    if (!preflash::wait_for_room(preflash::g_sink)) {
-      std::fprintf(stderr, "preflash: the audio device stopped playing, so sound is dropped\n");
-      s.sink_gone = true;
-    } else {
-      std::vector<int16_t> scaled(static_cast<size_t>(len) / sizeof(int16_t));
-      std::memcpy(scaled.data(), data, static_cast<size_t>(len));
-      if (s.volume != 100)
-        for (int16_t& v : scaled) v = static_cast<int16_t>(v * s.volume / 100);
-      preflash::g_sink->queue(scaled.data(), static_cast<size_t>(len));
+    std::vector<int16_t> scaled(static_cast<size_t>(len) / sizeof(int16_t));
+    std::memcpy(scaled.data(), data, static_cast<size_t>(len));
+    if (s.volume != 100)
+      for (int16_t& v : scaled) v = static_cast<int16_t>(v * s.volume / 100);
+    // The room check only sees what is already queued, so one long write is fed in
+    // pieces of about 100 ms; otherwise it would all go in at once and never pace.
+    const size_t chunk_frames =
+        std::max<size_t>(1, static_cast<size_t>(s.rate) * preflash::kMaxQueuedMs / 1000);
+    const size_t chunk_bytes = chunk_frames * frame_bytes;
+    const auto* bytes = reinterpret_cast<const uint8_t*>(scaled.data());
+    for (size_t at = 0; at < static_cast<size_t>(len); at += chunk_bytes) {
+      const size_t n = std::min(chunk_bytes, static_cast<size_t>(len) - at);
+      if (!preflash::wait_for_room(preflash::g_sink)) {
+        std::fprintf(stderr, "preflash: the audio device stopped playing, so sound is dropped\n");
+        s.sink_gone = true;
+        break;
+      }
+      if (!preflash::g_sink->queue(bytes + at, n)) {
+        std::fprintf(stderr, "preflash: the audio device refused sound, so it is dropped\n");
+        s.sink_gone = true;
+        break;
+      }
     }
   }
   preflash::g_frames += static_cast<size_t>(len) / frame_bytes;

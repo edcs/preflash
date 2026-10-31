@@ -21,6 +21,9 @@ esp_io_expander_handle_t bsp_io_expander_init(void) {
 esp_err_t esp_io_expander_set_dir(esp_io_expander_handle_t handle, uint32_t pin_num_mask,
                                   esp_io_expander_dir_t direction) {
   if (!handle) return ESP_ERR_INVALID_ARG;
+  // Checked before any state changes, so a bad value can't quietly make pins inputs.
+  if (direction != IO_EXPANDER_INPUT && direction != IO_EXPANDER_OUTPUT)
+    return ESP_ERR_INVALID_ARG;
   std::lock_guard<std::mutex> hold(handle->lock);
   if (direction == IO_EXPANDER_OUTPUT)
     handle->outputs |= pin_num_mask;

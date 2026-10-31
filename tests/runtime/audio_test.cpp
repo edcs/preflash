@@ -14,10 +14,14 @@ class FakeSink : public preflash::audio::Sink {
     rate = r;
     channels = c;
   }
-  void queue(const void* data, size_t n) override {
+  bool queue(const void* data, size_t n) override {
+    ++queues;
+    if (fail_queue) return false;
     bytes += n;
     const auto* p = static_cast<const int16_t*>(data);
     last.assign(p, p + n / sizeof(int16_t));
+    if (drain_on_queue) waiting += 250;  // each piece lands on a busy device
+    return true;
   }
   int queued_ms() override {
     ++polls;
@@ -25,7 +29,8 @@ class FakeSink : public preflash::audio::Sink {
     waiting = waiting > 100 ? waiting - 100 : 0;  // each look finds it drained a little
     return shown;
   }
-  int rate = 0, channels = 0, waiting = 0, polls = 0;
+  int rate = 0, channels = 0, waiting = 0, polls = 0, queues = 0;
+  bool fail_queue = false, drain_on_queue = false;
   size_t bytes = 0;
   std::vector<int16_t> last;
 };
@@ -90,6 +95,36 @@ TEST_F(Codec, WriteWaitsWhileMoreThan100msIsQueued) {
   EXPECT_EQ(sink.bytes, sizeof(pcm));
 }
 
+TEST_F(Codec, LongWriteIsFedInPiecesSoItPaces) {
+  FakeSink sink;
+  sink.drain_on_queue = true;
+  preflash::audio::set_sink(&sink);
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(16000 * 2);  // two seconds
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  EXPECT_EQ(sink.bytes, pcm.size() * 2);
+  EXPECT_GE(sink.queues, 20);
+  EXPECT_GT(sink.polls, sink.queues);  // it waited for room between pieces
+}
+
+TEST_F(Codec, SinkThatRefusesSoundIsAbandoned) {
+  FakeSink sink;
+  sink.fail_queue = true;
+  preflash::audio::set_sink(&sink);
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(16000);
+  const size_t before = preflash::audio_samples_written();
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  EXPECT_EQ(sink.queues, 1);  // not tried again
+  EXPECT_EQ(preflash::audio_samples_written() - before, 32000u);
+}
+
 TEST_F(Codec, WriteBeforeOpenFails) {
   int16_t pcm[16] = {};
   const size_t before = preflash::audio_samples_written();
@@ -131,6 +166,14 @@ TEST(Expander, SettingAnInputFails) {
   esp_io_expander_handle_t io = bsp_io_expander_init();
   ASSERT_EQ(esp_io_expander_set_dir(io, IO_EXPANDER_PIN_NUM_5, IO_EXPANDER_INPUT), ESP_OK);
   EXPECT_EQ(esp_io_expander_set_level(io, IO_EXPANDER_PIN_NUM_5, 1), ESP_ERR_INVALID_STATE);
+}
+
+TEST(Expander, UnknownDirectionIsRejectedAndChangesNothing) {
+  esp_io_expander_handle_t io = bsp_io_expander_init();
+  ASSERT_EQ(esp_io_expander_set_dir(io, IO_EXPANDER_PIN_NUM_6, IO_EXPANDER_OUTPUT), ESP_OK);
+  EXPECT_EQ(esp_io_expander_set_dir(io, IO_EXPANDER_PIN_NUM_6, static_cast<esp_io_expander_dir_t>(7)),
+            ESP_ERR_INVALID_ARG);
+  EXPECT_EQ(esp_io_expander_set_level(io, IO_EXPANDER_PIN_NUM_6, 1), ESP_OK);
 }
 
 TEST(Expander, SpeakerInitSwitchesTheAmpOn) {

@@ -13,7 +13,8 @@ class Sink {
   virtual ~Sink() = default;
   // 16-bit samples from now on, interleaved.
   virtual void start(int rate, int channels) = 0;
-  virtual void queue(const void* samples, size_t bytes) = 0;
+  // False if the sound could not be queued; the codec then gives up on the sink.
+  virtual bool queue(const void* samples, size_t bytes) = 0;
   // How much sound is waiting to play.
   virtual int queued_ms() = 0;
 };

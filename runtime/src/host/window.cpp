@@ -86,13 +86,17 @@ class SdlSink : public audio::Sink {
     if (!stream_) std::fprintf(stderr, "preflash: no audio conversion: %s\n", SDL_GetError());
   }
 
-  void queue(const void* samples, size_t bytes) override {
-    if (!stream_ || SDL_AudioStreamPut(stream_, samples, static_cast<int>(bytes)) != 0) return;
+  bool queue(const void* samples, size_t bytes) override {
+    if (!stream_ || SDL_AudioStreamPut(stream_, samples, static_cast<int>(bytes)) != 0)
+      return false;
     const int ready = SDL_AudioStreamAvailable(stream_);
-    if (ready <= 0) return;
+    if (ready < 0) return false;
+    if (ready == 0) return true;
     converted_.resize(static_cast<size_t>(ready));
     const int got = SDL_AudioStreamGet(stream_, converted_.data(), ready);
-    if (got > 0) SDL_QueueAudio(device_, converted_.data(), static_cast<Uint32>(got));
+    if (got < 0) return false;
+    if (got == 0) return true;
+    return SDL_QueueAudio(device_, converted_.data(), static_cast<Uint32>(got)) == 0;
   }
 
   int queued_ms() override {
