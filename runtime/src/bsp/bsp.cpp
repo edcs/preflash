@@ -60,6 +60,23 @@ esp_err_t bsp_display_backlight_on(void) { return bsp_display_brightness_set(100
 
 esp_err_t bsp_display_backlight_off(void) { return bsp_display_brightness_set(0); }
 
+int preflash_backlight_pin(void) { return preflash::board().backlight.pin; }
+
+esp_err_t bsp_i2c_init(void) {
+  bsp_i2c_get_handle();
+  return ESP_OK;
+}
+
+i2c_master_bus_handle_t bsp_i2c_get_handle(void) {
+  static const i2c_master_bus_handle_t bus = [] {
+    const i2c_master_bus_config_t config = {};
+    i2c_master_bus_handle_t handle = nullptr;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&config, &handle));
+    return handle;
+  }();
+  return bus;
+}
+
 esp_err_t bsp_touch_new(const bsp_touch_config_t*, esp_lcd_touch_handle_t*) {
   preflash_unsupported("bsp_touch_new", "touches go through lvgl_port_add_disp");
 }
