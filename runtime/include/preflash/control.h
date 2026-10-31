@@ -21,4 +21,8 @@ void dispatch_line(const std::string& line);
 // and a failed start can be tried again. False if the task couldn't start.
 bool start_console_reader();
 
+// True once the console task has stopped reading stdin. Tests use it to know the
+// task no longer touches the input they are about to replace.
+bool console_reader_done();
+
 }  // namespace preflash

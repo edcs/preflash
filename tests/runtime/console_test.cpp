@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <mutex>
@@ -126,12 +127,17 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
     g_order.push_back(args.empty() ? "" : args[0]);
   });
 
-  std::istringstream input("note first\n@sim note second\nnote third\n@sim note fourth\n");
+  static std::atomic<bool> quit_seen{false};
+  preflash::add_control("quit", [](std::vector<std::string>) { quit_seen = true; });
+
+  std::istringstream input("note first\n@sim note second\nnote third\n@sim note fourth\n@sim quit\n");
   std::streambuf* original = std::cin.rdbuf(input.rdbuf());
   ASSERT_TRUE(preflash::start_console_reader());
   // Nothing runs yet: no REPL has started to take the first line.
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   EXPECT_EQ(noted(), 0u);
+  // Quit gets through although ordinary lines are waiting and no REPL has started.
+  EXPECT_TRUE(quit_seen);
 
   esp_console_repl_t* repl = nullptr;
   esp_console_repl_config_t config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
@@ -141,6 +147,11 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
   for (int i = 0; i < 200 && noted() < 4; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
+  // The reader may still be inside getline; leave the buffer alone until it has hit EOF.
+  for (int i = 0; i < 500 && !preflash::console_reader_done(); ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_TRUE(preflash::console_reader_done());
   std::cin.rdbuf(original);
 
   std::lock_guard<std::mutex> lock(g_order_mutex);

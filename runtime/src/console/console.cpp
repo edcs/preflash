@@ -2,9 +2,11 @@
 
 #include <cstdio>
 #include <iostream>
+#include <atomic>
 #include <deque>
 #include <map>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -131,6 +133,15 @@ void run_command(const std::vector<std::string>& words) {
 
 bool is_control(const std::string& line) { return line.rfind(kControlPrefix, 0) == 0; }
 
+// "@sim quit" must work even for firmware that never starts a REPL, so lines
+// waiting for one can't hold it back.
+bool is_quit(const std::string& line) {
+  if (!is_control(line)) return false;
+  std::istringstream words(line.substr(std::string(kControlPrefix).size()));
+  std::string name;
+  return (words >> name) && name == "quit";
+}
+
 void print_prompt() {
   if (!isatty(STDIN_FILENO)) return;
   std::string prompt;
@@ -143,6 +154,8 @@ void print_prompt() {
   std::fflush(stdout);
 }
 
+std::atomic<bool> g_reader_done{false};
+
 // Read from the start, whether or not firmware ever starts a REPL, so that a
 // project without one still answers controls.
 void reader_task(void*) {
@@ -151,8 +164,9 @@ void reader_task(void*) {
   while (std::getline(std::cin, line)) {
     {
       std::lock_guard<std::mutex> lock(state().mutex);
-      // Once one line waits, every later line waits behind it, controls included.
-      if (!state().open_repl && (state().replaying || !state().early_lines.empty() || !is_control(line))) {
+      // Once one line waits, every later line waits behind it, controls included,
+      // except quit.
+      if (!state().open_repl && !is_quit(line) && (state().replaying || !state().early_lines.empty() || !is_control(line))) {
         state().early_lines.push_back(line);
         continue;
       }
@@ -160,6 +174,7 @@ void reader_task(void*) {
     preflash::dispatch_line(line);
     print_prompt();
   }
+  g_reader_done = true;
 }
 
 void repl_task(void* arg) {
@@ -211,6 +226,8 @@ void dispatch_line(const std::string& line) {
     run_command(split_words(line));
   }
 }
+
+bool console_reader_done() { return g_reader_done; }
 
 bool start_console_reader() {
   static std::mutex mutex;
