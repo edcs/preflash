@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "driver/gpio.h"
@@ -85,9 +86,9 @@ TEST(I2c, NoDeviceAtAddressIsAnError) {
   i2c_master_dev_handle_t device = new_device(0x77);
   const uint8_t command[] = {0x00};
   uint8_t answer = 0;
-  EXPECT_EQ(i2c_master_transmit(device, command, sizeof command, kTimeoutMs), ESP_ERR_NOT_FOUND);
+  EXPECT_EQ(i2c_master_transmit(device, command, sizeof command, kTimeoutMs), ESP_ERR_INVALID_STATE);
   EXPECT_EQ(i2c_master_transmit_receive(device, command, sizeof command, &answer, 1, kTimeoutMs),
-            ESP_ERR_NOT_FOUND);
+            ESP_ERR_INVALID_STATE);
 }
 
 TEST(I2c, RefusedWriteIsAnError) {
@@ -95,7 +96,7 @@ TEST(I2c, RefusedWriteIsAnError) {
   i2c_bus().add(0x13, std::make_unique<FakeDevice>(&log, false));
   const uint8_t command[] = {0x00};
   EXPECT_EQ(i2c_master_transmit(new_device(0x13), command, sizeof command, kTimeoutMs),
-            ESP_ERR_NOT_FOUND);
+            ESP_ERR_INVALID_STATE);
 }
 
 TEST(I2c, DevicesAddedLaterAreSeenByExistingHandles) {
@@ -105,6 +106,39 @@ TEST(I2c, DevicesAddedLaterAreSeenByExistingHandles) {
   i2c_bus().add(0x14, std::make_unique<FakeDevice>(&log));
   const uint8_t command[] = {0x01};
   EXPECT_EQ(i2c_master_transmit(device, command, sizeof command, kTimeoutMs), ESP_OK);
+}
+
+TEST(I2c, TakeHandsTheDeviceBackForAWrapper) {
+  // Forwards to the device it was built around, as a wrapper would.
+  class Wrapper : public I2cDevice {
+   public:
+    explicit Wrapper(std::unique_ptr<I2cDevice> inner) : inner_(std::move(inner)) {}
+    bool write(std::span<const uint8_t> data) override { return inner_->write(data); }
+    bool read(std::span<uint8_t> out) override { return inner_->read(out); }
+
+   private:
+    std::unique_ptr<I2cDevice> inner_;
+  };
+
+  std::vector<uint8_t> log;
+  i2c_bus().add(0x15, std::make_unique<FakeDevice>(&log));
+  i2c_master_dev_handle_t device = new_device(0x15);
+
+  std::unique_ptr<I2cDevice> taken = i2c_bus().take(0x15);
+  ASSERT_NE(taken, nullptr);
+  EXPECT_EQ(i2c_bus().device(0x15), nullptr);
+  const uint8_t command[] = {0x02};
+  EXPECT_EQ(i2c_master_transmit(device, command, sizeof command, kTimeoutMs),
+            ESP_ERR_INVALID_STATE);
+  EXPECT_TRUE(log.empty());
+
+  i2c_bus().add(0x15, std::make_unique<Wrapper>(std::move(taken)));
+  EXPECT_EQ(i2c_master_transmit(device, command, sizeof command, kTimeoutMs), ESP_OK);
+  EXPECT_EQ(log, (std::vector<uint8_t>{0x02}));
+}
+
+TEST(I2c, TakeFromAnEmptyAddressGivesNothing) {
+  EXPECT_EQ(i2c_bus().take(0x16), nullptr);
 }
 
 TEST(I2c, RejectsBadArguments) {
@@ -168,6 +202,18 @@ TEST(Gpio, FirmwareOutputBeatsAnOutsideLevel) {
   gpio_set_level(GPIO_NUM_15, 1);
   gpio_write(15, false);
   EXPECT_TRUE(gpio_read(15));
+}
+
+TEST(Gpio, OpenDrainHighLetsGoOfTheLine) {
+  gpio_reset_pin(GPIO_NUM_16);
+  gpio_set_direction(GPIO_NUM_16, GPIO_MODE_OUTPUT_OD);
+  gpio_set_level(GPIO_NUM_16, 1);
+  gpio_write(16, false);
+  EXPECT_FALSE(gpio_read(16));
+  gpio_write(16, true);
+  EXPECT_TRUE(gpio_read(16));
+  gpio_set_level(GPIO_NUM_16, 0);
+  EXPECT_FALSE(gpio_read(16));
 }
 
 TEST(Gpio, RejectsPinsTheChipDoesntHave) {

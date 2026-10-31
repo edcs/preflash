@@ -7,13 +7,15 @@
 namespace {
 
 constexpr int kOutputBit = 2;
+constexpr int kOpenDrainBit = 4;
 
 struct Pin {
-  bool output = false;   // the output driver is on
-  bool latch = false;    // what gpio_set_level last asked for
-  bool outside = false;  // what something off the chip drives, seen when output is off
-  bool held = false;     // the pad keeps its level whatever the rest of this says
-  bool level = false;    // what's on the pad
+  bool output = false;      // the output driver is on
+  bool open_drain = false;  // a high latch lets go of the line instead of driving it
+  bool latch = false;       // what gpio_set_level last asked for
+  bool outside = false;     // what something off the chip drives, seen when output is off
+  bool held = false;        // the pad keeps its level whatever the rest of this says
+  bool level = false;       // what's on the pad
 };
 
 std::mutex g_mutex;
@@ -24,7 +26,9 @@ bool exists(gpio_num_t pin) {
 }
 
 void settle(Pin* pin) {
-  if (!pin->held) pin->level = pin->output ? pin->latch : pin->outside;
+  if (pin->held) return;
+  const bool driving = pin->output && !(pin->open_drain && pin->latch);
+  pin->level = driving ? pin->latch : pin->outside;
 }
 
 }  // namespace
@@ -56,6 +60,7 @@ esp_err_t gpio_set_direction(gpio_num_t gpio_num, gpio_mode_t mode) {
   std::lock_guard<std::mutex> lock(g_mutex);
   Pin& pin = g_pins[gpio_num];
   pin.output = (mode & kOutputBit) != 0;
+  pin.open_drain = (mode & kOpenDrainBit) != 0;
   settle(&pin);
   return ESP_OK;
 }

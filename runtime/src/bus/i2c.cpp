@@ -17,6 +17,15 @@ void I2cBus::add(uint8_t address, std::unique_ptr<I2cDevice> device) {
   devices_[address] = std::move(device);
 }
 
+std::unique_ptr<I2cDevice> I2cBus::take(uint8_t address) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  const auto it = devices_.find(address);
+  if (it == devices_.end()) return nullptr;
+  std::unique_ptr<I2cDevice> device = std::move(it->second);
+  devices_.erase(it);
+  return device;
+}
+
 I2cDevice* I2cBus::device(uint8_t address) {
   std::lock_guard<std::mutex> lock(mutex_);
   const auto it = devices_.find(address);
@@ -43,9 +52,11 @@ namespace {
 constexpr uint16_t kLargest7BitAddress = 0x7f;
 
 // Handles hold the address, not the device, so traffic always crosses the bus.
+// ESP-IDF 5.4's transfers report a NACK this way. Only its bus probe says
+// ESP_ERR_NOT_FOUND.
 esp_err_t transfer(i2c_master_dev_handle_t device, std::span<const uint8_t> tx,
                    std::span<uint8_t> rx) {
-  return preflash::i2c_bus().transfer(device->address, tx, rx) ? ESP_OK : ESP_ERR_NOT_FOUND;
+  return preflash::i2c_bus().transfer(device->address, tx, rx) ? ESP_OK : ESP_ERR_INVALID_STATE;
 }
 
 }  // namespace

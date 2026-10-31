@@ -19,6 +19,9 @@ class I2cBus {
  public:
   // Replaces and destroys any device already at the address.
   void add(uint8_t address, std::unique_ptr<I2cDevice> device);
+  // Removes a device and hands it back, or null if there's none, so that a wrapper
+  // can be built around it and added in its place.
+  std::unique_ptr<I2cDevice> take(uint8_t address);
   I2cDevice* device(uint8_t address);
 
   // One write, then one read if rx isn't empty, with no other task's traffic

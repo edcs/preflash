@@ -195,6 +195,14 @@ TEST(Pcf85063, MidnightMovesTheDateAndTheWeekday) {
   EXPECT_EQ(regs[5], 0x03) << "month";
 }
 
+TEST(Pcf85063, YearWrapsAfterNinetyNine) {
+  Pcf85063 rtc;
+  const std::array<uint8_t, 8> frame = {0x04, 0x59, 0x59, 0x23, 0x31, 0x04, 0x12, 0x99};
+  ASSERT_TRUE(rtc.write(frame));
+  sleep(2);
+  EXPECT_EQ(take(rtc, 0x0a), 0x00);
+}
+
 TEST(Pcf85063, WeekdayIsWhateverWasWritten) {
   // The chip counts weekdays without checking them against the date.
   Pcf85063 rtc;

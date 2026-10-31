@@ -63,7 +63,7 @@ void Pcf85063::set_fields(const std::tm& t) {
   regs_[kHours] = to_bcd(t.tm_hour);
   regs_[kDays] = to_bcd(t.tm_mday);
   regs_[kMonths] = to_bcd(t.tm_mon + 1);
-  regs_[kYears] = to_bcd(t.tm_year - kTmYearOf2000);
+  regs_[kYears] = to_bcd((t.tm_year - kTmYearOf2000) % 100);  // section 8.3.7: two digits
 }
 
 // The registers are the clock, as on the chip, and this counts them on by the
