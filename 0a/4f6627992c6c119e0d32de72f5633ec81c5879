@@ -1,0 +1,84 @@
+tests/runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_b5215954a40895 2,15-20,23-28,33-34,36,44
+runtime/include/bsp/display.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-24
+runtime/include/bsp/esp-bsp.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-38
+runtime/include/esp_lvgl_port.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-79
+tests/runtime/lvgl/lv_conf.h
+  s_82b4983a83db4b::t_b5215954a40895 1-8
+runtime/idf/tools/cmake/project.cmake
+  s_82b4983a83db4b::t_e42fd646c96431 289-293
+runtime/include/esp_lcd_panel_io.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-14
+tests/fixtures/board.json
+  s_82b4983a83db4b::t_e42fd646c96431 1-7
+runtime/include/bsp/touch.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-21
+runtime/src/host/window.h
+  s_82b4983a83db4b::t_e42fd646c96431 1-15
+runtime/src/bsp/bsp.cpp
+  s_82b4983a83db4b::t_39855b109f8afe 1-62
+tests/integration/display.sh
+  s_82b4983a83db4b::t_e42fd646c96431 1-47,49-118
+  s_82b4983a83db4b::t_23575771ce95b0 48
+tests/fixtures/lvgl_project/CMakeLists.txt
+  s_82b4983a83db4b::t_e42fd646c96431 1-4
+runtime/src/console/console.cpp
+  s_82b4983a83db4b::t_e42fd646c96431 5,13,28-32,37-40,131-134,136-143,145-147,149-156,159-174,176,204-205,211-219,258-259
+runtime/include/preflash/touch.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-17
+runtime/src/display/esp_lcd.cpp
+  s_82b4983a83db4b::t_39855b109f8afe 1-57
+tests/fixtures/lvgl_project/main/main.cpp
+  s_82b4983a83db4b::t_e42fd646c96431 1-99
+tests/fixtures/lvgl_project/main/idf_component.yml
+  s_82b4983a83db4b::t_e42fd646c96431 1-3
+runtime/src/display/panel.cpp
+  s_82b4983a83db4b::t_39855b109f8afe 1-139
+runtime/src/host/main.cpp
+  s_82b4983a83db4b::t_e42fd646c96431 1-19,22-80,82-112
+tests/integration/build_fixture.sh
+  s_82b4983a83db4b::t_e42fd646c96431 8-10,13-14,50-57,76,93-98,104
+runtime/src/host/window.cpp
+  s_82b4983a83db4b::t_e42fd646c96431 1-113
+runtime/include/preflash/panel.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-29
+runtime/include/preflash/control.h
+  s_82b4983a83db4b::t_e42fd646c96431 20-22
+tests/fixtures/lvgl_project/main/CMakeLists.txt
+  s_82b4983a83db4b::t_e42fd646c96431 1-3
+tests/fixtures/lvgl_project/sdkconfig
+  s_82b4983a83db4b::t_e42fd646c96431 1-112
+runtime/include/esp_lcd_types.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-12
+runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_e42fd646c96431 2,6-37
+tests/integration/app.sh
+  s_82b4983a83db4b::t_e42fd646c96431 1-42
+tests/fixtures/mini_project/main/main.cpp
+  s_82b4983a83db4b::t_e42fd646c96431 42
+runtime/include/esp_lcd_panel_ops.h
+  s_82b4983a83db4b::t_39855b109f8afe 1-21
+tests/runtime/panel_test.cpp
+  s_82b4983a83db4b::t_b5215954a40895 1-227
+runtime/src/display/lvgl_port.cpp
+  s_82b4983a83db4b::t_39855b109f8afe 1-142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0a4f6627992c6c119e0d32de72f5633ec81c5879",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
