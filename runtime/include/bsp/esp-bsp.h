@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "bsp/audio.h"
 #include "bsp/display.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"

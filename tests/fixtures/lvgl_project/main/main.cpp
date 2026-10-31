@@ -47,6 +47,22 @@ int ping_command(int, char**) {
   return 0;
 }
 
+// A quarter second of a quiet tone at 16 kHz, written the way a chime would be.
+int play_command(int, char**) {
+  esp_codec_dev_handle_t speaker = bsp_audio_codec_speaker_init();
+  esp_codec_dev_sample_info_t fs = {};
+  fs.sample_rate = 16000;
+  fs.channel = 1;
+  fs.bits_per_sample = 16;
+  if (esp_codec_dev_open(speaker, &fs) != ESP_CODEC_DEV_OK) return 1;
+  esp_codec_dev_set_out_vol(speaker, 20);
+  int16_t pcm[320];
+  for (int i = 0; i < 320; ++i) pcm[i] = (i / 20) % 2 ? 4000 : -4000;
+  for (int i = 0; i < 12; ++i) esp_codec_dev_write(speaker, pcm, sizeof(pcm));
+  ESP_LOGI(kTag, "played");
+  return 0;
+}
+
 void restart_now(void*) { esp_restart(); }
 
 // Off the console's thread, as a button or a timer would, while stdin sits idle.
@@ -66,6 +82,7 @@ void start_console() {
   add_command("rotate", rotate_command);
   add_command("brightness", brightness_command);
   add_command("hold", hold_command);
+  add_command("play", play_command);
   add_command("ping", ping_command);
   add_command("restart", restart_command);
   esp_console_repl_t* repl = nullptr;
