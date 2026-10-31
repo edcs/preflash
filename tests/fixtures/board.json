@@ -1,0 +1,7 @@
+{
+  "name": "Fixture board",
+  "display": {"width": 320, "height": 480},
+  "i2c": [],
+  "backlight": {"pin": 4, "active_low": true},
+  "audio_codec": "none"
+}

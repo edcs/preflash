@@ -286,6 +286,11 @@ function(preflash_add_lvgl dir config_dir)
     message(FATAL_ERROR "Couldn't write the LVGL config from sdkconfig: ${result}")
   endif()
 
+  # The runtime's LVGL port compiles against these headers, so it needs them to be there.
+  if(EXISTS "${dir}/lvgl.h")
+    set_property(GLOBAL PROPERTY PREFLASH_HAS_LVGL TRUE)
+  endif()
+
   set(COMPONENT_NAME lvgl__lvgl)
   set(COMPONENT_DIR "${dir}")
   file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${dir}/src/*.c")

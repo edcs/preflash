@@ -39,4 +39,5 @@ extern "C" void app_main(void) {
 #ifdef NDEBUG
   printf("asserts are off\n");
 #endif
+  printf("app_main finished\n");
 }
