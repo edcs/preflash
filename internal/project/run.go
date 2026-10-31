@@ -44,6 +44,7 @@ func (p Project) environment(base []string, root string, headless bool) []string
 		"IDF_PATH=" + filepath.Join(root, "runtime", "idf"),
 		"PREFLASH_BOARD=" + filepath.Join(p.BuildDir(), "board.json"),
 		"PREFLASH_STATE=" + p.StateDir(),
+		"PREFLASH_PROJECT=" + filepath.Base(p.Dir),
 	}
 	if headless {
 		set = append(set, "PREFLASH_HEADLESS=1")
@@ -52,7 +53,7 @@ func (p Project) environment(base []string, root string, headless bool) []string
 	for _, entry := range base {
 		name, _, _ := strings.Cut(entry, "=")
 		switch name {
-		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_HEADLESS":
+		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_PROJECT", "PREFLASH_HEADLESS":
 		default:
 			env = append(env, entry)
 		}

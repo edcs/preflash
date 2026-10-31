@@ -157,6 +157,34 @@ TEST(Pcf85063, ReadsTheMacClockAsBcd) {
   EXPECT_EQ(regs[6], bcd(t.tm_year - 100));
 }
 
+TEST(Pcf85063, StartsFromAChosenTime) {
+  setenv("PREFLASH_RTC_START", "2026-11-01T22:05:09Z", 1);
+  Pcf85063 rtc;
+  unsetenv("PREFLASH_RTC_START");
+  const uint8_t reg = 0x04;
+  ASSERT_TRUE(rtc.write({&reg, 1}));
+  std::array<uint8_t, 7> time{};
+  ASSERT_TRUE(rtc.read(time));
+  EXPECT_LE(time[0], 0x10);  // it runs on from there, and this test is quick
+  EXPECT_EQ(time[1], 0x05);
+  EXPECT_EQ(time[2], 0x22);
+  EXPECT_EQ(time[3], 0x01);
+  EXPECT_EQ(time[4], 0);  // a Sunday
+  EXPECT_EQ(time[5], 0x11);
+  EXPECT_EQ(time[6], 0x26);
+}
+
+TEST(Pcf85063, BadChosenTimeNamesTheVariable) {
+  setenv("PREFLASH_RTC_START", "noon", 1);
+  try {
+    Pcf85063 rtc;
+    ADD_FAILURE() << "accepted a bad time";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string(e.what()).find("PREFLASH_RTC_START"), std::string::npos);
+  }
+  unsetenv("PREFLASH_RTC_START");
+}
+
 TEST(Pcf85063, WriteMovesTheClock) {
   Pcf85063 rtc;
   // Sunday 2 March 2031, 12:34:56.

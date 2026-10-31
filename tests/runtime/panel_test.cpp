@@ -156,6 +156,15 @@ TEST(Panel, BacklightStatusWithNoEnablePin) {
   EXPECT_EQ(panel::backlight_status(), "brightness: 37 (pwm 37)");
 }
 
+TEST(Panel, WindowTitleShowsTheProjectAndBacklight) {
+  bsp_display_brightness_set(37);
+  unsetenv("PREFLASH_PROJECT");
+  EXPECT_EQ(panel::window_title(), "Test - backlight 37%");
+  setenv("PREFLASH_PROJECT", "demo", 1);
+  EXPECT_EQ(panel::window_title(), "demo - backlight 37%");
+  unsetenv("PREFLASH_PROJECT");
+}
+
 TEST(Panel, RotatedFlushKeepsPhysicalOrientation) {
   bsp_display_cfg_t cfg = {.lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG()};
   lv_display_t* disp = bsp_display_start_with_config(&cfg);

@@ -21,6 +21,9 @@ int brightness_level();  // what firmware last set
 // One line saying how the backlight stands, naming the enable pin if the board has one.
 std::string backlight_status();
 
+// The project, or the board if nothing names it, and what the screen shows.
+std::string window_title();
+
 // Copies the whole panel. False, leaving out alone, if nothing changed since the last call.
 bool take_frame(std::vector<uint8_t>* out);
 

@@ -173,6 +173,7 @@ func TestEnvironmentForTheApp(t *testing.T) {
 	assert.Contains(t, windowed, "IDF_PATH=/repo/runtime/idf")
 	assert.Contains(t, windowed, "PREFLASH_BOARD=/home/me/.preflash/build/demo-12345678/board.json")
 	assert.Contains(t, windowed, "PREFLASH_STATE=/home/me/.preflash/state/demo-12345678")
+	assert.Contains(t, windowed, "PREFLASH_PROJECT=demo")
 	assert.NotContains(t, windowed, "PREFLASH_HEADLESS=1")
 	assert.NotContains(t, windowed, "IDF_PATH=/real/esp-idf")
 

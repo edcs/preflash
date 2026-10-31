@@ -44,6 +44,8 @@ The firmware's serial console is your terminal. Lines starting `@sim ` go to the
 | `@sim audio` | Prints how many sample frames firmware has written to the codec |
 | `@sim quit` | Stops the simulator |
 
+To boot firmware at a chosen moment, set `PREFLASH_RTC_START=2026-11-01T22:00:00Z`. The simulated RTC starts there and runs on, in place of the Mac's clock.
+
 ## Board files
 
 A board comes from `--board`, then from `board:` in the project's `.preflashrc`, then the default, `ESP32-S3-Touch-LCD-4B`. Each can be a stock board's name or a YAML file. A path in `.preflashrc` is relative to the project.

@@ -24,6 +24,7 @@ constexpr Uint32 kSdlSubsystems = SDL_INIT_VIDEO;
 
 int g_width = 0;
 int g_height = 0;
+SDL_Window* g_window = nullptr;
 SDL_Renderer* g_renderer = nullptr;
 SDL_Texture* g_texture = nullptr;
 
@@ -138,10 +139,10 @@ void open() {
   g_height = board().height;
   if (SDL_Init(kSdlSubsystems) != 0) fail("couldn't start SDL");
   SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
-  SDL_Window* window = SDL_CreateWindow(board().name.c_str(), SDL_WINDOWPOS_CENTERED,
-                                        SDL_WINDOWPOS_CENTERED, g_width, g_height, 0);
-  if (!window) fail("couldn't open the window");
-  g_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
+  g_window = SDL_CreateWindow(panel::window_title().c_str(), SDL_WINDOWPOS_CENTERED,
+                              SDL_WINDOWPOS_CENTERED, g_width, g_height, 0);
+  if (!g_window) fail("couldn't open the window");
+  g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_PRESENTVSYNC);
   if (!g_renderer) fail("couldn't draw to the window");
   SDL_RenderSetLogicalSize(g_renderer, g_width, g_height);
   g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING,
@@ -152,10 +153,15 @@ void open() {
 
 void run() {
   std::vector<uint8_t> frame;
+  int shown_brightness = -1;
   for (;;) {
     handle_events();
     if (panel::take_frame(&frame)) {
       SDL_UpdateTexture(g_texture, nullptr, frame.data(), g_width * kBytesPerPixel);
+    }
+    if (panel::brightness() != shown_brightness) {
+      shown_brightness = panel::brightness();
+      SDL_SetWindowTitle(g_window, panel::window_title().c_str());
     }
     const Uint8 level = backlight_level();
     SDL_SetTextureColorMod(g_texture, level, level, level);

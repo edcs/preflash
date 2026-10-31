@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <fstream>
@@ -79,6 +80,12 @@ std::string backlight_status() {
     status += ", enable gpio" + std::to_string(*enable) + (gpio_read(*enable) ? " high" : " low");
   }
   return status + ")";
+}
+
+std::string window_title() {
+  const char* project = std::getenv("PREFLASH_PROJECT");
+  return (project ? std::string(project) : board().name) + " - backlight " +
+         std::to_string(brightness()) + "%";
 }
 
 bool take_frame(std::vector<uint8_t>* out) {
