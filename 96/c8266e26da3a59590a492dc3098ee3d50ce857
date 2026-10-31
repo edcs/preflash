@@ -1,0 +1,44 @@
+runtime/include/esp_io_expander.h
+  s_82b4983a83db4b::t_585a726b65fe87 1-65
+runtime/src/host/main.cpp
+  s_82b4983a83db4b::t_b1e80c0dd1a64b 16,76-79,100
+runtime/src/audio/expander.cpp
+  s_82b4983a83db4b::t_585a726b65fe87 1-58
+runtime/src/host/window.cpp
+  s_82b4983a83db4b::t_b1e80c0dd1a64b 13,72-129,146
+runtime/include/esp_codec_dev.h
+  s_82b4983a83db4b::t_585a726b65fe87 1-33
+tests/integration/display.sh
+  s_82b4983a83db4b::t_2876de3a44b5cf 95-102
+runtime/src/audio/codec.cpp
+  s_82b4983a83db4b::t_585a726b65fe87 1-124
+runtime/include/preflash/audio.h
+  s_82b4983a83db4b::t_585a726b65fe87 1-28
+tests/runtime/audio_test.cpp
+  s_82b4983a83db4b::t_b1e80c0dd1a64b 1-144
+runtime/include/bsp/audio.h
+  s_82b4983a83db4b::t_585a726b65fe87 1-2,5-23
+  s_82b4983a83db4b::t_b1e80c0dd1a64b 3-4
+runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_b1e80c0dd1a64b 11
+tests/fixtures/lvgl_project/main/main.cpp
+  s_82b4983a83db4b::t_2876de3a44b5cf 50-65,85
+runtime/include/bsp/esp-bsp.h
+  s_82b4983a83db4b::t_b1e80c0dd1a64b 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "96c8266e26da3a59590a492dc3098ee3d50ce857",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
