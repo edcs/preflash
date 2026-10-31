@@ -111,6 +111,7 @@ struct esp_http_client {
   size_t body_read = 0;  // the part of body already handed out
   int64_t total_read = 0;
   bool announced = false;  // the connected event has been sent
+  int last_errno = 0;      // kept from the transfer, which is gone by the time it's asked for
 
   void emit(esp_http_client_event_id_t id, void* data = nullptr, int len = 0,
             char* key = nullptr, char* value = nullptr) {
@@ -120,7 +121,7 @@ struct esp_http_client {
     event.client = this;
     event.data = data;
     event.data_len = len;
-    event.user_data = config.user_data;
+    event.user_data = user_data;  // as set since init, which is what the device passes
     event.header_key = key;
     event.header_value = value;
     config.event_handler(&event);
@@ -140,6 +141,7 @@ struct esp_http_client {
     total_read = 0;
     announced = false;
     error_text[0] = 0;
+    last_errno = 0;
   }
 
   static size_t on_header(char* buffer, size_t size, size_t items, void* self) {
@@ -176,8 +178,12 @@ struct esp_http_client {
         std::string value = line.substr(colon + 1);
         value.erase(0, value.find_first_not_of(" \t"));
         if (iequals(key, "content-length")) c->content_length = std::atoll(value.c_str());
-        if (iequals(key, "transfer-encoding") && value.find("chunked") != std::string::npos)
-          c->chunked = true;
+        if (iequals(key, "transfer-encoding")) {
+          std::string lower = value;
+          std::transform(lower.begin(), lower.end(), lower.begin(),
+                         [](unsigned char ch) { return std::tolower(ch); });
+          if (lower.find("chunked") != std::string::npos) c->chunked = true;
+        }
         c->emit(HTTP_EVENT_ON_HEADER, nullptr, 0, key.data(), value.data());
         c->reply_headers.emplace_back(std::move(key), std::move(value));
       }
@@ -274,7 +280,12 @@ struct esp_http_client {
 
   void stop() {
     if (multi && easy) curl_multi_remove_handle(multi, easy);
-    if (easy) curl_easy_cleanup(easy);
+    if (easy) {
+      long err = 0;
+      curl_easy_getinfo(easy, CURLINFO_OS_ERRNO, &err);
+      last_errno = static_cast<int>(err);
+      curl_easy_cleanup(easy);
+    }
     if (multi) curl_multi_cleanup(multi);
     if (header_list) curl_slist_free_all(header_list);
     easy = nullptr;
@@ -400,7 +411,11 @@ esp_err_t esp_http_client_set_header(esp_http_client_handle_t client, const char
 esp_err_t esp_http_client_get_header(esp_http_client_handle_t client, const char* key,
                                      char** value) {
   if (!client || !key || !value) return ESP_ERR_INVALID_ARG;
-  const std::string* found = client->find_reply_header(key);
+  const std::string* found = nullptr;
+  for (const auto& h : client->request_headers) {
+    if (iequals(h.first, key)) found = &h.second;
+  }
+  if (!found) found = client->find_reply_header(key);
   *value = found ? const_cast<char*>(found->c_str()) : nullptr;
   return ESP_OK;
 }
@@ -548,7 +563,8 @@ esp_http_client_transport_t esp_http_client_get_transport_type(esp_http_client_h
 }
 
 int esp_http_client_get_errno(esp_http_client_handle_t client) {
-  if (!client || !client->easy) return 0;
+  if (!client) return 0;
+  if (!client->easy) return client->last_errno;
   long err = 0;
   curl_easy_getinfo(client->easy, CURLINFO_OS_ERRNO, &err);
   return static_cast<int>(err);

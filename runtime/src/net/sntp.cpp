@@ -74,7 +74,10 @@ void retire_worker(Sntp& s, std::thread* out) {
 
 void join_worker(Sntp& s, std::thread& old) {
   s.wake.notify_all();
-  if (old.joinable()) old.join();
+  if (!old.joinable()) return;
+  // A sync callback may stop the service from the worker itself, which can't join itself.
+  if (old.get_id() == std::this_thread::get_id()) old.detach();
+  else old.join();
 }
 
 }  // namespace

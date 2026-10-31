@@ -27,7 +27,7 @@ add_library(preflash_runtime STATIC ${PREFLASH_RUNTIME_SOURCES})
 find_package(CURL REQUIRED)
 find_package(SDL2 CONFIG REQUIRED)
 # The app that links the runtime is defined a directory up, and must see the target too.
-set_target_properties(SDL2::SDL2 PROPERTIES IMPORTED_GLOBAL TRUE)
+set_target_properties(SDL2::SDL2 CURL::libcurl PROPERTIES IMPORTED_GLOBAL TRUE)
 target_link_libraries(preflash_runtime PRIVATE SDL2::SDL2 CURL::libcurl)
 
 # Only the headers are used, so the folder named here doesn't exist, which leaves

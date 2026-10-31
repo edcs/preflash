@@ -34,8 +34,11 @@ extern "C" {
 const esp_partition_t* esp_ota_get_running_partition(void) { return &kSlot0; }
 const esp_partition_t* esp_ota_get_boot_partition(void) { return &kSlot0; }
 
-const esp_partition_t* esp_ota_get_next_update_partition(const esp_partition_t*) {
-  return &kSlot1;
+const esp_partition_t* esp_ota_get_next_update_partition(const esp_partition_t* start_from) {
+  // Searching on from a slot lands on the other one; from nowhere, on the one after the running app.
+  if (!start_from || start_from == &kSlot0) return &kSlot1;
+  if (start_from == &kSlot1) return &kSlot0;
+  return nullptr;
 }
 
 const esp_partition_t* esp_ota_get_last_invalid_partition(void) { return nullptr; }

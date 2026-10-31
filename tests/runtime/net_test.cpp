@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -37,6 +38,7 @@ struct Seen {
   int reason;       // for a disconnect
   uint32_t number;  // for a finished scan
   uint32_t ip;      // for a new address
+  void* netif;      // for a new address
 };
 
 // Records every event the default loop delivers, in order.
@@ -44,13 +46,14 @@ class EventLog {
  public:
   static void on_event(void* self, esp_event_base_t base, int32_t id, void* data) {
     auto* log = static_cast<EventLog*>(self);
-    Seen seen{base, id, 0, 0, 0};
+    Seen seen{base, id, 0, 0, 0, nullptr};
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
       seen.reason = static_cast<wifi_event_sta_disconnected_t*>(data)->reason;
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_SCAN_DONE) {
       seen.number = static_cast<wifi_event_sta_scan_done_t*>(data)->number;
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
       seen.ip = static_cast<ip_event_got_ip_t*>(data)->ip_info.ip.addr;
+      seen.netif = static_cast<ip_event_got_ip_t*>(data)->esp_netif;
     }
     {
       std::lock_guard<std::mutex> lock(log->mutex_);
@@ -106,6 +109,17 @@ class Wifi : public testing::Test {
     preflash::wifi_force_join_failure(false);
   }
 
+  bool wait_for_count(esp_event_base_t base, int32_t id, size_t count) {
+    const auto end = std::chrono::steady_clock::now() + 3s;
+    while (std::chrono::steady_clock::now() < end) {
+      size_t n = 0;
+      for (const Seen& s : log_.snapshot()) n += s.base == base && s.id == id;
+      if (n >= count) return true;
+      std::this_thread::sleep_for(10ms);
+    }
+    return false;
+  }
+
   void join(const char* ssid, const char* password = "secret-password") {
     wifi_config_t config = {};
     std::memcpy(config.sta.ssid, ssid, std::strlen(ssid));
@@ -128,6 +142,7 @@ TEST_F(Wifi, ConnectPostsGotIp) {
   Seen got_ip{};
   ASSERT_TRUE(log_.wait_for(IP_EVENT, IP_EVENT_STA_GOT_IP, &got_ip));
   EXPECT_NE(got_ip.ip, 0u);
+  EXPECT_EQ(got_ip.netif, netif_);
 
   // The order the firmware sees: started, connected, then an address.
   std::vector<int32_t> order;
@@ -202,6 +217,46 @@ TEST_F(Wifi, DisconnectReportsAssocLeaveAndConnectNeedsStart) {
   EXPECT_EQ(esp_wifi_disconnect(), ESP_ERR_WIFI_NOT_CONNECT);
 }
 
+TEST_F(Wifi, DisconnectAndStopDropTheAddressAndPostLostIp) {
+  ASSERT_EQ(esp_wifi_start(), ESP_OK);
+  join("Preflash Fake Home");
+  ASSERT_TRUE(log_.wait_for(IP_EVENT, IP_EVENT_STA_GOT_IP));
+  ASSERT_EQ(esp_wifi_disconnect(), ESP_OK);
+  ASSERT_TRUE(log_.wait_for(IP_EVENT, IP_EVENT_STA_LOST_IP));
+  esp_netif_ip_info_t info;
+  ASSERT_EQ(esp_netif_get_ip_info(netif_, &info), ESP_OK);
+  EXPECT_EQ(info.ip.addr, 0u);
+
+  ASSERT_EQ(esp_wifi_connect(), ESP_OK);
+  ASSERT_TRUE(wait_for_count(IP_EVENT, IP_EVENT_STA_GOT_IP, 2));
+  ASSERT_EQ(esp_wifi_stop(), ESP_OK);
+  ASSERT_TRUE(wait_for_count(IP_EVENT, IP_EVENT_STA_LOST_IP, 2));
+  ASSERT_EQ(esp_netif_get_ip_info(netif_, &info), ESP_OK);
+  EXPECT_EQ(info.ip.addr, 0u);
+}
+
+TEST_F(Wifi, AJoinKeepsTheFailureSettingItBeganWith) {
+  ASSERT_EQ(esp_wifi_start(), ESP_OK);
+  preflash::wifi_force_join_failure(true);
+  join("Preflash Fake Home");
+  preflash::wifi_force_join_failure(false);  // after the join began, so too late for it
+  Seen gone{};
+  ASSERT_TRUE(log_.wait_for(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &gone));
+  EXPECT_EQ(gone.reason, WIFI_REASON_AUTH_FAIL);
+  wifi_ap_record_t ap;
+  EXPECT_EQ(esp_wifi_sta_get_ap_info(&ap), ESP_ERR_WIFI_NOT_CONNECT);
+}
+
+TEST_F(Wifi, AFullLengthNetworkNameJoinsWithoutReadingPastIt) {
+  ASSERT_EQ(esp_wifi_start(), ESP_OK);
+  const std::string name(32, 'n');
+  join(name.c_str());
+  ASSERT_TRUE(log_.wait_for(IP_EVENT, IP_EVENT_STA_GOT_IP));
+  wifi_ap_record_t ap;
+  ASSERT_EQ(esp_wifi_sta_get_ap_info(&ap), ESP_OK);
+  EXPECT_EQ(std::string(reinterpret_cast<const char*>(ap.ssid)), name.substr(0, 32));
+}
+
 TEST_F(Wifi, ConnectRefusedWhileScanning) {
   ASSERT_EQ(esp_wifi_start(), ESP_OK);
   join("Preflash Fake Home");  // sets the config; the join itself isn't needed here
@@ -273,6 +328,11 @@ TEST(Sntp, SyncsFromTheMacClock) {
   gettimeofday(&before, nullptr);
   esp_sntp_init();
   EXPECT_TRUE(esp_sntp_enabled());
+  // The status turns before the callback runs, so wait for the callback itself.
+  const auto end = std::chrono::steady_clock::now() + 3s;
+  while (g_hits.count.load() == 0 && std::chrono::steady_clock::now() < end)
+    std::this_thread::sleep_for(10ms);
+  ASSERT_GE(g_hits.count.load(), 1);
   ASSERT_TRUE(wait_sync(3s));
   gettimeofday(&after, nullptr);
   // Reading COMPLETED reset it.
@@ -287,6 +347,23 @@ TEST(Sntp, SyncsFromTheMacClock) {
   esp_sntp_stop();
   EXPECT_FALSE(esp_sntp_enabled());
   sntp_set_time_sync_notification_cb(nullptr);
+}
+
+TEST(Sntp, ACallbackMayStopTheService) {
+  static std::atomic<bool> stopped{false};
+  stopped = false;
+  sntp_set_time_sync_notification_cb([](struct timeval*) {
+    esp_sntp_stop();
+    stopped = true;
+  });
+  esp_sntp_init();
+  const auto end = std::chrono::steady_clock::now() + 3s;
+  while (!stopped && std::chrono::steady_clock::now() < end) std::this_thread::sleep_for(10ms);
+  EXPECT_TRUE(stopped.load());
+  EXPECT_FALSE(esp_sntp_enabled());
+  sntp_set_time_sync_notification_cb(nullptr);
+  esp_sntp_init();  // starts again, so the stop left it in a clean state
+  esp_sntp_stop();
 }
 
 TEST(Sntp, OfflineNeverSyncsUntilOnline) {
@@ -357,6 +434,9 @@ class LocalServer {
                 "\r\nConnection: close\r\n\r\n" + body;
       } else if (request.rfind("GET /missing", 0) == 0) {
         reply = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+      } else if (request.rfind("GET /chunked", 0) == 0) {
+        reply = "HTTP/1.1 200 OK\r\nTransfer-Encoding: Chunked\r\nConnection: close\r\n\r\n"
+                "5\r\nhello\r\n0\r\n\r\n";
       } else if (request.rfind("GET /moved", 0) == 0) {
         reply = "HTTP/1.1 302 Found\r\nLocation: /hello\r\nContent-Length: 0\r\n"
                 "Connection: close\r\n\r\n";
@@ -461,6 +541,73 @@ TEST(Http, ReadsABodyLargerThanOneBufferAndPerformStreamsToTheHandler) {
   esp_http_client_cleanup(client);
 }
 
+TEST(Http, ChunkedIsRecognisedInAnyCase) {
+  LocalServer server;
+  esp_http_client_config_t cfg = {};
+  const std::string url = server.url("/chunked");
+  cfg.url = url.c_str();
+  esp_http_client_handle_t client = esp_http_client_init(&cfg);
+  ASSERT_EQ(esp_http_client_open(client, 0), ESP_OK);
+  esp_http_client_fetch_headers(client);
+  EXPECT_TRUE(esp_http_client_is_chunked_response(client));
+  esp_http_client_cleanup(client);
+}
+
+TEST(Http, EventsSeeTheUserDataSetAfterInit) {
+  LocalServer server;
+  std::string first, second;
+  esp_http_client_config_t cfg = {};
+  const std::string url = server.url("/hello");
+  cfg.url = url.c_str();
+  cfg.user_data = &first;
+  cfg.event_handler = [](esp_http_client_event_t* e) -> esp_err_t {
+    if (e->event_id == HTTP_EVENT_ON_DATA)
+      static_cast<std::string*>(e->user_data)->append(static_cast<char*>(e->data),
+                                                       static_cast<size_t>(e->data_len));
+    return ESP_OK;
+  };
+  esp_http_client_handle_t client = esp_http_client_init(&cfg);
+  ASSERT_EQ(esp_http_client_set_user_data(client, &second), ESP_OK);
+  ASSERT_EQ(esp_http_client_perform(client), ESP_OK);
+  EXPECT_EQ(first, "");
+  EXPECT_EQ(second, "hello from the test server");
+  esp_http_client_cleanup(client);
+}
+
+TEST(Http, PerformKeepsTheErrnoOfAFailedConnection) {
+  int port;
+  {
+    LocalServer server;
+    port = server.port();
+  }
+  esp_http_client_config_t cfg = {};
+  const std::string url = "http://127.0.0.1:" + std::to_string(port) + "/";
+  cfg.url = url.c_str();
+  esp_http_client_handle_t client = esp_http_client_init(&cfg);
+  EXPECT_EQ(esp_http_client_perform(client), ESP_ERR_HTTP_CONNECT);
+  EXPECT_EQ(esp_http_client_get_errno(client), ECONNREFUSED);
+  esp_http_client_cleanup(client);
+}
+
+TEST(Http, GetHeaderFindsRequestHeadersFirst) {
+  LocalServer server;
+  esp_http_client_config_t cfg = {};
+  const std::string url = server.url("/hello");
+  cfg.url = url.c_str();
+  esp_http_client_handle_t client = esp_http_client_init(&cfg);
+  ASSERT_EQ(esp_http_client_set_header(client, "X-Preflash", "mine"), ESP_OK);
+  char* value = nullptr;
+  ASSERT_EQ(esp_http_client_get_header(client, "x-preflash", &value), ESP_OK);
+  ASSERT_NE(value, nullptr);
+  EXPECT_STREQ(value, "mine");
+  ASSERT_EQ(esp_http_client_perform(client), ESP_OK);
+  ASSERT_EQ(esp_http_client_delete_header(client, "X-Preflash"), ESP_OK);
+  ASSERT_EQ(esp_http_client_get_header(client, "X-Preflash", &value), ESP_OK);
+  ASSERT_NE(value, nullptr);
+  EXPECT_STREQ(value, "yes");  // the reply's, once there is no request header of that name
+  esp_http_client_cleanup(client);
+}
+
 TEST(Http, OfflineFails) {
   LocalServer server;
   preflash::net_set_online(false);
@@ -512,6 +659,8 @@ TEST(Ota, ReportsNoUpdateAvailable) {
   ASSERT_NE(running, nullptr);
   ASSERT_NE(spare, nullptr);
   EXPECT_NE(running, spare);
+  EXPECT_EQ(esp_ota_get_next_update_partition(running), spare);
+  EXPECT_EQ(esp_ota_get_next_update_partition(spare), running);
 
   esp_ota_img_states_t state;
   ASSERT_EQ(esp_ota_get_state_partition(running, &state), ESP_OK);

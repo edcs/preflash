@@ -22,6 +22,8 @@ ESP_EVENT_DEFINE_BASE(IP_EVENT);
 
 // Defined with the netif it fills in, and posted from the radio's timer.
 void preflash_net_post_got_ip();
+// Drops the address and posts the loss. False if no address was held.
+bool preflash_net_post_lost_ip();
 
 namespace {
 
@@ -134,6 +136,7 @@ struct Radio {
   bool scanning = false;
   std::vector<wifi_ap_record_t> results;
   bool have_results = false;
+  bool join_fails = false;  // the failure toggle as it stood when the join began
   uint64_t epoch = 0;     // bumped when pending join work should lapse
   uint64_t scan_gen = 0;  // bumped when a pending scan result should lapse
   uint8_t scan_id = 0;
@@ -145,6 +148,12 @@ struct Radio {
 Radio& radio() {
   static Radio* r = new Radio;
   return *r;
+}
+
+bool wifi_is_inited() {
+  Radio& r = radio();
+  std::lock_guard<std::mutex> lock(r.mutex);
+  return r.inited;
 }
 
 void post(esp_event_base_t base, int32_t id, const void* data, size_t size) {
@@ -160,6 +169,12 @@ void post_disconnected(const wifi_ap_record_t& ap, uint8_t reason) {
   event.reason = reason;
   event.rssi = ap.rssi;
   post(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &event, sizeof event);
+}
+
+// A 32-byte name has no terminator, so the length is bounded rather than trusted.
+std::string ssid_text(const uint8_t* ssid) {
+  return std::string(reinterpret_cast<const char*>(ssid),
+                     strnlen(reinterpret_cast<const char*>(ssid), 32));
 }
 
 wifi_ap_record_t record_for(const FakeNetwork& n, size_t index) {
@@ -191,18 +206,20 @@ wifi_ap_record_t ap_for(const std::string& ssid) {
 void finish_join(uint64_t epoch) {
   Radio& r = radio();
   wifi_ap_record_t ap;
+  bool fails;
   {
     std::lock_guard<std::mutex> lock(r.mutex);
     if (r.epoch != epoch || r.link != Link::Joining) return;
-    ap = ap_for(reinterpret_cast<const char*>(r.config.sta.ssid));
-    if (g_force_failure.load()) {
+    ap = ap_for(ssid_text(r.config.sta.ssid));
+    fails = r.join_fails;
+    if (fails) {
       r.link = Link::Down;
     } else {
       r.link = Link::Up;
       r.ap = ap;
     }
   }
-  if (g_force_failure.load()) {
+  if (fails) {
     post_disconnected(ap, WIFI_REASON_AUTH_FAIL);
     return;
   }
@@ -270,14 +287,32 @@ struct esp_netif_obj {
   int unused;
 };
 
+namespace {
+// The one station interface, so an event names the same one the firmware created.
+esp_netif_obj* station_netif() {
+  static esp_netif_obj the_netif;
+  return &the_netif;
+}
+}  // namespace
+
+bool preflash_net_post_lost_ip() {
+  {
+    NetifState& n = netif_state();
+    std::lock_guard<std::mutex> lock(n.mutex);
+    if (n.ip.ip.addr == 0) return false;
+    n.ip = {};
+  }
+  esp_event_post(IP_EVENT, IP_EVENT_STA_LOST_IP, nullptr, 0, pdMS_TO_TICKS(100));
+  return true;
+}
+
 void preflash_net_post_got_ip() {
   esp_netif_obj* netif;
   ip_event_got_ip_t event{};
   {
     NetifState& n = netif_state();
     std::lock_guard<std::mutex> lock(n.mutex);
-    static esp_netif_obj the_netif;
-    netif = &the_netif;
+    netif = station_netif();
     n.ip.ip.addr = 0x0200000a;       // 10.0.0.2, network byte order
     n.ip.netmask.addr = 0x00ffffff;  // 255.255.255.0
     n.ip.gw.addr = 0x0100000a;       // 10.0.0.1
@@ -322,8 +357,7 @@ esp_netif_t* esp_netif_create_default_wifi_sta(void) {
                                   : "esp_netif_init was not called first");
   }
   n.has_default_sta = true;
-  static esp_netif_obj the_netif;
-  return &the_netif;
+  return station_netif();
 }
 
 void esp_netif_destroy(esp_netif_t*) {
@@ -390,7 +424,7 @@ esp_err_t esp_wifi_deinit(void) {
 
 esp_err_t esp_wifi_set_storage(wifi_storage_t) {
   // Nothing is stored either way: the firmware keeps its own credentials.
-  return radio().inited ? ESP_OK : ESP_ERR_WIFI_NOT_INIT;
+  return wifi_is_inited() ? ESP_OK : ESP_ERR_WIFI_NOT_INIT;
 }
 
 esp_err_t esp_wifi_set_mode(wifi_mode_t mode) {
@@ -430,6 +464,7 @@ esp_err_t esp_wifi_start(void) {
 esp_err_t esp_wifi_stop(void) {
   Radio& r = radio();
   bool was_up;
+  bool had_ip;
   wifi_ap_record_t ap;
   {
     std::lock_guard<std::mutex> lock(r.mutex);
@@ -437,13 +472,15 @@ esp_err_t esp_wifi_stop(void) {
     if (!r.started) return ESP_ERR_WIFI_NOT_STARTED;
     r.started = false;
     was_up = r.link != Link::Down;
-    ap = r.link == Link::Up ? r.ap : ap_for(reinterpret_cast<const char*>(r.config.sta.ssid));
+    had_ip = r.link == Link::Up;
+    ap = r.link == Link::Up ? r.ap : ap_for(ssid_text(r.config.sta.ssid));
     r.link = Link::Down;
     r.have_results = false;
     r.results.clear();
     cancel_pending(r);
   }
   if (was_up) post_disconnected(ap, WIFI_REASON_ASSOC_LEAVE);
+  if (had_ip) preflash_net_post_lost_ip();
   post(WIFI_EVENT, WIFI_EVENT_STA_STOP, nullptr, 0);
   return ESP_OK;
 }
@@ -484,6 +521,7 @@ esp_err_t esp_wifi_connect(void) {
     if (r.link == Link::Up) return ESP_ERR_WIFI_CONN;
     if (!r.config_set || r.config.sta.ssid[0] == 0) return ESP_ERR_WIFI_SSID;
     r.link = Link::Joining;
+    r.join_fails = g_force_failure.load();
     epoch = ++r.epoch;  // a join already under way is replaced
   }
   r.scheduler.after(kJoinDelay, [epoch] { finish_join(epoch); });
@@ -493,21 +531,24 @@ esp_err_t esp_wifi_connect(void) {
 esp_err_t esp_wifi_disconnect(void) {
   Radio& r = radio();
   wifi_ap_record_t ap;
+  bool had_ip;
   {
     std::lock_guard<std::mutex> lock(r.mutex);
     if (!r.inited) return ESP_ERR_WIFI_NOT_INIT;
     if (!r.started) return ESP_ERR_WIFI_NOT_STARTED;
     if (r.link == Link::Down) return ESP_ERR_WIFI_NOT_CONNECT;
-    ap = r.link == Link::Up ? r.ap : ap_for(reinterpret_cast<const char*>(r.config.sta.ssid));
+    had_ip = r.link == Link::Up;
+    ap = r.link == Link::Up ? r.ap : ap_for(ssid_text(r.config.sta.ssid));
     r.link = Link::Down;
     ++r.epoch;
   }
   // A leave the firmware asked for still reports, with the reason the device gives.
   post_disconnected(ap, WIFI_REASON_ASSOC_LEAVE);
+  if (had_ip) preflash_net_post_lost_ip();
   return ESP_OK;
 }
 
-esp_err_t esp_wifi_set_ps(wifi_ps_type_t) { return radio().inited ? ESP_OK : ESP_ERR_WIFI_NOT_INIT; }
+esp_err_t esp_wifi_set_ps(wifi_ps_type_t) { return wifi_is_inited() ? ESP_OK : ESP_ERR_WIFI_NOT_INIT; }
 
 esp_err_t esp_wifi_scan_start(const wifi_scan_config_t* config, bool block) {
   Radio& r = radio();
