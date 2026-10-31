@@ -1,0 +1,23 @@
+runtime/include/preflash/bus.h
+  s_cf482d44fd4fac::t_0d9313894aa08b 22-24
+runtime/src/bus/i2c.cpp
+  s_cf482d44fd4fac::t_11bb5bdd127855 20-28,55-56,59
+tests/runtime/i2c_test.cpp
+  s_cf482d44fd4fac::t_533405c1d06360 6,89,91,99,111-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9e2e4f1d4fa369312fe7e7f403085231e111e718",
+  "prompts": {},
+  "sessions": {
+    "s_cf482d44fd4fac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac5af433bf7907d0b",
+        "model": "unknown"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
