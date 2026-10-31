@@ -1,0 +1,27 @@
+runtime/include/preflash/bus.h
+  s_82b4983a83db4b::t_78f8b96341e475 45-46
+runtime/src/display/panel.cpp
+  s_82b4983a83db4b::t_78f8b96341e475 65-67,71,74-79,81-82,89-100,104,106-109
+tests/integration/snoozel.sh
+  s_82b4983a83db4b::t_78f8b96341e475 257,266-268
+tests/runtime/chips_test.cpp
+  s_82b4983a83db4b::t_78f8b96341e475 505-531
+runtime/src/bus/gpio.cpp
+  s_82b4983a83db4b::t_78f8b96341e475 18,56-60,78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "51eab3e04b1e07b7176a938d2c7863468d7360ae",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
