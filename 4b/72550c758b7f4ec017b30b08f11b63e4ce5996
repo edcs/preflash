@@ -22,6 +22,7 @@ runtime/CMakeLists.txt
 runtime/src/host/main.cpp
   s_82b4983a83db4b::t_d07615462b5a33 20-21,81,116
   s_82b4983a83db4b::t_e42fd646c96431 1-19,22-80,82-102,107-115
+  s_82b4983a83db4b::t_d310f2c10e5a4b 103-106
 tests/fixtures/mini_project/managed_components/espressif__cmake_utilities/CMakeLists.txt
   s_82b4983a83db4b::t_eee3224dc6f38b 1
 tests/fixtures/mini_project/CMakeLists.txt
@@ -165,6 +166,7 @@ runtime/include/preflash/control.h
   s_82b4983a83db4b::t_469fd18a6e2adb 1-10,13-19,24
   s_82b4983a83db4b::t_f4e786151b111e 11-12
   s_82b4983a83db4b::t_e42fd646c96431 23
+  s_82b4983a83db4b::t_d310f2c10e5a4b 20-22
 runtime/include/nvs_flash.h
   s_82b4983a83db4b::t_469fd18a6e2adb 1-16
 runtime/include/esp_console.h
@@ -180,6 +182,7 @@ runtime/src/console/console.cpp
   s_82b4983a83db4b::t_802af91dcad5f7 1-4,6-19,22-26,32-35,40-46,50-53,59,67-69,73-129,134,143,147,156,157,184,186-202,205-209,218-226,230-236,244-255,263-265
   s_82b4983a83db4b::t_51396dcf4761cd 20-21,47-49,54-58,60-66,70-72,174,176-183,185,227-229,237-243
   s_82b4983a83db4b::t_e42fd646c96431 5,27-31,36-39,130-133,135-142,144-146,148-155,158-173,175,203-204,216-217
+  s_82b4983a83db4b::t_d310f2c10e5a4b 210-215
 tests/runtime/console_test.cpp
   s_82b4983a83db4b::t_51396dcf4761cd 37-64
   s_82b4983a83db4b::t_802af91dcad5f7 1-36,65-93
