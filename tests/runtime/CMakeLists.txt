@@ -24,9 +24,21 @@ file(GLOB_RECURSE RUNTIME_SOURCES CONFIGURE_DEPENDS ${RUNTIME_DIR}/src/*.cpp)
 list(FILTER RUNTIME_SOURCES EXCLUDE REGEX "/src/host/main\\.cpp$")
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp)
 
-add_executable(runtime_tests ${RUNTIME_SOURCES} ${TEST_SOURCES})
-target_include_directories(runtime_tests PRIVATE ${RUNTIME_DIR}/include)
-target_link_libraries(runtime_tests PRIVATE GTest::gtest_main nlohmann_json::nlohmann_json)
+# The runtime is compiled once and shared by the tests and the restart helper.
+# Firmware gets its tick rate from sdkconfig.h; the suite has none, so it says so here.
+add_library(runtime_objs OBJECT ${RUNTIME_SOURCES})
+target_include_directories(runtime_objs PUBLIC ${RUNTIME_DIR}/include)
+target_compile_definitions(runtime_objs PUBLIC CONFIG_FREERTOS_HZ=1000)
+target_link_libraries(runtime_objs PUBLIC nlohmann_json::nlohmann_json)
+
+# Restarting re-executes the binary, so the test needs one it can afford to lose.
+add_executable(restart_helper helpers/restart_helper.cpp)
+target_link_libraries(restart_helper PRIVATE runtime_objs)
+
+add_executable(runtime_tests ${TEST_SOURCES})
+target_link_libraries(runtime_tests PRIVATE runtime_objs GTest::gtest_main)
+target_compile_definitions(runtime_tests PRIVATE RESTART_HELPER="$<TARGET_FILE:restart_helper>")
+add_dependencies(runtime_tests restart_helper)
 
 enable_testing()
 include(GoogleTest)
