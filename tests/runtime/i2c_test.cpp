@@ -162,6 +162,14 @@ TEST(Gpio, ResettingAPinLeavesWhatDrivesItFromOutside) {
   EXPECT_TRUE(gpio_read(14));
 }
 
+TEST(Gpio, FirmwareOutputBeatsAnOutsideLevel) {
+  gpio_reset_pin(GPIO_NUM_15);
+  gpio_set_direction(GPIO_NUM_15, GPIO_MODE_OUTPUT);
+  gpio_set_level(GPIO_NUM_15, 1);
+  gpio_write(15, false);
+  EXPECT_TRUE(gpio_read(15));
+}
+
 TEST(Gpio, RejectsPinsTheChipDoesntHave) {
   EXPECT_EQ(gpio_set_level(static_cast<gpio_num_t>(22), 1), ESP_ERR_INVALID_ARG);
   EXPECT_EQ(gpio_set_direction(static_cast<gpio_num_t>(49), GPIO_MODE_OUTPUT), ESP_ERR_INVALID_ARG);

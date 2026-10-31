@@ -35,7 +35,7 @@ void gpio_write(int pin, bool level) {
   std::lock_guard<std::mutex> lock(g_mutex);
   Pin& driven = g_pins[pin];
   driven.outside = level;
-  driven.level = level;
+  settle(&driven);
 }
 
 bool gpio_read(int pin) {

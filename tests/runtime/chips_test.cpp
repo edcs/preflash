@@ -365,21 +365,22 @@ TEST(Axp2101DeathTest, UnmodelledWriteNamesChipAndRegister) {
   EXPECT_DEATH(put(pmu, 0x90, 0x01), "axp2101 register 0x90");
 }
 
-// The board loads once per process, so this runs in a process of its own with
-// a board that has an enable pin.
+// The board loads once per process, so this runs in a process of its own, which
+// rewrites its own copy of the suite's board file to add an enable pin. It leaves
+// through _exit, so that copy has to go here, once loaded.
 TEST(Backlight, EnablePinBlanksTheScreen) {
   GTEST_FLAG_SET(death_test_style, "threadsafe");
-  const fs::path path =
-      fs::temp_directory_path() / ("preflash_backlight_" + std::to_string(getpid()) + ".json");
-  std::ofstream(path) << R"({"name": "Test", "display": {"width": 16, "height": 8}, "i2c": [],
-                             "backlight": {"pin": 4, "active_low": true, "enable_pin": 43},
-                             "audio_codec": "none"})";
   EXPECT_EXIT(
       {
-        setenv("PREFLASH_BOARD", path.c_str(), 1);
+        const char* path = std::getenv("PREFLASH_BOARD");
+        std::ofstream(path) << R"({"name": "Test", "display": {"width": 16, "height": 8},
+                                   "i2c": [], "audio_codec": "none",
+                                   "backlight": {"pin": 4, "active_low": true, "enable_pin": 43}})";
         preflash::panel::set_brightness(70);
         preflash::gpio_write(43, true);
-        if (preflash::panel::brightness() != 70) _exit(1);
+        const int lit = preflash::panel::brightness();
+        fs::remove(path);
+        if (lit != 70) _exit(1);
         preflash::gpio_write(43, false);
         if (preflash::panel::brightness() != 0) _exit(2);
         // Whatever the level, and it comes back without being set again.
@@ -393,7 +394,7 @@ TEST(Backlight, EnablePinBlanksTheScreen) {
         _exit(0);
       },
       testing::ExitedWithCode(0), "");
-  fs::remove(path);
+  GTEST_FLAG_SET(death_test_style, "fast");
 }
 
 TEST(BspI2c, HandleReachesTheBus) {
