@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "bsp/esp-bsp.h"
+#include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "preflash/board.h"
 #include "preflash/bus.h"
@@ -181,6 +182,19 @@ TEST(Pcf85063, BadChosenTimeNamesTheVariable) {
     ADD_FAILURE() << "accepted a bad time";
   } catch (const std::runtime_error& e) {
     EXPECT_NE(std::string(e.what()).find("PREFLASH_RTC_START"), std::string::npos);
+  }
+  unsetenv("PREFLASH_RTC_START");
+}
+
+TEST(Pcf85063, ImpossibleChosenTimesAreRejected) {
+  for (const char* bad : {"2026-02-31T12:00:00Z", "1999-12-31T23:59:59Z", "2100-01-01T00:00:00Z"}) {
+    setenv("PREFLASH_RTC_START", bad, 1);
+    try {
+      Pcf85063 rtc;
+      ADD_FAILURE() << "accepted " << bad;
+    } catch (const std::runtime_error& e) {
+      EXPECT_NE(std::string(e.what()).find("PREFLASH_RTC_START"), std::string::npos);
+    }
   }
   unsetenv("PREFLASH_RTC_START");
 }
@@ -455,6 +469,33 @@ TEST(Backlight, EnablePinBlanksTheScreen) {
         // Firmware's own setting isn't touched by the pin.
         preflash::gpio_write(43, false);
         if (bsp_display_brightness_get() != 100) _exit(5);
+        _exit(0);
+      },
+      testing::ExitedWithCode(0), "");
+  GTEST_FLAG_SET(death_test_style, "fast");
+}
+
+// Snoozel's order: hold the pin high (off, on an active-low backlight), set a level,
+// then release the hold. Own process, for the same reason as above.
+TEST(Backlight, HeldPinDecidesUntilReleased) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  EXPECT_EXIT(
+      {
+        const char* path = std::getenv("PREFLASH_BOARD");
+        std::ofstream(path) << R"({"name": "Test", "display": {"width": 16, "height": 8},
+                                   "i2c": [], "audio_codec": "none",
+                                   "backlight": {"pin": 4, "active_low": true}})";
+        if (preflash::panel::brightness() != 100) _exit(1);
+        gpio_reset_pin(GPIO_NUM_4);
+        gpio_set_direction(GPIO_NUM_4, GPIO_MODE_OUTPUT);
+        gpio_set_level(GPIO_NUM_4, 1);
+        gpio_hold_en(GPIO_NUM_4);
+        fs::remove(path);
+        if (preflash::panel::brightness() != 0) _exit(2);
+        bsp_display_brightness_set(60);  // the hold still wins over the PWM
+        if (preflash::panel::brightness() != 0) _exit(3);
+        gpio_hold_dis(GPIO_NUM_4);
+        if (preflash::panel::brightness() != 60) _exit(4);
         _exit(0);
       },
       testing::ExitedWithCode(0), "");

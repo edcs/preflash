@@ -337,6 +337,9 @@ esp_http_client_handle_t esp_http_client_init(const esp_http_client_config_t* co
   c->config = *config;
   c->config.url = c->config.host = c->config.path = c->config.query = nullptr;
   c->config.username = c->config.password = c->config.user_agent = c->config.cert_pem = nullptr;
+  if (config->cert_pem) {
+    ESP_LOGW(kTag, "the project's cert_pem is ignored; the system certificates are used instead");
+  }
   if (config->url) {
     c->url = config->url;
   } else {

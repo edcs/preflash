@@ -39,7 +39,15 @@ matches="$(grep -ril snoozel "$root/runtime" "$root/boards" || true)"
 
 go build -C "$root" -o "$scratch/preflash" ./cmd/preflash
 
-before="$(git -C "$copy" status --porcelain --ignored)"
+# Ignored files and folders show only as names in git's status, so the contents are
+# hashed too.
+snapshot() {
+  git -C "$copy" status --porcelain --ignored
+  shasum -a 256 "$copy/sdkconfig"
+  [ ! -d "$copy/managed_components" ] || (cd "$copy/managed_components" && find . -type f -exec shasum -a 256 {} + | sort -k2)
+}
+
+before="$(snapshot)"
 
 # The first build can take longer than a test's wait for output.
 "$scratch/preflash" run --project "$copy" --board "$mod_board" --headless <<< "@sim quit" \
@@ -247,7 +255,7 @@ quit_app
 # The stock board has no enable pin, so the same low line blanks nothing.
 start_run_at "$noon"
 send "@sim brightness"
-wait_for_output "brightness: 100 (pwm 100)"
+wait_for_output "brightness: 0 (pwm 100)"
 wait_for_chips
 wait_for_brightness "brightness: 100 (pwm 100)"
 if grep -qF "enable gpio" "$app_log"; then
@@ -255,7 +263,7 @@ if grep -qF "enable gpio" "$app_log"; then
 fi
 quit_app
 
-after="$(git -C "$copy" status --porcelain --ignored)"
+after="$(snapshot)"
 [ -z "$(git -C "$copy" status --porcelain)" ] || fail "the project changed" "$after"
 [ "$before" = "$after" ] || fail "the project gained files" "$after"
 

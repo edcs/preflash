@@ -53,7 +53,12 @@ bool wait_for_room(audio::Sink* sink) {
 }  // namespace
 
 namespace audio {
-void set_sink(Sink* sink) { g_sink = sink; }
+void set_sink(Sink* sink) {
+  g_sink = sink;
+  // A new sink gets a fresh chance; only the one that failed is given up on.
+  std::lock_guard<std::mutex> hold(speaker().lock);
+  speaker().sink_gone = false;
+}
 }  // namespace audio
 
 size_t audio_samples_written() { return g_frames; }
@@ -71,8 +76,14 @@ esp_codec_dev_handle_t bsp_audio_codec_speaker_init(void) {
 
 int esp_codec_dev_open(esp_codec_dev_handle_t codec, esp_codec_dev_sample_info_t* fs) {
   if (codec != &preflash::speaker() || !fs) return ESP_CODEC_DEV_INVALID_ARG;
-  if (fs->bits_per_sample != 16 || fs->channel < 1 || fs->channel > 8 || fs->sample_rate == 0)
+  if (fs->bits_per_sample != 16 || fs->channel < 1 || fs->channel > 8 || fs->sample_rate == 0) {
+    std::fprintf(stderr,
+                 "preflash: audio format rejected: %d bits, %d channels, %u Hz (need 16 bits, "
+                 "1 to 8 channels, a nonzero rate)\n",
+                 static_cast<int>(fs->bits_per_sample), static_cast<int>(fs->channel),
+                 static_cast<unsigned>(fs->sample_rate));
     return ESP_CODEC_DEV_INVALID_ARG;
+  }
   preflash::Speaker& s = preflash::speaker();
   std::lock_guard<std::mutex> hold(s.lock);
   s.open = true;

@@ -47,6 +47,16 @@ bool gpio_read(int pin) {
   return g_pins[pin].level;
 }
 
+bool gpio_is_output(int pin) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  return g_pins[pin].output;
+}
+
+bool gpio_is_held(int pin) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  return g_pins[pin].held;
+}
+
 }  // namespace preflash
 
 extern "C" {

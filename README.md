@@ -25,14 +25,14 @@ Keep the checkout: the binary finds `runtime/` beside its source. Set `PREFLASH_
 preflash run [--project dir] [--board file] [--headless]
 ```
 
-The project needs ESP-IDF 5.x and, if it draws anything, LVGL 9. It also needs a `sdkconfig` and its `managed_components` folder, so run `idf.py reconfigure` once with the real ESP-IDF. Preflash reads both and never writes inside the project.
+The project needs ESP-IDF 5.x and, if it draws anything, LVGL 9. It also needs a `sdkconfig`, and a `managed_components` folder if it has downloaded dependencies, so run `idf.py reconfigure` once with the real ESP-IDF. Preflash reads both and never writes inside the project.
 
 `--project` defaults to the current folder. Each checkout gets its own folders, so two copies of one project keep separate saved state:
 
 - `~/.preflash/build/<name>-<hash>` holds the build.
 - `~/.preflash/state/<name>-<hash>` holds what firmware saves, such as NVS. Delete it for a factory-fresh device.
 
-`--headless` runs with no window and without starting SDL at all.
+`--headless` runs with no window and without starting SDL at all. A headless run ends on `@sim quit`, not at the end of stdin.
 
 The firmware's serial console is your terminal. Lines starting `@sim ` go to the simulator instead of the firmware:
 
