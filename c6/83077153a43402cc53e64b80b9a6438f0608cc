@@ -1,0 +1,121 @@
+runtime/idf/tools/cmake/replaced.cmake
+  s_82b4983a83db4b::t_d07615462b5a33 1-9
+tests/fixtures/mini_project/assets/hello.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/components/thing/startup.c
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-4
+tests/integration/build_fixture.sh
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-29,31-71,74-78,80,84-136
+  s_82b4983a83db4b::t_33ad69141f7ae5 79
+  s_82b4983a83db4b::t_ec8dfebf24e701 81-83
+  s_82b4983a83db4b::t_1d71e9472217b8 72
+  s_82b4983a83db4b::t_5f8adc52758018 73
+  s_82b4983a83db4b::t_a4266640b59893 30
+runtime/idf/tools/gen_lv_config.py
+  s_82b4983a83db4b::t_d07615462b5a33 1-26
+runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_d07615462b5a33 1-3
+runtime/src/host/main.cpp
+  s_82b4983a83db4b::t_d07615462b5a33 1-6
+tests/fixtures/mini_project/managed_components/espressif__cmake_utilities/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-6
+tests/fixtures/mini_project/components/thing/include/thing.h
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-11
+tests/fixtures/mini_project/main/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-3
+tests/fixtures/mini_project/main/idf_component.yml
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-3
+tests/fixtures/mini_project/main/main.cpp
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-3,5-13,15-28,31-38,42
+  s_82b4983a83db4b::t_33ad69141f7ae5 39-41
+  s_82b4983a83db4b::t_1d71e9472217b8 4,29
+  s_82b4983a83db4b::t_092805df9f4e57 14,30
+tests/fixtures/mini_project/managed_components/lvgl__lvgl/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/components/thing/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-10
+tests/fixtures/mini_project/assets/notes.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/bootloader_components/never_built/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/components/thing/thing.c
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-5
+tests/fixtures/mini_project/managed_components/lvgl__lvgl/src/core/lv_stand_in.c
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-20
+tests/fixtures/mini_project/managed_components/waveshare__some_board/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/sdkconfig
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-11
+runtime/idf/tools/cmake/project.cmake
+  s_82b4983a83db4b::t_d819194380be3f 193,205
+  s_82b4983a83db4b::t_33ad69141f7ae5 322-327,343
+  s_82b4983a83db4b::t_8e7eba86227061 345-348
+  s_82b4983a83db4b::t_d07615462b5a33 1-192,194-204,206-222,224-283,288-321,328-342,344,349-355,361-376
+  s_82b4983a83db4b::t_1d71e9472217b8 284-287
+  s_82b4983a83db4b::t_98aae9f72639d8 223
+  s_82b4983a83db4b::t_d01dc56f4e0462 356-360
+tests/fixtures/mini_project/components/header_only/CMakeLists.txt
+  s_82b4983a83db4b::t_1d71e9472217b8 1
+tests/fixtures/mini_project/components/header_only/include/header_only.h
+  s_82b4983a83db4b::t_1d71e9472217b8 1-3
+tests/fixtures/mini_project/components/from_folder/CMakeLists.txt
+  s_82b4983a83db4b::t_aeb58dd9e1522c 1-3
+tests/fixtures/mini_project/components/from_folder/private/private_value.h
+  s_82b4983a83db4b::t_7b9cd84ef10b93 1-3
+tests/fixtures/mini_project/components/from_folder/src/excluded.c
+  s_82b4983a83db4b::t_23a2bcd25ac3bc 1
+tests/fixtures/mini_project/components/from_folder/src/found.c
+  s_82b4983a83db4b::t_46bf3f606f9207 1-3
+runtime/include/preflash/board.h
+  s_82b4983a83db4b::t_b7a1b276a0792f 1-35
+internal/board/testdata/typo.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-5
+runtime/src/host/board.cpp
+  s_82b4983a83db4b::t_b7a1b276a0792f 1-85
+tests/runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_c922c02499fdd4 7-9,31
+  s_82b4983a83db4b::t_b7a1b276a0792f 1-6,10-30,32-33
+internal/board/testdata/loop-b.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-2
+tests/runtime/board_test.cpp
+  s_82b4983a83db4b::t_b7a1b276a0792f 1-54
+internal/board/testdata/snoozel-like.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-5
+boards/esp32-s3-touch-lcd-4b.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-20
+go.sum
+  s_82b4983a83db4b::t_ed70ed35cc149a 1-8
+boards.go
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-9
+internal/board/board.go
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-217
+  s_82b4983a83db4b::t_f74e4030545bfa 218-220
+internal/board/testdata/missing-parent.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-2
+go.mod
+  s_82b4983a83db4b::t_d20e805aa74311 6-7,9-10
+  s_82b4983a83db4b::t_a9263fbab1bc70 4-5,8
+internal/board/testdata/loop-a.yaml
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-2
+internal/board/board_test.go
+  s_82b4983a83db4b::t_4e381058643dd4 66-74
+  s_82b4983a83db4b::t_a9263fbab1bc70 1-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c683077153a43402cc53e64b80b9a6438f0608cc",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
