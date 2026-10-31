@@ -71,6 +71,16 @@ int brightness() {
 
 int brightness_level() { return g_brightness; }
 
+std::string backlight_status() {
+  std::string status =
+      "brightness: " + std::to_string(brightness()) + " (pwm " + std::to_string(g_brightness);
+  const std::optional<int>& enable = board().backlight.enable_pin;
+  if (enable) {
+    status += ", enable gpio" + std::to_string(*enable) + (gpio_read(*enable) ? " high" : " low");
+  }
+  return status + ")";
+}
+
 bool take_frame(std::vector<uint8_t>* out) {
   Pixels& p = pixels();
   std::lock_guard<std::mutex> lock(p.mutex);

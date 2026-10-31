@@ -16,7 +16,7 @@ class FakeSink : public preflash::audio::Sink {
   }
   bool queue(const void* data, size_t n) override {
     ++queues;
-    if (fail_queue) return false;
+    if (fail_queue || (fail_at_queue && queues == fail_at_queue)) return false;
     bytes += n;
     const auto* p = static_cast<const int16_t*>(data);
     last.assign(p, p + n / sizeof(int16_t));
@@ -29,7 +29,7 @@ class FakeSink : public preflash::audio::Sink {
     waiting = waiting > 100 ? waiting - 100 : 0;  // each look finds it drained a little
     return shown;
   }
-  int rate = 0, channels = 0, waiting = 0, polls = 0, queues = 0;
+  int rate = 0, channels = 0, waiting = 0, polls = 0, queues = 0, fail_at_queue = 0;
   bool fail_queue = false, drain_on_queue = false;
   size_t bytes = 0;
   std::vector<int16_t> last;
@@ -142,6 +142,31 @@ TEST_F(Codec, HeadlessAcceptsAudioAndPlaysNothing) {
     ASSERT_EQ(esp_codec_dev_write(speaker_, pcm, sizeof(pcm)), ESP_CODEC_DEV_OK);
   EXPECT_EQ(preflash::audio_samples_written() - before, 3200u);
   EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(1));
+}
+
+TEST_F(Codec, DroppedSoundTakesAsLongAsItWouldToPlay) {
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(1600);  // 100 ms
+  const auto start = std::chrono::steady_clock::now();
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100));
+}
+
+TEST_F(Codec, SinkFailingMidWriteOnlyPacesWhatItDropped) {
+  FakeSink sink;
+  sink.fail_at_queue = 10;
+  preflash::audio::set_sink(&sink);
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(16000);  // one second, of which the sink takes 900 ms
+  const auto start = std::chrono::steady_clock::now();
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  const auto took = std::chrono::steady_clock::now() - start;
+  EXPECT_GE(took, std::chrono::milliseconds(100));
+  EXPECT_LT(took, std::chrono::milliseconds(500));
 }
 
 TEST_F(Codec, RejectsFormatsItCannotPlay) {

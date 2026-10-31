@@ -103,12 +103,14 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
   if (codec != &preflash::speaker() || (!data && len > 0) || len < 0)
     return ESP_CODEC_DEV_INVALID_ARG;
   preflash::Speaker& s = preflash::speaker();
-  std::lock_guard<std::mutex> hold(s.lock);
+  std::unique_lock<std::mutex> hold(s.lock);
   if (!s.open) return ESP_CODEC_DEV_WRONG_STATE;
   const size_t frame_bytes = sizeof(int16_t) * static_cast<size_t>(s.channels);
   if (static_cast<size_t>(len) % frame_bytes != 0) return ESP_CODEC_DEV_INVALID_ARG;
   if (len == 0) return ESP_CODEC_DEV_OK;
 
+  const size_t frames = static_cast<size_t>(len) / frame_bytes;
+  size_t dropped = frames;
   if (preflash::g_sink && !s.sink_gone) {
     std::vector<int16_t> scaled(static_cast<size_t>(len) / sizeof(int16_t));
     std::memcpy(scaled.data(), data, static_cast<size_t>(len));
@@ -132,9 +134,17 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
         s.sink_gone = true;
         break;
       }
+      dropped -= n / frame_bytes;
     }
   }
-  preflash::g_frames += static_cast<size_t>(len) / frame_bytes;
+  preflash::g_frames += frames;
+  if (dropped > 0) {
+    // I2S takes sound at its sample rate. Firmware can time itself by the writes, so
+    // sound with nowhere to go still takes as long as it would to play.
+    const auto playing = std::chrono::microseconds(dropped * 1000000 / static_cast<size_t>(s.rate));
+    hold.unlock();
+    std::this_thread::sleep_for(playing);
+  }
   return ESP_CODEC_DEV_OK;
 }
 

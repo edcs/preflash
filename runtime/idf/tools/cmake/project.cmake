@@ -347,6 +347,9 @@ function(preflash_link_app config_dir)
     target_compile_definitions(${lib} PRIVATE ${definitions})
     target_compile_options(${lib} PRIVATE ${options})
     if(NOT lib STREQUAL "preflash_runtime")
+      # ESP-IDF's libstdc++ headers bring in <algorithm> and libc++'s don't, so
+      # firmware that compiles there can lean on it without saying so.
+      target_compile_options(${lib} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include algorithm>")
       # Whole-archive, so that app_main and constructors survive. Linking the target
       # as well carries over whatever it links to itself.
       target_link_libraries(preflash_app PRIVATE ${lib})

@@ -151,6 +151,11 @@ TEST(Panel, BrightnessStaysAPercentage) {
   EXPECT_EQ(bsp_display_brightness_get(), 37);
 }
 
+TEST(Panel, BacklightStatusWithNoEnablePin) {
+  bsp_display_brightness_set(37);
+  EXPECT_EQ(panel::backlight_status(), "brightness: 37 (pwm 37)");
+}
+
 TEST(Panel, RotatedFlushKeepsPhysicalOrientation) {
   bsp_display_cfg_t cfg = {.lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG()};
   lv_display_t* disp = bsp_display_start_with_config(&cfg);

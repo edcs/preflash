@@ -413,8 +413,12 @@ TEST(Backlight, EnablePinBlanksTheScreen) {
         const int lit = preflash::panel::brightness();
         fs::remove(path);
         if (lit != 70) _exit(1);
+        if (preflash::panel::backlight_status() != "brightness: 70 (pwm 70, enable gpio43 high)")
+          _exit(6);
         preflash::gpio_write(43, false);
         if (preflash::panel::brightness() != 0) _exit(2);
+        if (preflash::panel::backlight_status() != "brightness: 0 (pwm 70, enable gpio43 low)")
+          _exit(7);
         // Whatever the level, and it comes back without being set again.
         preflash::panel::set_brightness(100);
         if (preflash::panel::brightness() != 0) _exit(3);

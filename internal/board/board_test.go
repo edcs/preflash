@@ -2,6 +2,7 @@ package board
 
 import (
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -44,6 +45,18 @@ func TestResolveShape(t *testing.T) {
 	assert.Equal(t, float64(480), m["display"].(map[string]any)["width"])
 	assert.Equal(t, float64(43), m["backlight"].(map[string]any)["enable_pin"])
 	assert.Equal(t, "es8311", m["audio_codec"])
+}
+
+func TestStockBoardsAreListedAndLoadByName(t *testing.T) {
+	assert.Contains(t, Stock(), "ESP32-S3-Touch-LCD-4B")
+	b, err := LoadStock("ESP32-S3-Touch-LCD-4B")
+	require.NoError(t, err)
+	assert.Equal(t, 480, b.Display.Width)
+}
+
+func TestLoadStockSaysWhenThereIsNone(t *testing.T) {
+	_, err := LoadStock("no-such-board")
+	assert.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestUnknownKeyNamesIt(t *testing.T) {
