@@ -72,10 +72,8 @@ func (p Project) Run(b board.Board, headless bool) error {
 	if err != nil {
 		return err
 	}
-	for _, dir := range []string{p.BuildDir(), p.StateDir()} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
+	if err := p.makeDirs(); err != nil {
+		return err
 	}
 	if err := os.WriteFile(filepath.Join(p.BuildDir(), "board.json"), resolved, 0o644); err != nil {
 		return err
@@ -95,6 +93,17 @@ func (p Project) Run(b board.Board, headless bool) error {
 		return fmt.Errorf("starting %s: %w", app, err)
 	}
 	return nil
+}
+
+func (p Project) makeDirs() error {
+	if err := os.MkdirAll(p.BuildDir(), 0o755); err != nil {
+		return err
+	}
+	// Saved state can hold Wi-Fi credentials, so only the user may read it.
+	if err := os.MkdirAll(p.StateDir(), 0o700); err != nil {
+		return err
+	}
+	return os.Chmod(p.StateDir(), 0o700)
 }
 
 func (p Project) build(env []string) error {

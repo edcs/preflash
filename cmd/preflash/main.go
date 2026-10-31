@@ -20,8 +20,8 @@ func main() {
 	}
 	if err := run(os.Args[2:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprint(os.Stderr, usage)
-			os.Exit(2)
+			fmt.Fprint(os.Stdout, usage)
+			return
 		}
 		fmt.Fprintf(os.Stderr, "preflash: %v\n", err)
 		os.Exit(1)

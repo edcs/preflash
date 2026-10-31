@@ -55,6 +55,14 @@ Pcf85063::Pcf85063() : RegisterChip("pcf85063") {
                                            "2026-11-01T12:00:00Z: ") + start);
     const std::time_t chosen_time = timegm(&chosen);
     gmtime_r(&chosen_time, &t);
+    // strptime accepts dates like February 31st, which timegm rolls into March, and
+    // the chip's year register only holds 2000 to 2099.
+    char again[32];
+    std::strftime(again, sizeof(again), "%Y-%m-%dT%H:%M:%SZ", &t);
+    const int year = t.tm_year + 1900;
+    if (std::string(again) != start || year < 2000 || year > 2099)
+      throw std::runtime_error(std::string("PREFLASH_RTC_START isn't a real time from 2000 to "
+                                           "2099 like 2026-11-01T12:00:00Z: ") + start);
   }
   set_fields(t);
   regs_[kWeekdays] = static_cast<uint8_t>(t.tm_wday);

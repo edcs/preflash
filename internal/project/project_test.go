@@ -205,3 +205,13 @@ func TestRootDefaultsToThisCheckout(t *testing.T) {
 	require.NoError(t, err)
 	assert.FileExists(t, filepath.Join(got, "boards.go"))
 }
+
+func TestStateDirIsPrivate(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Find(idfProject(t, t.TempDir()))
+	require.NoError(t, err)
+	require.NoError(t, p.makeDirs())
+	info, err := os.Stat(p.StateDir())
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+}
