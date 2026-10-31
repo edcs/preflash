@@ -1,0 +1,43 @@
+README.md
+  s_82b4983a83db4b::t_166fe5f3007437 28
+  s_82b4983a83db4b::t_b969600795ad30 35
+.gitignore
+  s_82b4983a83db4b::t_b969600795ad30 1
+runtime/src/audio/codec.cpp
+  s_82b4983a83db4b::t_b969600795ad30 56-61,79-84,86
+runtime/src/display/panel.cpp
+  s_82b4983a83db4b::t_b969600795ad30 64-66,68-74,78-80,82,91
+  s_82b4983a83db4b::t_839e717164482f 81
+runtime/src/net/http.cpp
+  s_82b4983a83db4b::t_b969600795ad30 340-342
+tests/runtime/chips_test.cpp
+  s_82b4983a83db4b::t_a3500bf010d498 16
+  s_82b4983a83db4b::t_f6fe603ad33583 189-201,478-498,503
+  s_82b4983a83db4b::t_293b33b56d9c1d 499-502,504
+runtime/include/preflash/bus.h
+  s_82b4983a83db4b::t_b969600795ad30 42-44
+Makefile
+  s_82b4983a83db4b::t_b969600795ad30 5-10
+tests/integration/snoozel.sh
+  s_82b4983a83db4b::t_b969600795ad30 258
+  s_82b4983a83db4b::t_166fe5f3007437 42-46,48-50,266
+  s_82b4983a83db4b::t_f6fe603ad33583 47
+runtime/src/bus/gpio.cpp
+  s_82b4983a83db4b::t_b969600795ad30 50-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6685188143b7e73636b19552725ef335b5d28fcb",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
