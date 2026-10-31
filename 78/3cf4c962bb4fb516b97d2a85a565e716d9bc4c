@@ -1,0 +1,27 @@
+tests/integration/build_fixture.sh
+  s_82b4983a83db4b::t_1d71e9472217b8 72
+runtime/idf/tools/cmake/project.cmake
+  s_82b4983a83db4b::t_1d71e9472217b8 284-287
+tests/fixtures/mini_project/main/main.cpp
+  s_82b4983a83db4b::t_1d71e9472217b8 4,28
+tests/fixtures/mini_project/components/header_only/CMakeLists.txt
+  s_82b4983a83db4b::t_1d71e9472217b8 1
+tests/fixtures/mini_project/components/header_only/include/header_only.h
+  s_82b4983a83db4b::t_1d71e9472217b8 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "783cf4c962bb4fb516b97d2a85a565e716d9bc4c",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}

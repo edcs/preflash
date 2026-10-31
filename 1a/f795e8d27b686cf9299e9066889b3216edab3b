@@ -1,0 +1,67 @@
+runtime/idf/tools/cmake/replaced.cmake
+  s_82b4983a83db4b::t_d07615462b5a33 1-9
+tests/fixtures/mini_project/assets/hello.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/components/thing/startup.c
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-4
+tests/integration/build_fixture.sh
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-76,78,82-134
+  s_82b4983a83db4b::t_33ad69141f7ae5 77
+  s_82b4983a83db4b::t_ec8dfebf24e701 79-81
+runtime/idf/tools/gen_lv_config.py
+  s_82b4983a83db4b::t_d07615462b5a33 1-26
+runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_d07615462b5a33 1-3
+runtime/src/host/main.cpp
+  s_82b4983a83db4b::t_d07615462b5a33 1-6
+tests/fixtures/mini_project/managed_components/espressif__cmake_utilities/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-6
+tests/fixtures/mini_project/components/thing/include/thing.h
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-11
+tests/fixtures/mini_project/main/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-3
+tests/fixtures/mini_project/main/idf_component.yml
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-3
+tests/fixtures/mini_project/main/main.cpp
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-34,38
+  s_82b4983a83db4b::t_33ad69141f7ae5 35-37
+tests/fixtures/mini_project/managed_components/lvgl__lvgl/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/components/thing/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-10
+tests/fixtures/mini_project/assets/notes.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/bootloader_components/never_built/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/components/thing/thing.c
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-5
+tests/fixtures/mini_project/managed_components/lvgl__lvgl/src/core/lv_stand_in.c
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-20
+tests/fixtures/mini_project/managed_components/waveshare__some_board/CMakeLists.txt
+  s_82b4983a83db4b::t_eee3224dc6f38b 1
+tests/fixtures/mini_project/sdkconfig
+  s_82b4983a83db4b::t_eee3224dc6f38b 1-11
+runtime/idf/tools/cmake/project.cmake
+  s_82b4983a83db4b::t_d819194380be3f 193,205
+  s_82b4983a83db4b::t_33ad69141f7ae5 319-324,340
+  s_82b4983a83db4b::t_8e7eba86227061 342-345
+  s_82b4983a83db4b::t_d07615462b5a33 1-192,194-204,206-318,325-339,341,346-368
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1af795e8d27b686cf9299e9066889b3216edab3b",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
