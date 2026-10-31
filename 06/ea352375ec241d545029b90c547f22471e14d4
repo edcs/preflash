@@ -1,0 +1,64 @@
+runtime/src/host/main.cpp
+  s_82b4983a83db4b::t_08828a6889b341 80-83,105
+tests/fixtures/mini_project/main/main.cpp
+  s_82b4983a83db4b::t_abccdd20e2f19f 42-43
+internal/board/board.go
+  s_82b4983a83db4b::t_62c640594daaea 54-78,197-198,214-243
+  s_82b4983a83db4b::t_abd31e442e33a7 244
+internal/project/project_test.go
+  s_82b4983a83db4b::t_c4cb75d7af5d8d 1-206
+runtime/include/preflash/audio.h
+  s_82b4983a83db4b::t_caad19ba65a07e 10
+internal/project/project.go
+  s_82b4983a83db4b::t_62c640594daaea 1-114
+tests/runtime/audio_test.cpp
+  s_82b4983a83db4b::t_caad19ba65a07e 147-171
+  s_82b4983a83db4b::t_bba586c2cc2728 19,32
+tests/fixtures/snoozel-4b.yaml
+  s_82b4983a83db4b::t_62c640594daaea 1-7
+internal/board/board_test.go
+  s_82b4983a83db4b::t_62c640594daaea 5,50-60
+  s_82b4983a83db4b::t_6afaf326519053 61
+tests/integration/build_fixture.sh
+  s_82b4983a83db4b::t_6c2645d2e9283c 86
+runtime/include/preflash/panel.h
+  s_82b4983a83db4b::t_08828a6889b341 4,21-22
+  s_82b4983a83db4b::t_64beecbf1c9d33 23
+runtime/src/display/panel.cpp
+  s_82b4983a83db4b::t_08828a6889b341 74-83
+tests/integration/snoozel.sh
+  s_82b4983a83db4b::t_822bd0bcb3f152 79,81,83,171-176
+  s_82b4983a83db4b::t_4a60df98013a84 42-48,50-51,54,56,59-62,70,73,77-78,82,84,87,90-98,105-106,114,117-120,128,133-166,168-170,177-196
+  s_82b4983a83db4b::t_08828a6889b341 1-41,49,52-53,55,57-58,63-69,71-72,74-76,80,85-86,88-89,99-104,107-113,115-116,121-127,129-132,167
+tests/runtime/chips_test.cpp
+  s_82b4983a83db4b::t_08828a6889b341 416-417,420-421
+internal/project/run.go
+  s_82b4983a83db4b::t_62c640594daaea 1-119
+tests/runtime/panel_test.cpp
+  s_82b4983a83db4b::t_08828a6889b341 154-158
+runtime/src/audio/codec.cpp
+  s_82b4983a83db4b::t_caad19ba65a07e 106,112-113,137,140,142-143,145-147
+  s_82b4983a83db4b::t_2fb4b3585bcd4d 141,144
+cmd/preflash/main.go
+  s_82b4983a83db4b::t_62c640594daaea 1-53
+runtime/idf/tools/cmake/project.cmake
+  s_82b4983a83db4b::t_abccdd20e2f19f 350-352
+README.md
+  s_82b4983a83db4b::t_502b091d50e9f1 4-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "06ea352375ec241d545029b90c547f22471e14d4",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
