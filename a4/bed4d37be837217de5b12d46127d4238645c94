@@ -1,0 +1,25 @@
+runtime/src/os/system.cpp
+  s_82b4983a83db4b::t_112e709ff5c12c 33,36-38,41,43,45
+tests/runtime/os_test.cpp
+  s_82b4983a83db4b::t_112e709ff5c12c 111
+runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_112e709ff5c12c 2-6
+tests/fixtures/mini_project/sdkconfig
+  s_82b4983a83db4b::t_112e709ff5c12c 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a4bed4d37be837217de5b12d46127d4238645c94",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
