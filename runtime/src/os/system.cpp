@@ -72,7 +72,10 @@ esp_reset_reason_t esp_reset_reason(void) {
 }
 
 void esp_restart(void) {
-  std::fflush(nullptr);
+  // Not fflush(nullptr): that also waits on stdin, which the console task keeps
+  // locked for as long as it sits in a read.
+  std::fflush(stdout);
+  std::fflush(stderr);
   char path[4096];
   uint32_t size = sizeof path;
   if (_NSGetExecutablePath(path, &size) != 0) {

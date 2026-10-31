@@ -5,9 +5,13 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export IDF_PATH="$root/runtime/idf"
+export PREFLASH_BOARD="$root/tests/fixtures/board.json"
+export PREFLASH_HEADLESS=1
+source "$root/tests/integration/app.sh"
 
 scratch="$(mktemp -d)"
-trap 'rm -rf "$scratch"' EXIT
+app_pid=""
+trap '[ -z "$app_pid" ] || kill "$app_pid" 2>/dev/null; rm -rf "$scratch"' EXIT
 work="$scratch/a folder"
 mkdir "$work"
 
@@ -43,6 +47,14 @@ expect_no_output() {
   esac
 }
 
+# Runs until app_main has finished, which isn't the end of the process.
+run_fixture() {
+  start_app "$work/build/app"
+  wait_for_output "app_main finished"
+  quit_app
+  output="$(cat "$app_log")"
+}
+
 expect_stale_project() {
   if log="$(configure)"; then
     fail "$1: configure succeeded" "$log"
@@ -61,7 +73,7 @@ build_log="$(cmake --build "$work/build" 2>&1)" || fail "build" "$build_log"
 case "$build_log" in
   *warning*) fail "the build printed a warning" "$build_log" ;;
 esac
-output="$("$work/build/app")"
+run_fixture
 expect_output "hello from app_main"
 expect_output "CONFIG_THING_VALUE=7"
 expect_output "CONFIG_THING_ENABLED=1"
@@ -78,12 +90,18 @@ expect_output "lvgl os_none=1 color_depth=16 sdl=0"
 expect_output "ESP_PLATFORM is defined"
 expect_no_output "asserts are off"
 
+# With no board there's nothing to simulate, and the message says why.
+if output="$(env -u PREFLASH_BOARD "$work/build/app" 2>&1 < /dev/null)"; then
+  fail "ran with no board" "$output"
+fi
+expect_output "PREFLASH_BOARD is not set"
+
 # A change to an embedded file reaches the next build. The wait is for make,
 # which compares timestamps to the second.
 sleep 1
 printf 'changed bytes' > "$work/project/assets/hello.txt"
 build_log="$(cmake --build "$work/build" 2>&1)" || fail "rebuild" "$build_log"
-output="$("$work/build/app")"
+run_fixture
 expect_output "embedded=changed bytes"
 printf 'hello bytes' > "$work/project/assets/hello.txt"
 
