@@ -1,6 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdio>
+#include <mutex>
+#include <sstream>
+#include <iostream>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -90,4 +95,54 @@ TEST(Console, UnknownControlSaysSo) {
   preflash::dispatch_line("@sim nonesuch 1");
   EXPECT_NE(testing::internal::GetCapturedStdout().find("Unknown control: nonesuch"),
             std::string::npos);
+}
+
+namespace {
+
+std::mutex g_order_mutex;
+std::vector<std::string> g_order;
+
+int note(int argc, char** argv) {
+  std::lock_guard<std::mutex> lock(g_order_mutex);
+  g_order.push_back(argc > 1 ? argv[1] : "");
+  return 0;
+}
+
+size_t noted() {
+  std::lock_guard<std::mutex> lock(g_order_mutex);
+  return g_order.size();
+}
+
+}  // namespace
+
+// Runs last in this file: the reader and the REPL can each only start once.
+TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
+  esp_console_cmd_t cmd = {};
+  cmd.command = "note";
+  cmd.func = note;
+  ASSERT_EQ(esp_console_cmd_register(&cmd), ESP_OK);
+  preflash::add_control("note", [](std::vector<std::string> args) {
+    std::lock_guard<std::mutex> lock(g_order_mutex);
+    g_order.push_back(args.empty() ? "" : args[0]);
+  });
+
+  std::istringstream input("note first\n@sim note second\nnote third\n@sim note fourth\n");
+  std::streambuf* original = std::cin.rdbuf(input.rdbuf());
+  ASSERT_TRUE(preflash::start_console_reader());
+  // Nothing runs yet: no REPL has started to take the first line.
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  EXPECT_EQ(noted(), 0u);
+
+  esp_console_repl_t* repl = nullptr;
+  esp_console_repl_config_t config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+  esp_console_dev_usb_serial_jtag_config_t dev = ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
+  ASSERT_EQ(esp_console_new_repl_usb_serial_jtag(&dev, &config, &repl), ESP_OK);
+  ASSERT_EQ(esp_console_start_repl(repl), ESP_OK);
+  for (int i = 0; i < 200 && noted() < 4; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  std::cin.rdbuf(original);
+
+  std::lock_guard<std::mutex> lock(g_order_mutex);
+  EXPECT_EQ(g_order, (std::vector<std::string>{"first", "second", "third", "fourth"}));
 }

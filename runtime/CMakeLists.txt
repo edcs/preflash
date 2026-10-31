@@ -27,11 +27,15 @@ target_link_libraries(preflash_runtime PRIVATE SDL2::SDL2)
 # Only the headers are used, so the folder named here doesn't exist, which leaves
 # its build out of it. The cache spares a download for every clean build folder.
 include(FetchContent)
+# CMake 3.24 warns unless the extract timestamp is chosen, and older ones don't know the option.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+  set(preflash_extract_timestamp DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+endif()
 FetchContent_Declare(preflash_json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
     URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
     DOWNLOAD_DIR "$ENV{HOME}/Library/Caches/preflash"
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    ${preflash_extract_timestamp}
     SOURCE_SUBDIR no-cmake-build)
 FetchContent_MakeAvailable(preflash_json)
 target_include_directories(preflash_runtime SYSTEM PRIVATE ${preflash_json_SOURCE_DIR}/include)

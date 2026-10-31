@@ -2,12 +2,14 @@
 #include <unistd.h>
 
 #include <charconv>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "freertos/task.h"
@@ -52,7 +54,7 @@ void control_touch(const std::vector<std::string>& args) {
     return;
   }
   preflash::touch::push({*x, *y, true});
-  usleep(static_cast<useconds_t>(*ms) * 1000);
+  std::this_thread::sleep_for(std::chrono::milliseconds(*ms));
   preflash::touch::push({*x, *y, false});
 }
 

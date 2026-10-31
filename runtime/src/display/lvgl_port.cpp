@@ -126,7 +126,12 @@ lv_display_t* lvgl_port_add_disp(const lvgl_port_display_cfg_t* disp_cfg) {
   // how an area is split, and there's no memory to save here. LVGL keeps it for good.
   const uint32_t size =
       lv_draw_buf_width_to_stride(board.width, LV_COLOR_FORMAT_RGB565) * board.height;
-  void* buffer = lv_draw_buf_align(std::malloc(size + LV_DRAW_BUF_ALIGN), LV_COLOR_FORMAT_RGB565);
+  void* memory = std::malloc(size + LV_DRAW_BUF_ALIGN);
+  if (!memory) {
+    lv_display_delete(disp);
+    return nullptr;
+  }
+  void* buffer = lv_draw_buf_align(memory, LV_COLOR_FORMAT_RGB565);
   lv_display_set_buffers(disp, buffer, nullptr, size,
                          disp_cfg->flags.full_refresh ? LV_DISPLAY_RENDER_MODE_FULL
                                                       : LV_DISPLAY_RENDER_MODE_PARTIAL);

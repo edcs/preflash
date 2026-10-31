@@ -37,6 +37,8 @@ struct State {
   // as they would in a device's UART buffer.
   const Repl* open_repl = nullptr;
   std::deque<std::string> early_lines;
+  // True while the REPL replays early_lines, so a line read meanwhile queues behind them.
+  bool replaying = false;
 };
 
 State& state() {
@@ -149,7 +151,8 @@ void reader_task(void*) {
   while (std::getline(std::cin, line)) {
     {
       std::lock_guard<std::mutex> lock(state().mutex);
-      if (!state().open_repl && !is_control(line)) {
+      // Once one line waits, every later line waits behind it, controls included.
+      if (!state().open_repl && (state().replaying || !state().early_lines.empty() || !is_control(line))) {
         state().early_lines.push_back(line);
         continue;
       }
@@ -166,8 +169,10 @@ void repl_task(void* arg) {
       std::lock_guard<std::mutex> lock(state().mutex);
       if (state().early_lines.empty()) {
         state().open_repl = static_cast<Repl*>(arg);
+        state().replaying = false;
         break;
       }
+      state().replaying = true;
       lines.swap(state().early_lines);
     }
     for (const std::string& line : lines) preflash::dispatch_line(line);

@@ -197,6 +197,8 @@ TEST(Panel, RotatedFlushKeepsPhysicalOrientation) {
   lv_indev_t* added = lv_indev_create();
   EXPECT_EQ(bsp_display_get_input_dev(), touch_input);
   lv_indev_delete(added);
+  // Its reader would otherwise keep popping the touch queue for the tests after this one.
+  lv_indev_delete(touch_input);
   bsp_display_unlock();
 }
 

@@ -17,7 +17,7 @@ void add_control(const char* name, std::function<void(std::vector<std::string>)>
 // nobody registered prints a message saying so.
 void dispatch_line(const std::string& line);
 
-// Starts the console task, which reads stdin for good. Safe to call more than once,
+// Starts the console task, which reads stdin until it ends. Safe to call more than once,
 // and a failed start can be tried again. False if the task couldn't start.
 bool start_console_reader();
 

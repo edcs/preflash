@@ -41,6 +41,9 @@ void handle_events() {
   SDL_Event e;
   while (SDL_PollEvent(&e)) {
     switch (e.type) {
+      case SDL_WINDOWEVENT:
+        if (e.window.event != SDL_WINDOWEVENT_CLOSE) break;
+        [[fallthrough]];
       case SDL_QUIT:
         // Not exit(): firmware threads may be holding locks that destructors would need.
         _exit(0);
