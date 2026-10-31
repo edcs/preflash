@@ -104,6 +104,7 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
   if (!s.open) return ESP_CODEC_DEV_WRONG_STATE;
   const size_t frame_bytes = sizeof(int16_t) * static_cast<size_t>(s.channels);
   if (static_cast<size_t>(len) % frame_bytes != 0) return ESP_CODEC_DEV_INVALID_ARG;
+  if (len == 0) return ESP_CODEC_DEV_OK;
 
   if (preflash::g_sink && !s.sink_gone) {
     if (!preflash::wait_for_room(preflash::g_sink)) {
