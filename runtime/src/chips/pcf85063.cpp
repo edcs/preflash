@@ -73,6 +73,12 @@ void Pcf85063::set_fields(const std::tm& t) {
 // normalises, as timegm does.
 void Pcf85063::count_time() {
   const std::time_t now = std::time(nullptr);
+  // A stopped oscillator counts nothing, so the time is held where it was set
+  // and the stopped interval is not added when the flag is cleared.
+  if (oscillator_stopped_) {
+    counted_to_ = now;
+    return;
+  }
   const std::time_t elapsed = now - counted_to_;
   if (elapsed == 0) return;
   counted_to_ = now;

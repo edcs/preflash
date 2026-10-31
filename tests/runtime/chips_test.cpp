@@ -93,6 +93,19 @@ TEST(Registry, RejectsTwoChipsAtOneAddress) {
   EXPECT_THROW(attach_chips(board), std::runtime_error);
 }
 
+TEST(Registry, FailedAttachLeavesTheBusUntouched) {
+  Board unknown{};
+  unknown.i2c = {{"axp2101", 0x30}, {"made_up_chip", 0x31}};
+  EXPECT_THROW(attach_chips(unknown), std::runtime_error);
+  EXPECT_EQ(i2c_bus().device(0x30), nullptr);
+
+  Board duplicate{};
+  duplicate.i2c = {{"axp2101", 0x32}, {"pcf85063", 0x33}, {"qmi8658", 0x33}};
+  EXPECT_THROW(attach_chips(duplicate), std::runtime_error);
+  EXPECT_EQ(i2c_bus().device(0x32), nullptr);
+  EXPECT_EQ(i2c_bus().device(0x33), nullptr);
+}
+
 TEST(Registry, RegisteredChipIsAttached) {
   register_chip("test_chip", [] { return std::make_unique<RegisterChip>("test_chip"); });
   Board board{};
@@ -223,6 +236,17 @@ TEST(Pcf85063, WritingSecondsClearsOscillatorStop) {
   rtc.set_lost_power(true);
   put(rtc, 0x04, 0x00);
   EXPECT_EQ(take(rtc, 0x04) & 0x80, 0);
+}
+
+TEST(Pcf85063, StoppedOscillatorHoldsTheTime) {
+  Pcf85063 rtc;
+  // 12:00:00 with the stop flag set.
+  const std::array<uint8_t, 4> frame = {0x04, 0x80, 0x00, 0x12};
+  ASSERT_TRUE(rtc.write(frame));
+  sleep(2);
+  put(rtc, 0x04, 0x00);  // clearing the flag restarts the count from here
+  EXPECT_LE(decimal(take(rtc, 0x04) & 0x7f), 1);
+  EXPECT_EQ(take(rtc, 0x06), 0x12);
 }
 
 TEST(Pcf85063, AddressWrapsAfterTheLastRegister) {

@@ -37,6 +37,21 @@ class FakeDevice : public I2cDevice {
   bool acks_;
 };
 
+// Puts a fake on the bus and takes it off again at the end of the test, before
+// the log it writes to goes out of scope.
+class Attached {
+ public:
+  Attached(uint8_t address, std::vector<uint8_t>* log, bool acks = true) : address_(address) {
+    i2c_bus().add(address, std::make_unique<FakeDevice>(log, acks));
+  }
+  ~Attached() { i2c_bus().take(address_); }
+  Attached(const Attached&) = delete;
+  Attached& operator=(const Attached&) = delete;
+
+ private:
+  uint8_t address_;
+};
+
 i2c_master_bus_handle_t new_bus() {
   const i2c_master_bus_config_t config = {};
   i2c_master_bus_handle_t bus = nullptr;
@@ -58,7 +73,7 @@ i2c_master_dev_handle_t new_device(uint16_t address) {
 
 TEST(I2c, TransmitReceiveReachesTheDevice) {
   std::vector<uint8_t> log;
-  i2c_bus().add(0x11, std::make_unique<FakeDevice>(&log));
+  Attached fake(0x11, &log);
   i2c_master_dev_handle_t device = new_device(0x11);
 
   const uint8_t command[] = {0x04, 0x05};
@@ -73,7 +88,7 @@ TEST(I2c, TransmitReceiveReachesTheDevice) {
 
 TEST(I2c, TransmitReachesTheDevice) {
   std::vector<uint8_t> log;
-  i2c_bus().add(0x12, std::make_unique<FakeDevice>(&log));
+  Attached fake(0x12, &log);
 
   const uint8_t command[] = {0x09};
   ASSERT_EQ(i2c_master_transmit(new_device(0x12), command, sizeof command, kTimeoutMs), ESP_OK);
@@ -93,7 +108,7 @@ TEST(I2c, NoDeviceAtAddressIsAnError) {
 
 TEST(I2c, RefusedWriteIsAnError) {
   std::vector<uint8_t> log;
-  i2c_bus().add(0x13, std::make_unique<FakeDevice>(&log, false));
+  Attached fake(0x13, &log, false);
   const uint8_t command[] = {0x00};
   EXPECT_EQ(i2c_master_transmit(new_device(0x13), command, sizeof command, kTimeoutMs),
             ESP_ERR_INVALID_STATE);
@@ -103,7 +118,7 @@ TEST(I2c, DevicesAddedLaterAreSeenByExistingHandles) {
   // A wrapper that replaces a chip must see traffic from handles already open.
   std::vector<uint8_t> log;
   i2c_master_dev_handle_t device = new_device(0x14);
-  i2c_bus().add(0x14, std::make_unique<FakeDevice>(&log));
+  Attached fake(0x14, &log);
   const uint8_t command[] = {0x01};
   EXPECT_EQ(i2c_master_transmit(device, command, sizeof command, kTimeoutMs), ESP_OK);
 }
@@ -121,7 +136,7 @@ TEST(I2c, TakeHandsTheDeviceBackForAWrapper) {
   };
 
   std::vector<uint8_t> log;
-  i2c_bus().add(0x15, std::make_unique<FakeDevice>(&log));
+  Attached fake(0x15, &log);
   i2c_master_dev_handle_t device = new_device(0x15);
 
   std::unique_ptr<I2cDevice> taken = i2c_bus().take(0x15);

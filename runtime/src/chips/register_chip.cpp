@@ -27,9 +27,10 @@ bool RegisterChip::read(std::span<uint8_t> out) {
 }
 
 void RegisterChip::refuse(uint8_t reg, const char* why) const {
-  char call[64];
-  std::snprintf(call, sizeof call, "%s register 0x%02x", name_.c_str(), reg);
-  preflash_unsupported(call, why);
+  char number[8];
+  std::snprintf(number, sizeof number, "0x%02x", reg);
+  const std::string call = name_ + " register " + number;
+  preflash_unsupported(call.c_str(), why);
 }
 
 }  // namespace preflash

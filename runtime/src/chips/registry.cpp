@@ -3,6 +3,7 @@
 #include <set>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include "preflash/chips.h"
 
@@ -37,15 +38,19 @@ void register_chip(const std::string& name, ChipFactory factory) {
 }
 
 void attach_chips(const Board& board) {
+  // Everything is checked and built before the bus is touched, so a bad board
+  // leaves the bus as it was.
   std::set<uint8_t> taken;
+  std::vector<std::pair<uint8_t, std::unique_ptr<I2cDevice>>> staged;
   for (const ChipEntry& entry : board.i2c) {
     const auto factory = factories().find(entry.chip);
     if (factory == factories().end())
       throw std::runtime_error("board: no model for chip " + entry.chip);
     if (!taken.insert(entry.address).second)
       throw std::runtime_error("board: chip " + entry.chip + " shares an address with another");
-    i2c_bus().add(entry.address, factory->second());
+    staged.emplace_back(entry.address, factory->second());
   }
+  for (auto& [address, device] : staged) i2c_bus().add(address, std::move(device));
 }
 
 }  // namespace preflash
