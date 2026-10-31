@@ -541,6 +541,42 @@ TEST(Http, ReadsABodyLargerThanOneBufferAndPerformStreamsToTheHandler) {
   esp_http_client_cleanup(client);
 }
 
+TEST(Http, StreamedReadsDispatchDataEventsAndCompleteWithoutDraining) {
+  LocalServer server;
+  std::string collected;
+  esp_http_client_config_t cfg = {};
+  const std::string url = server.url("/hello");
+  cfg.url = url.c_str();
+  cfg.user_data = &collected;
+  cfg.event_handler = [](esp_http_client_event_t* e) -> esp_err_t {
+    if (e->event_id == HTTP_EVENT_ON_DATA)
+      static_cast<std::string*>(e->user_data)->append(static_cast<char*>(e->data),
+                                                       static_cast<size_t>(e->data_len));
+    return ESP_OK;
+  };
+  esp_http_client_handle_t client = esp_http_client_init(&cfg);
+  ASSERT_EQ(esp_http_client_open(client, 0), ESP_OK);
+  ASSERT_GT(esp_http_client_fetch_headers(client), 0);
+  char first[5];
+  ASSERT_EQ(esp_http_client_read(client, first, sizeof first), 5);
+  // Pull until the transfer has finished, leaving the rest of the body unread.
+  while (!esp_http_client_is_complete_data_received(client)) {
+    char one;
+    if (esp_http_client_read(client, &one, 1) <= 0) break;
+  }
+  EXPECT_TRUE(esp_http_client_is_complete_data_received(client));
+  EXPECT_EQ(collected.substr(0, 5), "hello");
+  esp_http_client_cleanup(client);
+}
+
+TEST(Http, NegativePostFieldLengthIsRefused) {
+  esp_http_client_config_t cfg = {};
+  cfg.url = "http://127.0.0.1:1/";
+  esp_http_client_handle_t client = esp_http_client_init(&cfg);
+  EXPECT_EQ(esp_http_client_set_post_field(client, "abc", -1), ESP_ERR_INVALID_ARG);
+  esp_http_client_cleanup(client);
+}
+
 TEST(Http, ChunkedIsRecognisedInAnyCase) {
   LocalServer server;
   esp_http_client_config_t cfg = {};
@@ -650,7 +686,7 @@ TEST(Base64, MatchesMbedtlsForTheSizesTheConsoleUses) {
   unsigned char tight[8];
   EXPECT_EQ(mbedtls_base64_encode(tight, sizeof tight, &len, data, 5),
             MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL);
-  EXPECT_EQ(len, 8u);
+  EXPECT_EQ(len, 9u);
 }
 
 TEST(Ota, ReportsNoUpdateAvailable) {

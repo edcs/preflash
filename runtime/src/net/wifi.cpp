@@ -20,7 +20,8 @@
 ESP_EVENT_DEFINE_BASE(WIFI_EVENT);
 ESP_EVENT_DEFINE_BASE(IP_EVENT);
 
-// Defined with the netif it fills in, and posted from the radio's timer.
+// Defined with the netif it fills in, and posted from the radio's timer with the
+// radio's lock held.
 void preflash_net_post_got_ip();
 // Drops the address and posts the loss. False if no address was held.
 bool preflash_net_post_lost_ip();
@@ -233,10 +234,10 @@ void finish_join(uint64_t epoch) {
   post(WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &connected, sizeof connected);
   r.scheduler.after(kIpDelay, [epoch] {
     Radio& radio_ = radio();
-    {
-      std::lock_guard<std::mutex> lock(radio_.mutex);
-      if (radio_.epoch != epoch || radio_.link != Link::Up) return;
-    }
+    // The address is committed and announced under the lock that checks the link, so a
+    // disconnect can't slip in between and leave a stale address or a late GOT_IP.
+    std::lock_guard<std::mutex> lock(radio_.mutex);
+    if (radio_.epoch != epoch || radio_.link != Link::Up) return;
     preflash_net_post_got_ip();
   });
 }

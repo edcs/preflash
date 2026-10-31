@@ -394,7 +394,7 @@ esp_err_t esp_http_client_set_url(esp_http_client_handle_t client, const char* u
 
 esp_err_t esp_http_client_set_post_field(esp_http_client_handle_t client, const char* data,
                                          int len) {
-  if (!client) return ESP_ERR_INVALID_ARG;
+  if (!client || (data && len < 0)) return ESP_ERR_INVALID_ARG;
   client->has_post_field = data != nullptr;
   client->post_field.assign(data ? data : "", data ? static_cast<size_t>(len) : 0);
   return ESP_OK;
@@ -533,6 +533,8 @@ int esp_http_client_read(esp_http_client_handle_t client, char* buffer, int len)
   std::memcpy(buffer, client->body.data() + client->body_read, n);
   client->body_read += n;
   client->total_read += static_cast<int64_t>(n);
+  // The device dispatches this for each chunk it hands out, so streamed reads do too.
+  client->emit(HTTP_EVENT_ON_DATA, buffer, static_cast<int>(n));
   // Drop what's been handed out once it's a good share of the buffer.
   if (client->body_read >= 65536) {
     client->body.erase(0, client->body_read);
@@ -551,8 +553,7 @@ int64_t esp_http_client_get_content_length(esp_http_client_handle_t client) {
 
 bool esp_http_client_is_complete_data_received(esp_http_client_handle_t client) {
   if (!client) return false;
-  const bool drained = client->body.size() == client->body_read;
-  return client->done && client->result == CURLE_OK && drained;
+  return client->done && client->result == CURLE_OK;
 }
 
 esp_http_client_transport_t esp_http_client_get_transport_type(esp_http_client_handle_t client) {

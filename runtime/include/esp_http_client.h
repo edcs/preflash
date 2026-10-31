@@ -142,7 +142,8 @@ esp_err_t esp_http_client_set_post_field(esp_http_client_handle_t client, const 
                                          int len);
 esp_err_t esp_http_client_set_header(esp_http_client_handle_t client, const char* key,
                                      const char* value);
-// Looks in the reply's headers. The value stays valid until the next request.
+// Looks in the request's headers first, then the reply's. The value stays valid until the
+// next request.
 esp_err_t esp_http_client_get_header(esp_http_client_handle_t client, const char* key,
                                      char** value);
 esp_err_t esp_http_client_delete_header(esp_http_client_handle_t client, const char* key);

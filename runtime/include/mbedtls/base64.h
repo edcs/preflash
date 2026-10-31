@@ -21,7 +21,10 @@ static inline int mbedtls_base64_encode(unsigned char* dst, size_t dlen, size_t*
     if (dlen > 0) dst[0] = '\0';
     return dlen > 0 ? 0 : MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL;
   }
-  if (dlen < needed + 1) return MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL;
+  if (dlen < needed + 1) {
+    *olen = needed + 1;
+    return MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL;
+  }
   size_t n = 0;
   for (size_t i = 0; i < slen; i += 3) {
     const unsigned v = (unsigned)src[i] << 16 | (i + 1 < slen ? (unsigned)src[i + 1] << 8 : 0u) |
