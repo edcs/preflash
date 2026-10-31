@@ -1,0 +1,29 @@
+runtime/src/bsp/bsp.cpp
+  s_82b4983a83db4b::t_dcbe9fde63eebc 27-32
+runtime/src/os/system.cpp
+  s_82b4983a83db4b::t_7f8dcc0e7213eb 75-78
+tests/fixtures/lvgl_project/main/main.cpp
+  s_82b4983a83db4b::t_a99c2cf75c956d 50-52,54
+tests/integration/app.sh
+  s_82b4983a83db4b::t_1e95bb1e1aeae1 30-39
+tests/integration/display.sh
+  s_82b4983a83db4b::t_2c9ea58cea24c7 57-62,113
+tests/runtime/panel_test.cpp
+  s_82b4983a83db4b::t_2b327a6cbdb9fe 193-199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f22592950685b44f9f2f3b326bf0af15b65cd37b",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
