@@ -281,7 +281,10 @@ function(preflash_add_lvgl dir config_dir)
   execute_process(
     COMMAND "${Python3_EXECUTABLE}" "${PREFLASH_GEN_LV_CONFIG}"
             "${CMAKE_SOURCE_DIR}/sdkconfig" "${config_dir}/preflash_lv_config.h"
-    COMMAND_ERROR_IS_FATAL ANY)
+    RESULT_VARIABLE result)
+  if(NOT result EQUAL 0)
+    message(FATAL_ERROR "Couldn't write the LVGL config from sdkconfig: ${result}")
+  endif()
 
   set(COMPONENT_NAME lvgl__lvgl)
   set(COMPONENT_DIR "${dir}")

@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <cstdio>
 
+#include "header_only.h"
 #include "sdkconfig.h"
 // This component doesn't list thing in REQUIRES.
 #include "thing.h"
@@ -24,6 +25,7 @@ extern "C" void app_main(void) {
 #endif
   printf("CONFIG_IDF_TARGET=%s\n", CONFIG_IDF_TARGET);
   printf("thing=%d\n", thing_value());
+  printf("header only=%d\n", HEADER_ONLY_VALUE);
   printf("embedded=%.*s\n", static_cast<int>(hello_end - hello_start), hello_start);
   // A text file ends in a NUL that counts towards its length, as on ESP-IDF.
   printf("embedded text=%s length=%d\n", notes_start, static_cast<int>(notes_end - notes_start));
