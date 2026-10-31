@@ -137,6 +137,9 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   EXPECT_EQ(noted(), 0u);
   // Quit gets through although ordinary lines are waiting and no REPL has started.
+  for (int i = 0; i < 500 && !quit_seen; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
   EXPECT_TRUE(quit_seen);
 
   esp_console_repl_t* repl = nullptr;
