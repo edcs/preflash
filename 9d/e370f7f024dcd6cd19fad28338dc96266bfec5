@@ -1,0 +1,24 @@
+runtime/CMakeLists.txt
+  h_13c4e797d6e9d2 30
+runtime/src/net/http.cpp
+  h_13c4e797d6e9d2 114,124,144,181-186,283-288,414-418,566-567
+runtime/src/net/ota.cpp
+  h_13c4e797d6e9d2 37-41
+runtime/src/net/sntp.cpp
+  h_13c4e797d6e9d2 77-80
+runtime/src/net/wifi.cpp
+  h_13c4e797d6e9d2 25-26,139,153-158,174-179,209,213-215,222,290-308,315,360,427,467,475-476,483,524,534,540-541,547,551
+tests/runtime/net_test.cpp
+  h_13c4e797d6e9d2 10,41,49,56,112-122,145,220-259,331-335,352-368,437-439,544-610,662-663
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9de370f7f024dcd6cd19fad28338dc96266bfec5",
+  "prompts": {},
+  "humans": {
+    "h_13c4e797d6e9d2": {
+      "author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
