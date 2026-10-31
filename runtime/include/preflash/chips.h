@@ -38,8 +38,8 @@ class RegisterChip : public I2cDevice {
   uint8_t address_ = 0;
 };
 
-// NXP PCF85063A, datasheet rev. 7. The time comes from the Mac's clock in UTC,
-// so it keeps time between runs as a real one does on its backup cell.
+// NXP PCF85063A, datasheet rev. 7. Starts from the Mac's clock in UTC. A time
+// firmware sets lasts as long as the process, so not across esp_restart.
 class Pcf85063 : public RegisterChip {
  public:
   Pcf85063();
@@ -51,17 +51,16 @@ class Pcf85063 : public RegisterChip {
   void set_lost_power(bool lost) { oscillator_stopped_ = lost; }
 
  protected:
+  uint8_t load(uint8_t reg) override;
   void store(uint8_t reg, uint8_t value) override;
   uint8_t next(uint8_t reg) override;
 
  private:
-  void freeze_time();
-  void set_time();
+  void set_fields(const std::tm& t);
+  void count_time();
 
-  std::time_t ahead_of_mac_ = 0;  // seconds
-  int weekday_shift_ = 0;
+  std::time_t counted_to_ = 0;  // the moment the time registers show
   std::atomic<bool> oscillator_stopped_{false};
-  bool time_written_ = false;
 };
 
 // QST QMI8658, datasheet QMI8658C rev. 0.9. Stands still and upright, so the

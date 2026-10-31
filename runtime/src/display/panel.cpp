@@ -69,6 +69,8 @@ int brightness() {
   return g_brightness;
 }
 
+int brightness_level() { return g_brightness; }
+
 bool take_frame(std::vector<uint8_t>* out) {
   Pixels& p = pixels();
   std::lock_guard<std::mutex> lock(p.mutex);

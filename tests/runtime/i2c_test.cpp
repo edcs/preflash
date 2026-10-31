@@ -156,6 +156,12 @@ TEST(Gpio, WriteAndReadWorkWithoutFirmware) {
   EXPECT_FALSE(gpio_read(13));
 }
 
+TEST(Gpio, ResettingAPinLeavesWhatDrivesItFromOutside) {
+  gpio_write(14, true);
+  gpio_reset_pin(GPIO_NUM_14);
+  EXPECT_TRUE(gpio_read(14));
+}
+
 TEST(Gpio, RejectsPinsTheChipDoesntHave) {
   EXPECT_EQ(gpio_set_level(static_cast<gpio_num_t>(22), 1), ESP_ERR_INVALID_ARG);
   EXPECT_EQ(gpio_set_direction(static_cast<gpio_num_t>(49), GPIO_MODE_OUTPUT), ESP_ERR_INVALID_ARG);

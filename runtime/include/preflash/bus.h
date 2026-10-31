@@ -17,8 +17,7 @@ class I2cDevice {
 
 class I2cBus {
  public:
-  // Takes the place of any device already at the address, so that a wrapper can
-  // step in front of a chip.
+  // Replaces and destroys any device already at the address.
   void add(uint8_t address, std::unique_ptr<I2cDevice> device);
   I2cDevice* device(uint8_t address);
 

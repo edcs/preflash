@@ -161,11 +161,38 @@ TEST(Pcf85063, WriteMovesTheClock) {
 
 TEST(Pcf85063, SettingOneFieldKeepsTheOthers) {
   Pcf85063 rtc;
-  const auto before = take<7>(rtc, 0x04);
-  put(rtc, 0x0a, bcd(decimal(before[6]) + 1));
-  const auto after = take<7>(rtc, 0x04);
-  EXPECT_EQ(decimal(after[6]), decimal(before[6]) + 1);
-  EXPECT_EQ(after[5], before[5]);
+  // Wednesday 15 January 2031, noon.
+  const std::array<uint8_t, 8> frame = {0x04, 0x00, 0x00, 0x12, 0x15, 0x03, 0x01, 0x31};
+  ASSERT_TRUE(rtc.write(frame));
+  put(rtc, 0x0a, 0x32);
+  const auto regs = take<7>(rtc, 0x04);
+  EXPECT_EQ(regs[6], 0x32);
+  EXPECT_EQ(regs[5], 0x01);
+  EXPECT_EQ(regs[3], 0x15);
+}
+
+TEST(Pcf85063, DateSetOneFieldAtATimeCanPassThroughAnImpossibleDay) {
+  Pcf85063 rtc;
+  // 10 February, then the 31st, then January: only the end of that is a date.
+  const std::array<uint8_t, 8> frame = {0x04, 0x00, 0x00, 0x12, 0x10, 0x01, 0x02, 0x31};
+  ASSERT_TRUE(rtc.write(frame));
+  put(rtc, 0x07, 0x31);
+  put(rtc, 0x09, 0x01);
+  EXPECT_EQ(take(rtc, 0x07), 0x31);
+  EXPECT_EQ(take(rtc, 0x09), 0x01);
+}
+
+TEST(Pcf85063, MidnightMovesTheDateAndTheWeekday) {
+  Pcf85063 rtc;
+  // 23:59:59 on the last day of February 2031, with a weekday of the firmware's own.
+  const std::array<uint8_t, 8> frame = {0x04, 0x59, 0x59, 0x23, 0x28, 0x06, 0x02, 0x31};
+  ASSERT_TRUE(rtc.write(frame));
+  sleep(2);
+  const auto regs = take<7>(rtc, 0x04);
+  EXPECT_EQ(regs[2], 0x00) << "hours";
+  EXPECT_EQ(regs[3], 0x01) << "day";
+  EXPECT_EQ(regs[4], 0x00) << "weekday";
+  EXPECT_EQ(regs[5], 0x03) << "month";
 }
 
 TEST(Pcf85063, WeekdayIsWhateverWasWritten) {
@@ -360,6 +387,9 @@ TEST(Backlight, EnablePinBlanksTheScreen) {
         if (preflash::panel::brightness() != 0) _exit(3);
         preflash::gpio_write(43, true);
         if (preflash::panel::brightness() != 100) _exit(4);
+        // Firmware's own setting isn't touched by the pin.
+        preflash::gpio_write(43, false);
+        if (bsp_display_brightness_get() != 100) _exit(5);
         _exit(0);
       },
       testing::ExitedWithCode(0), "");

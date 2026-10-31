@@ -54,7 +54,7 @@ esp_err_t bsp_display_brightness_set(int brightness_percent) {
   return ESP_OK;
 }
 
-int bsp_display_brightness_get(void) { return preflash::panel::brightness(); }
+int bsp_display_brightness_get(void) { return preflash::panel::brightness_level(); }
 
 esp_err_t bsp_display_backlight_on(void) { return bsp_display_brightness_set(100); }
 

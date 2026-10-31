@@ -9,10 +9,11 @@ namespace {
 constexpr int kOutputBit = 2;
 
 struct Pin {
-  bool output = false;  // the output driver is on
-  bool latch = false;   // what gpio_set_level last asked for
-  bool held = false;    // the pad keeps its level whatever the rest of this says
-  bool level = false;   // what's on the pad
+  bool output = false;   // the output driver is on
+  bool latch = false;    // what gpio_set_level last asked for
+  bool outside = false;  // what something off the chip drives, seen when output is off
+  bool held = false;     // the pad keeps its level whatever the rest of this says
+  bool level = false;    // what's on the pad
 };
 
 std::mutex g_mutex;
@@ -23,7 +24,7 @@ bool exists(gpio_num_t pin) {
 }
 
 void settle(Pin* pin) {
-  if (!pin->held) pin->level = pin->output && pin->latch;
+  if (!pin->held) pin->level = pin->output ? pin->latch : pin->outside;
 }
 
 }  // namespace
@@ -32,7 +33,9 @@ namespace preflash {
 
 void gpio_write(int pin, bool level) {
   std::lock_guard<std::mutex> lock(g_mutex);
-  g_pins[pin].level = level;
+  Pin& driven = g_pins[pin];
+  driven.outside = level;
+  driven.level = level;
 }
 
 bool gpio_read(int pin) {
