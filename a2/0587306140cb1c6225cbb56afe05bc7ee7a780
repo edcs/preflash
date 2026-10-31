@@ -1,0 +1,28 @@
+runtime/CMakeLists.txt
+  h_13c4e797d6e9d2 30-33,38
+runtime/include/preflash/control.h
+  h_13c4e797d6e9d2 20
+runtime/src/console/console.cpp
+  h_13c4e797d6e9d2 40-41,154-155,172,175
+runtime/src/display/lvgl_port.cpp
+  h_13c4e797d6e9d2 129-134
+runtime/src/host/main.cpp
+  h_13c4e797d6e9d2 5,12,57
+runtime/src/host/window.cpp
+  h_13c4e797d6e9d2 44-46
+tests/runtime/console_test.cpp
+  h_13c4e797d6e9d2 3,5-8,99-148
+tests/runtime/panel_test.cpp
+  h_13c4e797d6e9d2 200-201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a20587306140cb1c6225cbb56afe05bc7ee7a780",
+  "prompts": {},
+  "humans": {
+    "h_13c4e797d6e9d2": {
+      "author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
