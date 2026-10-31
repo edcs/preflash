@@ -72,3 +72,17 @@ func TestHugePinIsRejected(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "out of range")
 }
+
+func TestMissingBacklightKeyNamesIt(t *testing.T) {
+	for _, key := range []string{"pin", "active_low"} {
+		t.Run(key, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "board.yaml")
+			other := map[string]string{"pin": "active_low: true", "active_low": "pin: gpio4"}[key]
+			src := "name: X\ndisplay:\n  width: 480\n  height: 320\ni2c: []\nbacklight:\n  " + other + "\naudio_codec: es8311\n"
+			require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
+			_, err := Load(path)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "backlight."+key)
+		})
+	}
+}

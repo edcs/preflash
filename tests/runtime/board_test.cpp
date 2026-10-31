@@ -52,3 +52,12 @@ TEST(Board, BadJsonNamesTheField) {
 TEST(Board, UnparsableJsonThrows) {
   EXPECT_THROW(preflash::parse_board("{nope"), std::runtime_error);
 }
+
+TEST(Board, NonObjectRootNamesTheRoot) {
+  try {
+    preflash::parse_board("[]");
+    FAIL() << "expected a throw";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string(e.what()).find("board: root must be an object"), std::string::npos) << e.what();
+  }
+}

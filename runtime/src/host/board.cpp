@@ -18,7 +18,7 @@ using nlohmann::json;
 
 const json& member(const json& obj, const std::string& parent, const char* key) {
   std::string field = parent.empty() ? key : parent + "." + key;
-  if (!obj.is_object()) bad(parent, "must be an object");
+  if (!obj.is_object()) bad(parent.empty() ? "root" : parent, "must be an object");
   auto it = obj.find(key);
   if (it == obj.end()) bad(field, "is missing");
   return *it;

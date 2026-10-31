@@ -58,6 +58,9 @@ func Load(path string) (Board, error) {
 	if err := convertPins(merged); err != nil {
 		return Board{}, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := requireBacklightKeys(merged); err != nil {
+		return Board{}, fmt.Errorf("%s: %w", path, err)
+	}
 	out, err := yaml.Marshal(merged)
 	if err != nil {
 		return Board{}, err
@@ -72,6 +75,18 @@ func Load(path string) (Board, error) {
 		return Board{}, fmt.Errorf("%s: display.width and display.height must be positive", path)
 	}
 	return b, nil
+}
+
+// requireBacklightKeys stops a board that leaves out the backlight pin or
+// polarity, which would otherwise decode to pin 0 and active-high.
+func requireBacklightKeys(merged map[string]any) error {
+	backlight, _ := merged["backlight"].(map[string]any)
+	for _, key := range []string{"pin", "active_low"} {
+		if _, ok := backlight[key]; !ok {
+			return fmt.Errorf("backlight.%s is missing", key)
+		}
+	}
+	return nil
 }
 
 // Resolve returns the JSON that the runtime's parse_board reads.
