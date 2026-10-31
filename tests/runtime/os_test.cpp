@@ -99,6 +99,13 @@ TEST(ErrorCheck, PassesOk) {
   ESP_ERROR_CHECK(ESP_OK);
 }
 
+TEST(ErrorCheck, KeepsCallerVariableNamedLikeOldTemporary) {
+  esp_err_t err_rc_ = ESP_OK;
+  ESP_ERROR_CHECK(err_rc_);
+  err_rc_ = ESP_FAIL;
+  EXPECT_DEATH(ESP_ERROR_CHECK(err_rc_), "ESP_FAIL");
+}
+
 TEST(Unsupported, AbortsNamingTheCall) {
   EXPECT_DEATH(preflash_unsupported("x", "y"), "x");
 }

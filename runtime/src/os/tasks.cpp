@@ -50,6 +50,11 @@ BaseType_t xTaskCreatePinnedToCore(TaskFunction_t task, const char*, uint32_t, v
 }
 
 void vTaskDelay(TickType_t ticks) {
+  // FreeRTOS treats a zero delay as a yield; sleeping for zero may not reschedule.
+  if (ticks == 0) {
+    std::this_thread::yield();
+    return;
+  }
   std::this_thread::sleep_for(preflash::ticks_to_duration(ticks));
 }
 

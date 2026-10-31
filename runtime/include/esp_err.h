@@ -39,12 +39,12 @@ void _esp_error_check_failed(esp_err_t rc, const char* file, int line, const cha
 
 // Always checked, unlike ESP-IDF's NDEBUG build: a hidden failure in the
 // simulator would only move the crash somewhere harder to read.
-#define ESP_ERROR_CHECK(x)                                                         \
-  do {                                                                             \
-    esp_err_t err_rc_ = (x);                                                       \
-    if (__builtin_expect(err_rc_ != ESP_OK, 0)) {                                  \
-      _esp_error_check_failed(err_rc_, __FILE__, __LINE__, __func__, #x);          \
-    }                                                                              \
+#define ESP_ERROR_CHECK(x)                                                                        \
+  do {                                                                                            \
+    esp_err_t preflash_err_check_rc_ = (x);                                                       \
+    if (__builtin_expect(preflash_err_check_rc_ != ESP_OK, 0)) {                                  \
+      _esp_error_check_failed(preflash_err_check_rc_, __FILE__, __LINE__, __func__, #x);          \
+    }                                                                                             \
   } while (0)
 
 #ifdef __cplusplus
