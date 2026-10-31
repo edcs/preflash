@@ -1,0 +1,20 @@
+# Values follow Waveshare's BSP, which wins over the wiki where they differ.
+# I2C addresses are 7-bit. The BSP passes the codecs' 8-bit forms
+# (ES8311 0x30, ES7210 0x80), which are these shifted left by one.
+name: ESP32-S3-Touch-LCD-4B
+display:
+  controller: st7701
+  width: 480
+  height: 480
+i2c:
+  - {chip: tca9554, address: 0x20}
+  - {chip: es8311, address: 0x18}
+  - {chip: es7210, address: 0x40}
+  - {chip: gt911, address: 0x5d}
+  - {chip: axp2101, address: 0x34}
+  - {chip: pcf85063, address: 0x51}
+  - {chip: qmi8658, address: 0x6b}
+backlight:
+  pin: gpio4
+  active_low: true
+audio_codec: es8311
