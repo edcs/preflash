@@ -35,7 +35,8 @@ TEST(Tasks, CreateRunsAndNotifyWakes) {
   TaskHandle_t handle = nullptr;
   ASSERT_EQ(xTaskCreate(waiter, "waiter", 2048, &wake, 1, &handle), pdPASS);
   ASSERT_NE(handle, nullptr);
-  while (!wake.started) vTaskDelay(1);
+  for (int i = 0; i < 1000 && !wake.started; ++i) vTaskDelay(1);
+  ASSERT_TRUE(wake.started);
   EXPECT_EQ(wake.taken, 0u);
   xTaskNotifyGive(handle);
   for (int i = 0; i < 1000 && wake.taken == 0; ++i) vTaskDelay(1);
