@@ -1,0 +1,5 @@
+name: Modded 4B
+extends: ESP32-S3-Touch-LCD-4B
+changes:
+  backlight:
+    enable: gpio43

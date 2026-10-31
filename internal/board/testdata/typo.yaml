@@ -1,0 +1,5 @@
+name: Typo
+extends: ESP32-S3-Touch-LCD-4B
+changes:
+  backlite:
+    enable: gpio43
