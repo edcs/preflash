@@ -15,6 +15,7 @@ struct Pin {
   bool latch = false;       // what gpio_set_level last asked for
   bool outside = false;     // what something off the chip drives, seen when output is off
   bool held = false;        // the pad keeps its level whatever the rest of this says
+  int epoch = 0;            // how many times the direction was set
   bool level = false;       // what's on the pad
 };
 
@@ -52,6 +53,11 @@ bool gpio_is_output(int pin) {
   return g_pins[pin].output;
 }
 
+int gpio_direction_epoch(int pin) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  return g_pins[pin].epoch;
+}
+
 bool gpio_is_held(int pin) {
   std::lock_guard<std::mutex> lock(g_mutex);
   return g_pins[pin].held;
@@ -69,6 +75,7 @@ esp_err_t gpio_set_direction(gpio_num_t gpio_num, gpio_mode_t mode) {
   if (!exists(gpio_num)) return ESP_ERR_INVALID_ARG;
   std::lock_guard<std::mutex> lock(g_mutex);
   Pin& pin = g_pins[gpio_num];
+  pin.epoch++;
   pin.output = (mode & kOutputBit) != 0;
   pin.open_drain = (mode & kOpenDrainBit) != 0;
   settle(&pin);

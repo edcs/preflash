@@ -62,35 +62,51 @@ void draw(int x1, int y1, int x2, int y2, const void* rgb565) {
 }
 
 // Once firmware sets a level, the PWM peripheral owns the backlight pin, so a plain
-// output level no longer matters. A held pad ignores the peripheral until it is released.
-std::atomic<bool> g_pwm_owns_pin{false};
+// output level no longer matters. Setting the pin up as a GPIO again takes it back, which
+// is what the direction epoch tells. A held pad ignores the peripheral until it is released.
+std::atomic<int> g_pwm_epoch{-1};
 
 void set_brightness(int pct) {
   g_brightness = std::clamp(pct, 0, 100);
-  g_pwm_owns_pin = true;
+  g_pwm_epoch = gpio_direction_epoch(board().backlight.pin);
 }
 
-// A separate enable pin cuts the driver's power, so it wins over any PWM level. The
-// backlight pin itself, when firmware holds or drives it directly, is plain on or off.
-int brightness() {
-  const std::optional<int>& enable = board().backlight.enable_pin;
-  if (enable && !gpio_read(*enable)) return 0;
+namespace {
+
+// What the screen shows, given the enable pin's level if the board has one. The level
+// is passed in so a status line reads the pin once.
+int shown(std::optional<bool> enable_high) {
+  if (enable_high && !*enable_high) return 0;
   const auto& bl = board().backlight;
-  if (gpio_is_held(bl.pin) || (gpio_is_output(bl.pin) && !g_pwm_owns_pin)) {
+  const bool pwm_owns = g_pwm_epoch == gpio_direction_epoch(bl.pin);
+  if (gpio_is_held(bl.pin) || (gpio_is_output(bl.pin) && !pwm_owns)) {
     const bool on = gpio_read(bl.pin) != bl.active_low;
     return on ? g_brightness.load() : 0;
   }
   return g_brightness;
 }
 
+std::optional<bool> enable_level() {
+  const std::optional<int> enable = board().backlight.enable_pin;
+  if (!enable) return std::nullopt;
+  return gpio_read(*enable);
+}
+
+}  // namespace
+
+// A separate enable pin cuts the driver's power, so it wins over any PWM level. The
+// backlight pin itself, when firmware holds or drives it directly, is plain on or off.
+int brightness() { return shown(enable_level()); }
+
 int brightness_level() { return g_brightness; }
 
 std::string backlight_status() {
+  const std::optional<bool> level = enable_level();
   std::string status =
-      "brightness: " + std::to_string(brightness()) + " (pwm " + std::to_string(g_brightness);
-  const std::optional<int> enable = board().backlight.enable_pin;
-  if (enable) {
-    status += ", enable gpio" + std::to_string(*enable) + (gpio_read(*enable) ? " high" : " low");
+      "brightness: " + std::to_string(shown(level)) + " (pwm " + std::to_string(g_brightness);
+  if (level) {
+    status += ", enable gpio" + std::to_string(*board().backlight.enable_pin) +
+              (*level ? " high" : " low");
   }
   return status + ")";
 }

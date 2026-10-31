@@ -502,6 +502,33 @@ TEST(Backlight, HeldPinDecidesUntilReleased) {
   GTEST_FLAG_SET(death_test_style, "fast");
 }
 
+// A board with an active-high backlight, driven as a plain output and then by PWM.
+TEST(Backlight, DirectOutputDecidesUntilPwmTakesOver) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  EXPECT_EXIT(
+      {
+        const char* path = std::getenv("PREFLASH_BOARD");
+        std::ofstream(path) << R"({"name": "Test", "display": {"width": 16, "height": 8},
+                                   "i2c": [], "audio_codec": "none",
+                                   "backlight": {"pin": 4, "active_low": false}})";
+        bsp_display_brightness_set(80);
+        fs::remove(path);
+        if (preflash::panel::brightness() != 80) _exit(1);
+        gpio_reset_pin(GPIO_NUM_4);  // firmware takes the pin back from the PWM
+        gpio_set_direction(GPIO_NUM_4, GPIO_MODE_OUTPUT);
+        gpio_set_level(GPIO_NUM_4, 0);
+        if (preflash::panel::brightness() != 0) _exit(2);
+        gpio_set_level(GPIO_NUM_4, 1);
+        if (preflash::panel::brightness() != 80) _exit(3);
+        gpio_set_level(GPIO_NUM_4, 0);
+        bsp_display_brightness_set(50);  // PWM owns it again
+        if (preflash::panel::brightness() != 50) _exit(4);
+        _exit(0);
+      },
+      testing::ExitedWithCode(0), "");
+  GTEST_FLAG_SET(death_test_style, "fast");
+}
+
 TEST(BspI2c, HandleReachesTheBus) {
   EXPECT_EQ(bsp_i2c_init(), ESP_OK);
   i2c_master_bus_handle_t bus = bsp_i2c_get_handle();

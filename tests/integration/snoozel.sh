@@ -254,8 +254,7 @@ quit_app
 
 # The stock board has no enable pin, so the same low line blanks nothing.
 start_run_at "$noon"
-send "@sim brightness"
-wait_for_output "brightness: 0 (pwm 100)"
+wait_for_brightness "brightness: 0 (pwm 100)"
 wait_for_chips
 wait_for_brightness "brightness: 100 (pwm 100)"
 if grep -qF "enable gpio" "$app_log"; then
@@ -264,7 +263,8 @@ fi
 quit_app
 
 after="$(snapshot)"
-[ -z "$(git -C "$copy" status --porcelain)" ] || fail "the project changed" "$after"
-[ "$before" = "$after" ] || fail "the project gained files" "$after"
+[ -z "$(git -C "$copy" status --porcelain)" ] || fail "the project changed" "$(git -C "$copy" status --porcelain)"
+[ "$before" = "$after" ] || fail "files in the project changed, were added or were removed" \
+  "$(diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") | grep -v 'shasum' || true)"
 
 echo "PASS: snoozel"
