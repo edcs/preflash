@@ -7,7 +7,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <random>
-#include <string>
 
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
@@ -31,21 +30,19 @@ extern "C" {
 uint32_t esp_log_timestamp(void) { return static_cast<uint32_t>(esp_timer_get_time() / 1000); }
 
 void esp_log_write(esp_log_level_t level, const char* tag, const char* format, ...) {
-  // Devices default to info; chattier levels stay quiet unless a build asks.
+  // Devices default to info, so chattier levels stay quiet here too.
   if (level == ESP_LOG_NONE || level > ESP_LOG_INFO) return;
   static const char kLetters[] = "NEWIDV";
-  char line[512];
-  int used = std::snprintf(line, sizeof line, "%c (%u) %s: ", kLetters[level], esp_log_timestamp(),
-                           tag);
+  // The lock keeps one line whole when several tasks log at once.
+  flockfile(stdout);
+  std::fprintf(stdout, "%c (%u) %s: ", kLetters[level], esp_log_timestamp(), tag);
   va_list args;
   va_start(args, format);
-  std::vsnprintf(line + used, sizeof line - used - 1, format, args);
+  std::vfprintf(stdout, format, args);
   va_end(args);
-  // One write per line, so lines from different tasks don't interleave.
-  std::string out(line);
-  out += '\n';
-  std::fwrite(out.data(), 1, out.size(), stdout);
+  std::fputc('\n', stdout);
   std::fflush(stdout);
+  funlockfile(stdout);
 }
 
 uint32_t esp_random(void) {

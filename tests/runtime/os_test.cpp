@@ -108,7 +108,7 @@ TEST(Restart, ReExecsTheBinary) {
   const fs::path state = fs::temp_directory_path() / ("preflash_restart_" + std::to_string(getpid()));
   fs::create_directories(state);
   const std::string command =
-      "PREFLASH_STATE=" + state.string() + " " + RESTART_HELPER + " 2>&1";
+      "PREFLASH_STATE='" + state.string() + "' '" + RESTART_HELPER + "' 2>&1";
   FILE* pipe = popen(command.c_str(), "r");
   ASSERT_NE(pipe, nullptr);
   std::string output;
