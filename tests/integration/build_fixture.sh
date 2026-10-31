@@ -27,7 +27,7 @@ configure() {
 }
 
 listing() {
-  (cd "$work/project" && find . -type f -print0 | sort -z | xargs -0 shasum)
+  (cd "$work/project" && find . -type f -print0 | xargs -0 shasum | sort)
 }
 
 expect_output() {

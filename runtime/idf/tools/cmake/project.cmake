@@ -353,6 +353,11 @@ endfunction()
 # Replaces CMake's project() as ESP-IDF's does, which is why a project's
 # CMakeLists.txt needs nothing after this call to get its app.
 macro(project name)
+  # CXX_STANDARD 23 below is rejected by CMake older than 3.20, and projects may
+  # declare a lower cmake_minimum_required, so stop here with a clear message.
+  if(CMAKE_VERSION VERSION_LESS 3.20)
+    message(FATAL_ERROR "Preflash needs CMake 3.20 or newer, found ${CMAKE_VERSION}")
+  endif()
   set(PREFLASH_CONFIG_DIR "${CMAKE_BINARY_DIR}/config")
   preflash_load_sdkconfig("${PREFLASH_CONFIG_DIR}")
 
