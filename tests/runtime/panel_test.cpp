@@ -190,6 +190,13 @@ TEST(Panel, RotatedFlushKeepsPhysicalOrientation) {
     EXPECT_EQ(pixel(frame, c.first_x, c.first_y), kRed) << "rotation " << c.rotation;
     EXPECT_EQ(pixel(frame, c.last_x, c.last_y), kRed) << "rotation " << c.rotation;
   }
+  // A device added later doesn't take the place of the touch input.
+  lv_indev_t* touch_input = bsp_display_get_input_dev();
+  ASSERT_NE(touch_input, nullptr);
+  EXPECT_EQ(lv_indev_get_type(touch_input), LV_INDEV_TYPE_POINTER);
+  lv_indev_t* added = lv_indev_create();
+  EXPECT_EQ(bsp_display_get_input_dev(), touch_input);
+  lv_indev_delete(added);
   bsp_display_unlock();
 }
 

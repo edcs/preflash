@@ -54,9 +54,12 @@ app="$scratch/build/app"
 # The driver doesn't exist, so a run that started SDL's video would fail. A windowed
 # run has to fail here, or this check proves nothing.
 export SDL_VIDEODRIVER=not_a_driver
-if output="$("$app" 2>&1 < /dev/null)"; then
-  fail "a windowed run worked with no video driver" "$output"
-fi
+unset PREFLASH_HEADLESS
+start_app "$app"
+wait_for_exit 50 || fail "a windowed run worked with no video driver" "$(cat "$app_log")"
+finish_app
+[ "$app_status" -ne 0 ] || fail "a windowed run exited cleanly with no video driver" "$(cat "$app_log")"
+output="$(cat "$app_log")"
 case "$output" in
   *"preflash: couldn't start SDL"*) ;;
   *) fail "no message about SDL" "$output" ;;
@@ -107,11 +110,7 @@ wait_for_output "ready, reset reason"
 send "hold"
 wait_for_output "holding the lock"
 kill -INT "$app_pid"
-for tenths in $(seq 1 20); do
-  kill -0 "$app_pid" 2>/dev/null || break
-  sleep 0.1
-done
-kill -0 "$app_pid" 2>/dev/null && fail "still running 2 s after SIGINT" "$(cat "$app_log")"
+wait_for_exit 20 || fail "still running 2 s after SIGINT" "$(cat "$app_log")"
 finish_app
 [ "$app_status" -eq 0 ] || fail "SIGINT exited with status $app_status" "$(cat "$app_log")"
 

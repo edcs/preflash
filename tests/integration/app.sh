@@ -27,6 +27,16 @@ wait_for_output() {
   fail "timed out waiting for: $text" "$(cat "$app_log")"
 }
 
+# Gives the app some tenths of a second to end by itself. False if it's still up.
+wait_for_exit() {
+  local tenths
+  for tenths in $(seq 1 "$1"); do
+    kill -0 "$app_pid" 2>/dev/null || return 0
+    sleep 0.1
+  done
+  ! kill -0 "$app_pid" 2>/dev/null
+}
+
 # Closes stdin and collects the exit status in $app_status.
 finish_app() {
   exec 3>&-

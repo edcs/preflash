@@ -47,8 +47,11 @@ int ping_command(int, char**) {
   return 0;
 }
 
+void restart_now(void*) { esp_restart(); }
+
+// Off the console's thread, as a button or a timer would, while stdin sits idle.
 int restart_command(int, char**) {
-  esp_restart();
+  xTaskCreate(restart_now, "restart", 4096, nullptr, 2, nullptr);
   return 0;
 }
 

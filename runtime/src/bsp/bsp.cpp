@@ -24,7 +24,12 @@ lv_display_t* bsp_display_start_with_config(const bsp_display_cfg_t* cfg) {
   return lvgl_port_add_disp(&display);
 }
 
-lv_indev_t* bsp_display_get_input_dev(void) { return lv_indev_get_next(nullptr); }
+lv_indev_t* bsp_display_get_input_dev(void) {
+  // New devices join at the head of LVGL's list, so the port's touch input stays last.
+  lv_indev_t* last = nullptr;
+  for (lv_indev_t* i = lv_indev_get_next(nullptr); i; i = lv_indev_get_next(i)) last = i;
+  return last;
+}
 
 bool bsp_display_lock(uint32_t timeout_ms) { return lvgl_port_lock(timeout_ms); }
 
