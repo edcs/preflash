@@ -10,6 +10,7 @@
 #include <string>
 
 #include "preflash/board.h"
+#include "preflash/bus.h"
 #include "preflash/touch.h"
 
 namespace preflash::panel {
@@ -61,7 +62,14 @@ void draw(int x1, int y1, int x2, int y2, const void* rgb565) {
 
 void set_brightness(int pct) { g_brightness = std::clamp(pct, 0, 100); }
 
-int brightness() { return g_brightness; }
+// A separate enable pin cuts the driver's power, so it wins over any PWM level.
+int brightness() {
+  const std::optional<int>& enable = board().backlight.enable_pin;
+  if (enable && !gpio_read(*enable)) return 0;
+  return g_brightness;
+}
+
+int brightness_level() { return g_brightness; }
 
 bool take_frame(std::vector<uint8_t>* out) {
   Pixels& p = pixels();

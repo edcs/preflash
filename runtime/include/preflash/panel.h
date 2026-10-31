@@ -14,7 +14,8 @@ void draw(int x1, int y1, int x2, int y2, const void* rgb565);
 
 // A percentage, clamped to 0-100.
 void set_brightness(int pct);
-int brightness();
+int brightness();        // what the screen shows, after any backlight enable pin
+int brightness_level();  // what firmware last set
 
 // Copies the whole panel. False, leaving out alone, if nothing changed since the last call.
 bool take_frame(std::vector<uint8_t>* out);

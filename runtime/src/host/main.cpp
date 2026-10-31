@@ -14,6 +14,7 @@
 
 #include "freertos/task.h"
 #include "preflash/board.h"
+#include "preflash/chips.h"
 #include "preflash/control.h"
 #include "preflash/panel.h"
 #include "preflash/touch.h"
@@ -80,7 +81,7 @@ int main() {
   signal(SIGINT, quit);
 
   try {
-    preflash::board();
+    preflash::attach_chips(preflash::board());
   } catch (const std::exception& e) {
     std::fprintf(stderr, "preflash: %s\n", e.what());
     return 1;

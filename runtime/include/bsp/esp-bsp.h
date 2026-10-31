@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 #include "bsp/display.h"
+#include "driver/gpio.h"
+#include "driver/i2c_master.h"
 #include "esp_err.h"
 #include "esp_lvgl_port.h"
 #include "lvgl.h"
@@ -11,9 +13,17 @@
 #define BSP_CAPS_DISPLAY 1
 #define BSP_CAPS_TOUCH 1
 
+// A call, because the pin comes from the board file rather than the compile.
+#define BSP_LCD_BACKLIGHT ((gpio_num_t)preflash_backlight_pin())
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+int preflash_backlight_pin(void);
+
+esp_err_t bsp_i2c_init(void);
+i2c_master_bus_handle_t bsp_i2c_get_handle(void);
 
 typedef struct {
   lvgl_port_cfg_t lvgl_port_cfg;
