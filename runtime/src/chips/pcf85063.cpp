@@ -1,8 +1,12 @@
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "preflash/chips.h"
 
@@ -33,17 +37,44 @@ constexpr int kSecondsInHour = 3600;
 constexpr int kSecondsInDay = 86400;
 constexpr int kTmYearOf2000 = 100;
 
+// What a restart carries over, in the environment: the moment the registers show,
+// whether the oscillator was stopped, and registers 00h to 11h in hex.
+constexpr const char* kCarryEnv = "PREFLASH_RTC_CARRY";
+constexpr size_t kCarriedRegisters = kLastRegister + 1;
+
+// The chips alive now, newest last. A board has one RTC; if a test makes more, the
+// newest is the one that carries on.
+std::mutex g_live_mutex;
+std::vector<Pcf85063*> g_live;
+
+void track(Pcf85063* chip) {
+  std::lock_guard<std::mutex> lock(g_live_mutex);
+  g_live.push_back(chip);
+}
+
 constexpr uint8_t to_bcd(int value) { return static_cast<uint8_t>((value / 10) << 4 | value % 10); }
 constexpr int from_bcd(uint8_t value) { return (value >> 4) * 10 + (value & 0x0f); }
 
 }  // namespace
 
-Pcf85063::Pcf85063() : RegisterChip("pcf85063") {
+Pcf85063::Pcf85063() : Pcf85063([] { return std::time(nullptr); }) {}
+
+Pcf85063::Pcf85063(std::function<std::time_t()> clock)
+    : RegisterChip("pcf85063"), clock_(std::move(clock)) {
   // Section 8.2.1.3, table 8, except that the time registers start from the
   // Mac's clock, as a chip does that's been running on its cell.
   std::fill(regs_.begin() + kSecondAlarm, regs_.begin() + kWeekdayAlarm + 1, 0x80);
   regs_[kTimerMode] = 0x18;
-  counted_to_ = std::time(nullptr);
+  counted_to_ = clock_();
+  if (const char* carried = std::getenv(kCarryEnv)) {
+    // A restart's own variable: it wins over PREFLASH_RTC_START, which only sets
+    // where a fresh process begins. Taken once, so a later chip starts fresh.
+    const std::string value = carried;
+    unsetenv(kCarryEnv);
+    restore(value);
+    track(this);
+    return;
+  }
   std::tm t = {};
   gmtime_r(&counted_to_, &t);
   // A chosen start lets a test boot firmware at any time of day. The clock runs on from it.
@@ -66,15 +97,64 @@ Pcf85063::Pcf85063() : RegisterChip("pcf85063") {
   }
   set_fields(t);
   regs_[kWeekdays] = static_cast<uint8_t>(t.tm_wday);
+  track(this);  // last, because a constructor that throws never runs the destructor
+}
+
+Pcf85063::~Pcf85063() {
+  std::lock_guard<std::mutex> lock(g_live_mutex);
+  g_live.erase(std::remove(g_live.begin(), g_live.end(), this), g_live.end());
+}
+
+void Pcf85063::save_for_restart() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  count_time();
+  std::string value = std::to_string(static_cast<long long>(counted_to_)) +
+                      (oscillator_stopped_ ? " 1 " : " 0 ");
+  char byte[3];
+  for (size_t i = 0; i < kCarriedRegisters; ++i) {
+    std::snprintf(byte, sizeof byte, "%02x", regs_[i]);
+    value += byte;
+  }
+  setenv(kCarryEnv, value.c_str(), 1);
+}
+
+void Pcf85063::restore(const std::string& value) {
+  long long counted = 0;
+  int stopped = 0;
+  char hex[2 * kCarriedRegisters + 1] = {};
+  int end = 0;
+  const bool parsed = std::sscanf(value.c_str(), "%lld %d %36s%n", &counted, &stopped, hex, &end) == 3 &&
+                      std::strlen(hex) == 2 * kCarriedRegisters && value[end] == '\0';
+  if (!parsed)
+    throw std::runtime_error(std::string(kCarryEnv) + " isn't what a restart leaves: " + value);
+  for (size_t i = 0; i < kCarriedRegisters; ++i) {
+    unsigned byte = 0;
+    if (std::sscanf(hex + 2 * i, "%2x", &byte) != 1)
+      throw std::runtime_error(std::string(kCarryEnv) + " isn't what a restart leaves: " + value);
+    regs_[i] = static_cast<uint8_t>(byte);
+  }
+  counted_to_ = static_cast<std::time_t>(counted);
+  oscillator_stopped_ = stopped != 0;
+}
+
+void carry_chips_across_restart() {
+  Pcf85063* newest = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(g_live_mutex);
+    if (!g_live.empty()) newest = g_live.back();
+  }
+  if (newest) newest->save_for_restart();
 }
 
 // Section 8.4: an access blocks the counters, so all of one transfer is one moment.
 bool Pcf85063::write(std::span<const uint8_t> data) {
+  std::lock_guard<std::mutex> lock(mutex_);
   count_time();
   return RegisterChip::write(data);
 }
 
 bool Pcf85063::read(std::span<uint8_t> out) {
+  std::lock_guard<std::mutex> lock(mutex_);
   count_time();
   return RegisterChip::read(out);
 }
@@ -94,7 +174,7 @@ void Pcf85063::set_fields(const std::tm& t) {
 // datasheet doesn't say what an impossible date does at midnight: here it
 // normalises, as timegm does.
 void Pcf85063::count_time() {
-  const std::time_t now = std::time(nullptr);
+  const std::time_t now = clock_();
   // A stopped oscillator counts nothing, so the time is held where it was set
   // and the stopped interval is not added when the flag is cleared.
   if (oscillator_stopped_) {
@@ -133,6 +213,8 @@ void Pcf85063::count_time() {
 }
 
 uint8_t Pcf85063::load(uint8_t reg) {
+  // Only reachable by setting the address past the end, since a burst wraps to 00h.
+  if (reg > kLastRegister) refuse(reg, "reading it has no model");
   if (reg == kSeconds) return regs_[reg] | (oscillator_stopped_ ? kOscillatorStopped : 0);
   return regs_[reg];
 }
