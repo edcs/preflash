@@ -76,7 +76,7 @@ go build -o preflash ./cmd/preflash
 export PATH="$PWD:$PATH"
 ```
 
-Keep the checkout, because the binary finds `runtime/` beside its source. Set `PREFLASH_ROOT` to the checkout if you move the binary. There are no packaged releases yet.
+Keep the checkout where it is, because the binary finds `runtime/` by the path it was built from. If you move the checkout, rebuild or set `PREFLASH_ROOT` to its new path. There are no packaged releases yet.
 
 ## Quick start
 
@@ -128,6 +128,8 @@ Lines starting `@sim ` go to the simulator, and everything else goes to the firm
   echo "@sim quit"
 } | preflash run --headless
 ```
+
+The `sleep`s count from the start of the pipeline, and that includes the build, so run the project once before you script against it.
 
 To boot firmware at a chosen moment, set `PREFLASH_RTC_START=2026-11-01T22:00:00Z`. The simulated RTC starts there and runs on, and it keeps the firmware's time across a restart.
 
