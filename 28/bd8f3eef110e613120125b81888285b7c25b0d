@@ -1,0 +1,23 @@
+tests/runtime/panel_test.cpp
+  s_82b4983a83db4b::t_fac289ddcc2339 4
+  s_82b4983a83db4b::t_9cc0e4aa0d7035 220-308
+  s_82b4983a83db4b::t_206328b2af985d 309
+tests/integration/display.sh
+  s_82b4983a83db4b::t_e2cc90155d25fa 95-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "28bd8f3eef110e613120125b81888285b7c25b0d",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,92 @@
+runtime/src/net/events.cpp
+  s_82b4983a83db4b::t_4dd5a3ee06f855 227
+  s_82b4983a83db4b::t_dd018ca1e30f2c 225-226
+tests/runtime/net_test.cpp
+  s_82b4983a83db4b::t_dd018ca1e30f2c 16,297-329
+  s_82b4983a83db4b::t_90f9ad8a043ec4 330-332
+runtime/src/host/window.cpp
+  s_82b4983a83db4b::t_907a8650a8511b 171-172
+  s_82b4983a83db4b::t_4dfdd95354bb59 7
+  s_82b4983a83db4b::t_8f7016f3ae5a3c 31-32
+  s_82b4983a83db4b::t_0693f843ca2b18 160-162
+tests/runtime/audio_test.cpp
+  s_82b4983a83db4b::t_64d18c72618008 34-35
+  s_82b4983a83db4b::t_c30af9cb1a14ff 3,5
+  s_82b4983a83db4b::t_d63534166dd347 135-206
+  s_82b4983a83db4b::t_fc2898ed8c2354 51-54,58
+runtime/include/preflash/audio.h
+  s_82b4983a83db4b::t_e5fe8786b0f1c9 4,23-25,28-32
+  s_82b4983a83db4b::t_983505d7460341 33
+runtime/src/audio/codec.cpp
+  s_82b4983a83db4b::t_b837471306cae2 175-179
+  s_82b4983a83db4b::t_0aa9832d48e79d 171-174
+  s_82b4983a83db4b::t_7a7053538d0e39 45-47,51
+  s_82b4983a83db4b::t_c4c95252471ebd 39-42
+  s_82b4983a83db4b::t_a7effda6157896 65-66,69-77
+  s_82b4983a83db4b::t_be958b207ee60b 30-31
+  s_82b4983a83db4b::t_8a9d7138e12edc 105-122
+  s_82b4983a83db4b::t_6563b4151ac934 6
+  s_82b4983a83db4b::t_7dde4ece4ae7de 129-131,133
+runtime/src/chips/qmi8658.cpp
+  s_82b4983a83db4b::t_277dd41fa96299 53-55
+runtime/src/chips/pcf85063.cpp
+  s_82b4983a83db4b::t_ded39a6a0d43f5 69-74,76-77
+  s_82b4983a83db4b::t_2344f631d5b58f 101,103-129,132-133,135-141,149,155
+  s_82b4983a83db4b::t_18d13ff69e4510 75
+  s_82b4983a83db4b::t_15f88899f3f078 68
+  s_82b4983a83db4b::t_983dbb84905e3e 60-63
+  s_82b4983a83db4b::t_01a2b21373c71a 50-54
+  s_82b4983a83db4b::t_ae0e184e22175e 40-49
+  s_82b4983a83db4b::t_a3c26d1c66146f 217
+  s_82b4983a83db4b::t_c199365318b5e3 100
+  s_82b4983a83db4b::t_728542943af554 175
+  s_82b4983a83db4b::t_33bbda9235f244 2,4,6,9
+  s_82b4983a83db4b::t_c812aa68f13610 102
+  s_82b4983a83db4b::t_2c63fb68af9a86 142-144
+runtime/include/preflash/chips.h
+  s_82b4983a83db4b::t_a5ae6d203c2cdb 47-48
+  s_82b4983a83db4b::t_db32ad36ba97db 9
+  s_82b4983a83db4b::t_85cb1268ed1d25 70
+  s_82b4983a83db4b::t_6ae00f6988fee8 71
+  s_82b4983a83db4b::t_7bff54cd036842 66
+  s_82b4983a83db4b::t_c57b7e1859f81a 57-59
+  s_82b4983a83db4b::t_a61df4c68bd688 103-105
+  s_82b4983a83db4b::t_b0ed7eb137cf7d 99
+  s_82b4983a83db4b::t_d1607767141573 42-43,49
+  s_82b4983a83db4b::t_9277c4dbe6d132 106
+runtime/src/chips/axp2101.cpp
+  s_82b4983a83db4b::t_b57c0555e6fb70 15
+  s_82b4983a83db4b::t_d8157a501ecc09 34-48
+  s_82b4983a83db4b::t_1d6625c9f8b661 49-50
+tests/runtime/chips_test.cpp
+  s_82b4983a83db4b::t_3021fb432a612f 352
+  s_82b4983a83db4b::t_ad60f0799f2206 364
+  s_82b4983a83db4b::t_15466d2cd20717 264-265,268
+  s_82b4983a83db4b::t_3b8b1f6b52f253 250-251,255
+  s_82b4983a83db4b::t_74959a5e8eb985 69-76
+  s_82b4983a83db4b::t_129be5f00ab516 10
+  s_82b4983a83db4b::t_4244959d4681e5 344-351,353-363,365-379,392-413
+  s_82b4983a83db4b::t_1949a5c7908f8f 295-296,300,302
+  s_82b4983a83db4b::t_d2017d602a3a8b 414
+runtime/src/os/system.cpp
+  s_82b4983a83db4b::t_e108532ee7f12f 122
+  s_82b4983a83db4b::t_df950da959af56 20
+tests/integration/app.sh
+  s_82b4983a83db4b::t_d9fa549ccb054c 40-41,44-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d3e7ec8c03c802b0ef49e2c305bc539cefb85d2c",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
