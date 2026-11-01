@@ -1,4 +1,7 @@
 #include <crt_externs.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <signal.h>
 #include <mach-o/dyld.h>
 #include <unistd.h>
 
@@ -22,6 +25,23 @@ namespace {
 constexpr const char* kRestartedEnv = "PREFLASH_RESTARTED";
 
 constexpr size_t kReportedFreeBytes = 256 * 1024;
+
+constexpr long kMaxDescriptorsToMark = 65536;
+
+// What the new process inherits through exec: every descriptor above the
+// standard three stays open unless marked, and the calling thread's blocked
+// signals stay blocked.
+void prepare_clean_exec() {
+  long limit = sysconf(_SC_OPEN_MAX);
+  if (limit < 0 || limit > kMaxDescriptorsToMark) limit = kMaxDescriptorsToMark;
+  for (int fd = STDERR_FILENO + 1; fd < limit; ++fd) {
+    const int flags = fcntl(fd, F_GETFD);
+    if (flags != -1) fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+  }
+  sigset_t none;
+  sigemptyset(&none);
+  pthread_sigmask(SIG_SETMASK, &none, nullptr);
+}
 
 }  // namespace
 
@@ -82,6 +102,7 @@ void esp_restart(void) {
     preflash_unsupported("esp_restart", "the executable's path is too long to re-run");
   }
   setenv(kRestartedEnv, "1", 1);
+  prepare_clean_exec();
   execv(path, *_NSGetArgv());
   preflash_unsupported("esp_restart", "re-running the executable failed");
 }
