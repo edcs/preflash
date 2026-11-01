@@ -1,0 +1,27 @@
+internal/project/project_test.go
+  s_82b4983a83db4b::t_c5936a284fbaea 85,92-104
+  s_82b4983a83db4b::t_3d9e0ce4c8b55e 105-106
+runtime/idf/tools/cmake/project.cmake
+  s_82b4983a83db4b::t_c5936a284fbaea 105-106
+internal/project/project.go
+  s_82b4983a83db4b::t_c5936a284fbaea 54-55,59-73,76-83,89-120
+  s_82b4983a83db4b::t_e33208afee30e6 121
+tests/integration/build_fixture.sh
+  s_82b4983a83db4b::t_c61ab4eeeb201f 159-168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aa403641f7745c5bfdf40b7151bfa495f93fc0d1",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
