@@ -1,6 +1,9 @@
+#include <pthread.h>
+
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <string>
 #include <system_error>
 #include <thread>
 
@@ -8,10 +11,11 @@
 #include "preflash/fail.h"
 #include "ticks.h"
 
-// A task is a detached thread that owns one notification count. Tasks are
-// never freed: the handle must stay valid for as long as anyone holds it, and
-// FreeRTOS firmware that deletes tasks isn't supported yet.
+// A task is a detached thread that owns one notification count. Blocks are
+// never freed, even once a task has deleted itself: a handle must stay valid for
+// as long as anyone holds it.
 struct tskTaskControlBlock {
+  std::string name;
   std::mutex mutex;
   std::condition_variable wake;
   uint32_t notifications = 0;
@@ -31,10 +35,11 @@ tskTaskControlBlock* current_task() {
 
 extern "C" {
 
-BaseType_t xTaskCreatePinnedToCore(TaskFunction_t task, const char*, uint32_t, void* parameter,
+BaseType_t xTaskCreatePinnedToCore(TaskFunction_t task, const char* name, uint32_t, void* parameter,
                                    UBaseType_t, TaskHandle_t* created, BaseType_t) {
   if (!task) return pdFAIL;
   auto* block = new tskTaskControlBlock;
+  if (name) block->name = name;
   // Set before the thread starts, so the task can see its own handle.
   if (created) *created = block;
   try {
@@ -57,6 +62,21 @@ void vTaskDelay(TickType_t ticks) {
     return;
   }
   std::this_thread::sleep_for(preflash::ticks_to_duration(ticks));
+}
+
+void vTaskDelete(TaskHandle_t task) {
+  // A host thread can't be stopped from outside without leaving its locks held.
+  if (task && task != current_task()) {
+    preflash_unsupported("vTaskDelete", "a task can only delete itself");
+  }
+  // Ends the thread here without unwinding it, as FreeRTOS would.
+  pthread_exit(nullptr);
+}
+
+TaskHandle_t xTaskGetCurrentTaskHandle(void) { return current_task(); }
+
+char* pcTaskGetName(TaskHandle_t task) {
+  return (task ? task : current_task())->name.data();
 }
 
 BaseType_t xTaskNotifyGive(TaskHandle_t task) {

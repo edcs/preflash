@@ -89,6 +89,8 @@ A clean run doesn't prove the hardware will work. Preflash can't show you:
 
 OTA isn't simulated either. The running slot is always valid, and starting a download fails with a message saying so, so update code stays untested.
 
+With `CONFIG_ESP_TASK_WDT_INIT` set, the task watchdog watches subscribed tasks and stops the process on a panic, where a device would restart. It doesn't watch idle tasks, so an idle task starved of CPU won't trip it. A task can delete itself with `vTaskDelete`, but deleting another task stops the process.
+
 A call Preflash doesn't implement fails loudly and names the call. If your firmware stops on one, it needs a stand-in.
 
 ## Tests
