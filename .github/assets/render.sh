@@ -1,6 +1,7 @@
 #!/bin/sh
 # Draws hero.png and panels.png from source/ at twice their CSS size. Needs
-# Google Chrome. The images in source/ are real captures from a run.
+# Google Chrome, and a network connection for JetBrains Mono: offline, hero.png
+# falls back to another font. The images in source/ are real captures from a run.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 chrome="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"

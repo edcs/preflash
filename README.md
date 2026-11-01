@@ -93,7 +93,7 @@ Then run it:
 preflash run --board ESP32-S3-Touch-LCD-4B
 ```
 
-The window opens with your firmware running, and your terminal becomes its serial console. Click the window to touch the panel. Preflash reads your project and never writes inside it.
+The window opens with your firmware running, and your terminal becomes its serial console. Click the window to touch the panel. Preflash reads your project and doesn't change it. The one exception is a file you ask for, such as a `@sim shot` saved to a path inside it.
 
 ```sh
 preflash run [--project dir] [--board file] [--headless]
