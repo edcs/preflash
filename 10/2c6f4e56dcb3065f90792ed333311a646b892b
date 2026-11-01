@@ -1,0 +1,21 @@
+runtime/src/host/board.cpp
+  s_82b4983a83db4b::t_5e7983552817de 3-4,32-36,58-59
+tests/runtime/board_test.cpp
+  s_82b4983a83db4b::t_5e7983552817de 64-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "102c6f4e56dcb3065f90792ed333311a646b892b",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
