@@ -223,4 +223,5 @@ TEST(Restart, StartsCleanWithoutInheritedDescriptorsOrBlockedSignals) {
   EXPECT_EQ(status, 0) << output;
   EXPECT_NE(output.find("descriptor=closed"), std::string::npos) << output;
   EXPECT_NE(output.find("signals=unblocked"), std::string::npos) << output;
+  EXPECT_NE(output.find("ignored=no"), std::string::npos) << output;
 }

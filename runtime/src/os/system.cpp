@@ -26,9 +26,10 @@ constexpr const char* kRestartedEnv = "PREFLASH_RESTARTED";
 constexpr size_t kReportedFreeBytes = 256 * 1024;
 
 // Replaces this process with a fresh run of the executable. Plain execv would
-// pass on every open descriptor and the calling thread's blocked signals, so
-// this closes every descriptor but the standard three and clears the mask in
-// the same step, whichever thread opened what. Returns only on failure.
+// pass on every open descriptor, the calling thread's blocked signals and any
+// ignored ones, so this closes every descriptor but the standard three and
+// resets the signals in the same step, whichever thread opened what. Returns
+// only on failure.
 int exec_clean(const char* path, char* const argv[]) {
   posix_spawnattr_t attr;
   posix_spawn_file_actions_t actions;
@@ -38,11 +39,14 @@ int exec_clean(const char* path, char* const argv[]) {
     return -1;
   }
   sigset_t none;
+  sigset_t all;
   sigemptyset(&none);
+  sigfillset(&all);
   int err = posix_spawnattr_setsigmask(&attr, &none);
+  if (!err) err = posix_spawnattr_setsigdefault(&attr, &all);
   if (!err) {
-    err = posix_spawnattr_setflags(&attr,
-                                   POSIX_SPAWN_SETEXEC | POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGMASK);
+    err = posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETEXEC | POSIX_SPAWN_CLOEXEC_DEFAULT |
+                                              POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF);
   }
   for (int fd = STDIN_FILENO; !err && fd <= STDERR_FILENO; ++fd) {
     err = posix_spawn_file_actions_addinherit_np(&actions, fd);

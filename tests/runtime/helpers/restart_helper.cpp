@@ -1,6 +1,6 @@
 // Restarts once, leaving a marker in PREFLASH_STATE; the second run reports it.
 // With PREFLASH_HELPER_LEAK set, the first run also leaves a descriptor open and
-// a signal blocked, and the second run reports whether either survived.
+// a signal blocked and another ignored, and the second run reports whether either survived.
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
@@ -25,8 +25,11 @@ int main() {
       const bool open = fd >= 0 && fcntl(fd, F_GETFD) != -1;
       sigset_t mask;
       pthread_sigmask(SIG_SETMASK, nullptr, &mask);
-      std::printf("descriptor=%s signals=%s\n", open ? "open" : "closed",
-                  sigismember(&mask, SIGUSR1) ? "blocked" : "unblocked");
+      struct sigaction action {};
+      sigaction(SIGUSR2, nullptr, &action);
+      std::printf("descriptor=%s signals=%s ignored=%s\n", open ? "open" : "closed",
+                  sigismember(&mask, SIGUSR1) ? "blocked" : "unblocked",
+                  action.sa_handler == SIG_IGN ? "yes" : "no");
     }
     return 0;
   }
@@ -39,6 +42,7 @@ int main() {
     sigemptyset(&block);
     sigaddset(&block, SIGUSR1);
     pthread_sigmask(SIG_BLOCK, &block, nullptr);
+    signal(SIGUSR2, SIG_IGN);
   } else {
     std::fclose(made);
   }

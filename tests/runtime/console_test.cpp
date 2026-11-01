@@ -52,6 +52,19 @@ TEST(Console, QuotesAndBackslashesSplitLikeTheDevice) {
   EXPECT_EQ(g_args, (std::vector<std::string>{"record", "a b", "c d", "e\"f\""}));
 }
 
+// Cases read from ESP-IDF's split_argv.c.
+TEST(Console, ClosingQuoteEndsTheWordAndUnknownEscapesDrop) {
+  esp_console_cmd_t cmd = {};
+  cmd.command = "record";
+  cmd.func = record;
+  ASSERT_EQ(esp_console_cmd_register(&cmd), ESP_OK);
+  g_args.clear();
+  testing::internal::CaptureStdout();
+  preflash::dispatch_line("record \"a\"b \"\" c\\qd \"e\\\"f\"");
+  testing::internal::GetCapturedStdout();
+  EXPECT_EQ(g_args, (std::vector<std::string>{"record", "a", "b", "", "cd", "e\"f"}));
+}
+
 // The device's splitter doesn't reject an unclosed quote: the word runs to the
 // end of the line.
 TEST(Console, UnclosedQuoteRunsToTheEndOfTheLine) {
