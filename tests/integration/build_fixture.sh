@@ -155,4 +155,27 @@ dependencies:
 YML
 configure_log="$(configure)" || fail "configure with only local dependencies" "$configure_log"
 
+# Only a dependency's own path: key makes it local, not other text containing it.
+fresh_copy
+rm -rf "$work/project/managed_components"
+cat > "$work/project/main/idf_component.yml" <<'YML'
+dependencies:
+  vendor/thing:
+    version: "^1"
+    description: "not a path: at all"
+  local_thing:
+    path: ../components/thing
+YML
+expect_stale_project "a downloaded dependency with path: in other text"
+
+fresh_copy
+rm -rf "$work/project/managed_components"
+cat > "$work/project/main/idf_component.yml" <<'YML'
+dependencies:
+  vendor/thing:
+    version: "^1"
+    override_path: ../components/thing
+YML
+expect_stale_project "a key that only ends in path"
+
 echo "PASS: build_fixture"

@@ -107,8 +107,14 @@ function(preflash_manifest_downloads manifest out)
         endif()
       endif()
     endif()
-    if(line MATCHES "path:")
-      set(pending "")
+    # Only a key of the dependency itself, so text that contains "path:" or a key
+    # such as override_path doesn't count.
+    if(line MATCHES "^( +)[\"']?path[\"']?:")
+      string(LENGTH "${CMAKE_MATCH_1}" path_indent)
+      string(LENGTH "${indent}" dependency_indent)
+      if(path_indent GREATER dependency_indent)
+        set(pending "")
+      endif()
     endif()
   endforeach()
 
