@@ -85,11 +85,14 @@ PY
 
 # LVGL draws on its own time, so this asks again until the panel shows it. A panel that
 # never drew is black too, so black is only asked for in a run that has already shown a
-# picture. The pause between asks defaults to half a second.
+# picture. The pause between asks defaults to half a second. Each shot gets its own
+# number, so a check can't pass on a file and a log line from an earlier one.
+shots=0
 wait_for_shot() {
   local want="$1" pause="${2:-0.5}" tries path
   for tries in $(seq 1 20); do
-    path="$scratch/$want-$tries.bmp"
+    shots=$((shots + 1))
+    path="$scratch/$want-$shots.bmp"
     send "@sim shot $path"
     wait_for_output "saved $path"
     shot_is "$path" "$want" 2>/dev/null && return 0
