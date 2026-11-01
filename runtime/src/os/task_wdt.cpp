@@ -6,6 +6,7 @@
 
 #include "esp_task_wdt.h"
 #include "esp_timer.h"
+#include "preflash/fail.h"
 
 // Off unless the project starts the watchdog, when every call reports that it
 // was never initialised, as on the device.
@@ -39,14 +40,15 @@ Watchdog& watchdog() {
 void expired(void*);
 
 // Starts a new round, and the wait for its end if there's a task to wait for.
-void feed(Watchdog& w) {
+esp_err_t feed(Watchdog& w) {
   if (!w.timer) {
     const esp_timer_create_args_t args = {expired, nullptr, ESP_TIMER_TASK, "task_wdt", false};
-    esp_timer_create(&args, &w.timer);
+    const esp_err_t err = esp_timer_create(&args, &w.timer);
+    if (err != ESP_OK) return err;
   }
-  esp_timer_stop(w.timer);
+  esp_timer_stop(w.timer);  // not armed is fine: there may have been nothing to wait for
   for (auto& [task, reset] : w.tasks) reset = false;
-  if (!w.tasks.empty()) esp_timer_start_once(w.timer, w.timeout_us);
+  return w.tasks.empty() ? ESP_OK : esp_timer_start_once(w.timer, w.timeout_us);
 }
 
 void expired(void*) {
@@ -61,7 +63,7 @@ void expired(void*) {
   std::fprintf(stderr, "preflash: task watchdog: these tasks didn't reset in time:%s\n",
                late.c_str());
   if (w.panic) std::abort();
-  feed(w);
+  if (feed(w) != ESP_OK) preflash_unsupported("esp_task_wdt", "the watchdog's timer stopped");
 }
 
 }  // namespace
@@ -72,12 +74,15 @@ esp_err_t esp_task_wdt_reconfigure(const esp_task_wdt_config_t* config) {
   if (!config || config->idle_core_mask >= (1U << CONFIG_FREERTOS_NUMBER_OF_CORES)) {
     return ESP_ERR_INVALID_ARG;
   }
+  // The device's result depends on its hardware timer, and here it would fire forever.
+  if (config->timeout_ms == 0) {
+    preflash_unsupported("esp_task_wdt_reconfigure", "a timeout of 0 ms has no model");
+  }
   Watchdog& w = watchdog();
   std::lock_guard<std::mutex> lock(w.mutex);
   w.timeout_us = config->timeout_ms * 1000ULL;
   w.panic = config->trigger_panic;
-  feed(w);
-  return ESP_OK;
+  return feed(w);
 }
 
 esp_err_t esp_task_wdt_add(TaskHandle_t task_handle) {
@@ -86,8 +91,9 @@ esp_err_t esp_task_wdt_add(TaskHandle_t task_handle) {
   std::lock_guard<std::mutex> lock(w.mutex);
   if (w.tasks.count(task_handle)) return ESP_ERR_INVALID_ARG;
   w.tasks[task_handle] = false;
-  feed(w);
-  return ESP_OK;
+  const esp_err_t err = feed(w);
+  if (err != ESP_OK) w.tasks.erase(task_handle);
+  return err;
 }
 
 esp_err_t esp_task_wdt_reset(void) {
@@ -99,8 +105,7 @@ esp_err_t esp_task_wdt_reset(void) {
   for (const auto& [task, reset] : w.tasks) {
     if (!reset) return ESP_OK;  // the round ends when every task has reset
   }
-  feed(w);
-  return ESP_OK;
+  return feed(w);
 }
 
 esp_err_t esp_task_wdt_delete(TaskHandle_t task_handle) {
@@ -108,8 +113,7 @@ esp_err_t esp_task_wdt_delete(TaskHandle_t task_handle) {
   Watchdog& w = watchdog();
   std::lock_guard<std::mutex> lock(w.mutex);
   if (!w.tasks.erase(task_handle)) return ESP_ERR_NOT_FOUND;
-  feed(w);
-  return ESP_OK;
+  return feed(w);
 }
 
 }  // extern "C"

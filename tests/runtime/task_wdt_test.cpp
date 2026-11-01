@@ -23,6 +23,11 @@ TEST(TaskWatchdog, ReconfigureRefusesBadArguments) {
   EXPECT_EQ(esp_task_wdt_reconfigure(&too_many_cores), ESP_ERR_INVALID_ARG);
 }
 
+TEST(TaskWatchdogDeathTest, ZeroTimeoutAbortsNamingTheCall) {
+  auto zero = config(0, false);
+  EXPECT_DEATH(esp_task_wdt_reconfigure(&zero), "esp_task_wdt_reconfigure");
+}
+
 TEST(TaskWatchdog, ReconfigureAcceptsTheIdleTasksOfBothCores) {
   esp_task_wdt_config_t both = {5000, (1 << 0) | (1 << 1), false};
   EXPECT_EQ(esp_task_wdt_reconfigure(&both), ESP_OK);

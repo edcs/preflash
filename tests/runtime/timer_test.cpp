@@ -2,8 +2,8 @@
 
 #include <atomic>
 #include <chrono>
-#include <future>
 #include <thread>
+#include <vector>
 
 #include "esp_timer.h"
 
@@ -130,32 +130,36 @@ TEST(Timer, CallbackMayStopAndDeleteItsOwnTimer) {
   EXPECT_TRUE(wait_for(done, 1));
 }
 
-// A callback that outruns its period: the catch-up runs straight after it, as the
-// device's timer task does, unless the timer was asked to skip them.
-TEST(Timer, MissedPeriodsCatchUpUnlessSkipped) {
-  static std::atomic<int> catching{0};
-  static std::atomic<int> skipping{0};
-  catching = 0;
-  skipping = 0;
-  esp_timer_handle_t caught = make(
-      [](void*) {
-        if (catching++ == 0) std::this_thread::sleep_for(50ms);
-      },
-      nullptr);
-  ASSERT_EQ(esp_timer_start_periodic(caught, 5000), ESP_OK);
-  std::this_thread::sleep_for(75ms);
-  ASSERT_EQ(esp_timer_stop(caught), ESP_OK);
-  EXPECT_GE(catching, 10);
+// A callback that outruns its period: on the device's timer task the missed runs
+// follow one after another, or, if the timer skips them, the next waits a full period.
+struct SlowTimer {
+  esp_timer_handle_t timer = nullptr;
+  std::vector<std::chrono::steady_clock::time_point> starts;
+  std::atomic<int> finished{0};
+};
 
-  esp_timer_handle_t skipped = make(
-      [](void*) {
-        if (skipping++ == 0) std::this_thread::sleep_for(50ms);
-      },
-      nullptr, true);
-  ASSERT_EQ(esp_timer_start_periodic(skipped, 5000), ESP_OK);
-  std::this_thread::sleep_for(75ms);
-  ASSERT_EQ(esp_timer_stop(skipped), ESP_OK);
-  EXPECT_LE(skipping, 8);
+void slow_first_run(void* arg) {
+  auto* slow = static_cast<SlowTimer*>(arg);
+  slow->starts.push_back(std::chrono::steady_clock::now());
+  if (slow->starts.size() == 1) std::this_thread::sleep_for(200ms);
+  if (slow->starts.size() == 3) {
+    esp_timer_stop(slow->timer);
+    slow->finished = 1;
+  }
 }
+
+std::chrono::steady_clock::duration gap_after_the_slow_run(bool skip) {
+  static SlowTimer slow;  // the timer task may outlive a failed wait
+  slow.starts.clear();
+  slow.finished = 0;
+  slow.timer = make(slow_first_run, &slow, skip);
+  EXPECT_EQ(esp_timer_start_periodic(slow.timer, 40 * 1000), ESP_OK);
+  EXPECT_TRUE(wait_for(slow.finished, 1));
+  return slow.starts[2] - slow.starts[1];
+}
+
+TEST(Timer, MissedPeriodsCatchUp) { EXPECT_LT(gap_after_the_slow_run(false), 30ms); }
+
+TEST(Timer, SkippedPeriodsWaitAFullPeriod) { EXPECT_GE(gap_after_the_slow_run(true), 30ms); }
 
 }  // namespace
