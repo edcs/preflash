@@ -1,0 +1,27 @@
+tests/runtime/helpers/restart_helper.cpp
+  s_82b4983a83db4b::t_e31d1203ee21cf 2-7,17,22-30,35-44
+tests/runtime/os_test.cpp
+  s_82b4983a83db4b::t_1cad29f2741653 84-126
+  s_82b4983a83db4b::t_c885668226177a 159-193,195-198,202-213,216-224
+  s_82b4983a83db4b::t_5b9b3dbf3c78e8 8,12
+runtime/src/os/system.cpp
+  s_82b4983a83db4b::t_d9ef4924e4e548 29-45
+  s_82b4983a83db4b::t_6a7a9faecd0f8d 2-4
+  s_82b4983a83db4b::t_1ef9b62866c9e2 105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "70cfcac6b7c771062576ddc1ed6bc8ccb0252701",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
