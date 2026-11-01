@@ -269,7 +269,9 @@ function(idf_component_register)
     "SRCS;SRC_DIRS;EXCLUDE_SRCS;INCLUDE_DIRS;PRIV_INCLUDE_DIRS;LDFRAGMENTS;REQUIRES;PRIV_REQUIRES;REQUIRED_IDF_TARGETS;EMBED_FILES;EMBED_TXTFILES"
     ${ARGN})
 
-  set(lib "${COMPONENT_NAME}")
+  # ESP-IDF prefixes the target as well. A bare folder name such as test, all or
+  # install is one CMake reserves for itself.
+  set(lib "__idf_${COMPONENT_NAME}")
   set(includes "")
   foreach(dir IN LISTS arg_INCLUDE_DIRS)
     get_filename_component(dir "${dir}" ABSOLUTE BASE_DIR "${COMPONENT_DIR}")
@@ -335,7 +337,7 @@ function(preflash_link_app config_dir)
   list(APPEND includes "${PREFLASH_RUNTIME_DIR}/include" "${config_dir}")
 
   set(definitions ESP_PLATFORM)
-  if(TARGET lvgl__lvgl)
+  if(TARGET __idf_lvgl__lvgl)
     list(APPEND definitions LV_CONF_INCLUDE_SIMPLE
          "LV_CONF_KCONFIG_EXTERNAL_INCLUDE=\"preflash_lv_config.h\"")
   endif()

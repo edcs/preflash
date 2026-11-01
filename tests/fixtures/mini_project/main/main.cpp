@@ -1,9 +1,11 @@
 #include <cstdint>
 #include <cstdio>
 
+#include "all.h"
 #include "header_only.h"
 #include "sdkconfig.h"
 // This component doesn't list thing in REQUIRES.
+#include "test.h"
 #include "thing.h"
 
 extern const uint8_t hello_start[] asm("_binary_hello_txt_start");
@@ -29,6 +31,7 @@ extern "C" void app_main(void) {
   printf("CONFIG_IDF_TARGET=%s\n", CONFIG_IDF_TARGET);
   printf("thing=%d\n", thing_value());
   printf("header only=%d\n", HEADER_ONLY_VALUE);
+  printf("reserved names=%d,%d\n", reserved_name_value(), ALL_VALUE);
   printf("from folder=%d\n", from_folder_value());
   printf("embedded=%.*s\n", static_cast<int>(hello_end - hello_start), hello_start);
   // A text file ends in a NUL that counts towards its length, as on ESP-IDF.
