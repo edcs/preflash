@@ -161,6 +161,12 @@ wait_for_output "brightness: 0 (pwm 100, enable gpio43 low)"
 
 # A daytime boot lights the screen by itself, with no fake clock.
 wait_for_output "desert: "
+
+# The update client runs on its timers, and refuses a dev build.
+send "update status"
+wait_for_output "version simulator (dev build)"
+send "update check"
+wait_for_output "updates aren't available: this is a dev build"
 send "phase"
 wait_for_output "2026-11-01 12:00"
 wait_for_output " local, day"

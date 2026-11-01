@@ -121,6 +121,66 @@ TEST(Queues, SendBlocksUntilAnotherThreadReceives) {
   EXPECT_EQ(value, 2);
 }
 
+TEST(Tasks, DeletingItselfEndsTheTaskThere) {
+  static std::atomic<int> reached{0};
+  static std::atomic<bool> ran_on{false};
+  reached = 0;
+  ran_on = false;
+  auto body = [](void*) {
+    reached = 1;
+    vTaskDelete(nullptr);
+    ran_on = true;
+  };
+  ASSERT_EQ(xTaskCreate(body, "gone", 4096, nullptr, 1, nullptr), pdPASS);
+  const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (reached == 0 && std::chrono::steady_clock::now() < give_up) vTaskDelay(1);
+  ASSERT_EQ(reached, 1);
+  vTaskDelay(pdMS_TO_TICKS(20));
+  EXPECT_FALSE(ran_on);
+}
+
+TEST(Tasks, DeletingItselfByHandleWorksToo) {
+  static std::atomic<int> reached{0};
+  reached = 0;
+  auto body = [](void*) {
+    reached = 1;
+    vTaskDelete(xTaskGetCurrentTaskHandle());
+    reached = 2;
+  };
+  ASSERT_EQ(xTaskCreate(body, "gone", 4096, nullptr, 1, nullptr), pdPASS);
+  const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (reached == 0 && std::chrono::steady_clock::now() < give_up) vTaskDelay(1);
+  vTaskDelay(pdMS_TO_TICKS(20));
+  EXPECT_EQ(reached, 1);
+}
+
+TEST(TasksDeathTest, DeletingAnotherTaskAbortsNamingTheCall) {
+  auto idle = [](void*) {
+    for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
+  };
+  TaskHandle_t other = nullptr;
+  ASSERT_EQ(xTaskCreate(idle, "other", 4096, nullptr, 1, &other), pdPASS);
+  EXPECT_DEATH(vTaskDelete(other), "vTaskDelete");
+}
+
+TEST(Tasks, KnowsItsOwnHandleAndName) {
+  static std::atomic<TaskHandle_t> seen{nullptr};
+  static char name[16];
+  seen = nullptr;
+  auto body = [](void*) {
+    std::snprintf(name, sizeof name, "%s", pcTaskGetName(nullptr));
+    seen = xTaskGetCurrentTaskHandle();
+    vTaskDelete(nullptr);
+  };
+  TaskHandle_t made = nullptr;
+  ASSERT_EQ(xTaskCreate(body, "named", 4096, nullptr, 1, &made), pdPASS);
+  const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (!seen && std::chrono::steady_clock::now() < give_up) vTaskDelay(1);
+  EXPECT_EQ(seen.load(), made);
+  EXPECT_STREQ(name, "named");
+  EXPECT_STREQ(pcTaskGetName(made), "named");
+}
+
 TEST(Queues, NullHandleAbortsNamingTheCall) {
   int value = 0;
   EXPECT_DEATH(xQueueSend(nullptr, &value, 0), "xQueueSend");

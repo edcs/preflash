@@ -26,6 +26,13 @@ static inline BaseType_t xTaskCreate(TaskFunction_t task, const char* name, uint
 
 void vTaskDelay(TickType_t ticks);
 
+// A task can only delete itself, with its own handle or nullptr. As on the device,
+// that ends it on the spot and its C++ destructors don't run. Any other handle aborts.
+void vTaskDelete(TaskHandle_t task);
+
+TaskHandle_t xTaskGetCurrentTaskHandle(void);
+char* pcTaskGetName(TaskHandle_t task);
+
 BaseType_t xTaskNotifyGive(TaskHandle_t task);
 uint32_t ulTaskNotifyTake(BaseType_t clear_count_on_exit, TickType_t ticks_to_wait);
 
