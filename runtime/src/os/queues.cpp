@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "freertos/queue.h"
+#include "preflash/fail.h"
 #include "ticks.h"
 
 // Items are copied in and out by value, as FreeRTOS does.
@@ -26,6 +27,7 @@ QueueHandle_t xQueueCreate(UBaseType_t length, UBaseType_t item_size) {
 }
 
 BaseType_t xQueueSend(QueueHandle_t queue, const void* item, TickType_t ticks_to_wait) {
+  if (!queue) preflash_unsupported("xQueueSend", "the queue handle is null");
   std::unique_lock<std::mutex> lock(queue->mutex);
   auto room = [queue] { return queue->items.size() < queue->length; };
   if (ticks_to_wait == portMAX_DELAY) {
@@ -41,6 +43,7 @@ BaseType_t xQueueSend(QueueHandle_t queue, const void* item, TickType_t ticks_to
 }
 
 BaseType_t xQueueReceive(QueueHandle_t queue, void* item, TickType_t ticks_to_wait) {
+  if (!queue) preflash_unsupported("xQueueReceive", "the queue handle is null");
   std::unique_lock<std::mutex> lock(queue->mutex);
   auto any = [queue] { return !queue->items.empty(); };
   if (ticks_to_wait == portMAX_DELAY) {

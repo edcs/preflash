@@ -49,38 +49,42 @@ State& state() {
   return s;
 }
 
-// Splits as ESP-IDF's esp_console_split_argv does: words end at a space, a
-// backslash takes the next character literally, and a quote that opens a word
-// holds it together up to the closing quote.
+// Splits as ESP-IDF's esp_console_split_argv does. A quote opens a word only at
+// its start, and its closing quote ends the word; if none closes it, the word
+// runs to the end of the line. A backslash takes a following backslash, quote or
+// space literally and drops anything else.
 std::vector<std::string> split_words(const std::string& line) {
+  enum class State { Space, Word, Quoted };
   std::vector<std::string> words;
   std::string word;
-  bool in_word = false;
-  char quote = 0;
-  for (size_t i = 0; i < line.size(); ++i) {
-    const char c = line[i];
-    if (c == '\\' && i + 1 < line.size()) {
-      word += line[++i];
-      in_word = true;
-    } else if (quote) {
-      if (c == quote) {
-        quote = 0;
-      } else {
+  State state = State::Space;
+  bool escaped = false;
+  const auto finish = [&] {
+    words.push_back(word);
+    word.clear();
+    state = State::Space;
+  };
+  for (const char c : line) {
+    if (escaped) {
+      if (c == '\\' || c == '"' || c == ' ') word += c;
+      escaped = false;
+    } else if (state == State::Space) {
+      if (c == ' ' || c == '\r' || c == '\n') continue;
+      state = c == '"' ? State::Quoted : State::Word;
+      if (c == '\\') {
+        escaped = true;
+      } else if (c != '"') {
         word += c;
       }
-    } else if (c == ' ' || c == '\r' || c == '\n') {
-      if (in_word) words.push_back(word);
-      word.clear();
-      in_word = false;
-    } else if (c == '"' && !in_word) {
-      quote = c;
-      in_word = true;
+    } else if (c == '\\') {
+      escaped = true;
+    } else if (state == State::Quoted ? c == '"' : c == ' ' || c == '\r' || c == '\n') {
+      finish();
     } else {
       word += c;
-      in_word = true;
     }
   }
-  if (in_word) words.push_back(word);
+  if (state != State::Space) words.push_back(word);
   return words;
 }
 

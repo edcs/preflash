@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "freertos/task.h"
+#include "preflash/fail.h"
 #include "ticks.h"
 
 // A task is a detached thread that owns one notification count. Tasks are
@@ -59,6 +60,7 @@ void vTaskDelay(TickType_t ticks) {
 }
 
 BaseType_t xTaskNotifyGive(TaskHandle_t task) {
+  if (!task) preflash_unsupported("xTaskNotifyGive", "the task handle is null");
   {
     std::lock_guard<std::mutex> lock(task->mutex);
     ++task->notifications;

@@ -5,9 +5,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <future>
 #include <string>
 
 #include "esp_err.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -79,6 +81,56 @@ TEST(Queues, FullQueueRefusesWithoutWaiting) {
   EXPECT_EQ(xQueueSend(queue, &value, 0), pdFALSE);
 }
 
+TEST(Queues, ReceiveBlocksUntilAnotherThreadSends) {
+  QueueHandle_t queue = xQueueCreate(1, sizeof(int));
+  std::promise<void> started;
+  auto received = std::async(std::launch::async, [queue, &started] {
+    int value = 0;
+    started.set_value();
+    // Bounded, so a lost wakeup fails the test instead of hanging the future's destructor.
+    const BaseType_t got = xQueueReceive(queue, &value, pdMS_TO_TICKS(5000));
+    return got == pdTRUE ? value : -1;
+  });
+  started.get_future().wait();
+  // Still waiting: nothing has been sent.
+  EXPECT_EQ(received.wait_for(std::chrono::milliseconds(50)), std::future_status::timeout);
+  const int sent = 42;
+  ASSERT_EQ(xQueueSend(queue, &sent, 0), pdTRUE);
+  ASSERT_EQ(received.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  EXPECT_EQ(received.get(), 42);
+}
+
+TEST(Queues, SendBlocksUntilAnotherThreadReceives) {
+  QueueHandle_t queue = xQueueCreate(1, sizeof(int));
+  const int first = 1;
+  ASSERT_EQ(xQueueSend(queue, &first, 0), pdTRUE);
+  std::promise<void> started;
+  auto sent = std::async(std::launch::async, [queue, &started] {
+    const int second = 2;
+    started.set_value();
+    return xQueueSend(queue, &second, pdMS_TO_TICKS(5000));
+  });
+  started.get_future().wait();
+  EXPECT_EQ(sent.wait_for(std::chrono::milliseconds(50)), std::future_status::timeout);
+  int value = 0;
+  ASSERT_EQ(xQueueReceive(queue, &value, 0), pdTRUE);
+  EXPECT_EQ(value, 1);
+  ASSERT_EQ(sent.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  EXPECT_EQ(sent.get(), pdTRUE);
+  ASSERT_EQ(xQueueReceive(queue, &value, 0), pdTRUE);
+  EXPECT_EQ(value, 2);
+}
+
+TEST(Queues, NullHandleAbortsNamingTheCall) {
+  int value = 0;
+  EXPECT_DEATH(xQueueSend(nullptr, &value, 0), "xQueueSend");
+  EXPECT_DEATH(xQueueReceive(nullptr, &value, 0), "xQueueReceive");
+}
+
+TEST(Tasks, NullHandleAbortsNamingTheCall) {
+  EXPECT_DEATH(xTaskNotifyGive(nullptr), "xTaskNotifyGive");
+}
+
 TEST(Timer, IsMonotonicMicroseconds) {
   const int64_t first = esp_timer_get_time();
   vTaskDelay(pdMS_TO_TICKS(5));
@@ -111,20 +163,79 @@ TEST(Unsupported, AbortsNamingTheCall) {
   EXPECT_DEATH(preflash_unsupported("x", "y"), "x");
 }
 
-TEST(Restart, ReExecsTheBinary) {
-  namespace fs = std::filesystem;
-  const fs::path state = fs::temp_directory_path() / ("preflash_restart_" + std::to_string(getpid()));
-  fs::create_directories(state);
-  const std::string command =
-      "PREFLASH_STATE='" + state.string() + "' '" + RESTART_HELPER + "' 2>&1";
+TEST(Reset, ReasonIsPowerOnUntilARestart) {
+  const char* before = std::getenv("PREFLASH_RESTARTED");
+  const std::string saved = before ? before : "";
+  unsetenv("PREFLASH_RESTARTED");
+  EXPECT_EQ(esp_reset_reason(), ESP_RST_POWERON);
+  setenv("PREFLASH_RESTARTED", "1", 1);
+  EXPECT_EQ(esp_reset_reason(), ESP_RST_SW);
+  if (before) {
+    setenv("PREFLASH_RESTARTED", saved.c_str(), 1);
+  } else {
+    unsetenv("PREFLASH_RESTARTED");
+  }
+}
+
+namespace {
+
+// A folder that goes away however the test ends.
+struct TempState {
+  explicit TempState(const std::string& name)
+      : path(std::filesystem::temp_directory_path() /
+             ("preflash_" + name + "_" + std::to_string(getpid()))) {
+    std::filesystem::create_directories(path);
+  }
+  ~TempState() {
+    std::error_code ec;
+    std::filesystem::remove_all(path, ec);
+  }
+  std::filesystem::path path;
+};
+
+// Runs the restart helper to the end and returns what it printed.
+std::string run_restart_helper(const std::string& environment, const TempState& state,
+                               int* status) {
+  const std::string command = "PREFLASH_STATE='" + state.path.string() + "' " + environment +
+                              " '" + RESTART_HELPER + "' 2>&1";
   FILE* pipe = popen(command.c_str(), "r");
-  ASSERT_NE(pipe, nullptr);
+  if (!pipe) {
+    *status = -1;
+    return "";
+  }
   std::string output;
   char buffer[256];
   while (std::fgets(buffer, sizeof buffer, pipe)) output += buffer;
-  EXPECT_EQ(pclose(pipe), 0);
-  EXPECT_NE(output.find("second run: state=" + state.string()), std::string::npos) << output;
+  *status = pclose(pipe);
+  return output;
+}
+
+}  // namespace
+
+TEST(Restart, ReExecsTheBinary) {
+  TempState state("restart");
+  int status = -1;
+  const std::string output = run_restart_helper("", state, &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("second run: state=" + state.path.string()), std::string::npos) << output;
   // 3 is ESP_RST_SW: the second run knows it was restarted.
   EXPECT_NE(output.find("reason=3"), std::string::npos) << output;
-  fs::remove_all(state);
+}
+
+TEST(Restart, WorksWithAStandardDescriptorClosed) {
+  TempState state("restart_closed");
+  int status = -1;
+  const std::string output = run_restart_helper("PREFLASH_HELPER_CLOSE_STDIN=1", state, &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("second run:"), std::string::npos) << output;
+}
+
+TEST(Restart, StartsCleanWithoutInheritedDescriptorsOrBlockedSignals) {
+  TempState state("restart_clean");
+  int status = -1;
+  const std::string output = run_restart_helper("PREFLASH_HELPER_LEAK=1", state, &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("descriptor=closed"), std::string::npos) << output;
+  EXPECT_NE(output.find("signals=unblocked"), std::string::npos) << output;
+  EXPECT_NE(output.find("ignored=no"), std::string::npos) << output;
 }
