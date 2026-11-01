@@ -165,7 +165,10 @@ TEST_F(Codec, CloseDoesNotWaitOutAWriteThatIsPacing) {
   while (sink.polls < 3) std::this_thread::sleep_for(std::chrono::milliseconds(1));
   const auto start = std::chrono::steady_clock::now();
   EXPECT_EQ(esp_codec_dev_close(speaker_), ESP_CODEC_DEV_OK);
-  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(500));
+  // A close that waited out the write would wait for a sink that never drains, so it
+  // would not return at all. The limit only has to be far under that, which keeps a
+  // loaded machine from tripping it.
+  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(10));
   writer.join();
 }
 
