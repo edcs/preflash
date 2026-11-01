@@ -1,0 +1,23 @@
+runtime/src/net/events.cpp
+  s_82b4983a83db4b::t_4dd5a3ee06f855 227
+  s_82b4983a83db4b::t_dd018ca1e30f2c 225-226
+tests/runtime/net_test.cpp
+  s_82b4983a83db4b::t_dd018ca1e30f2c 16,297-329
+  s_82b4983a83db4b::t_90f9ad8a043ec4 330-332
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "76ce91d158217f38365dfa35fee9b047e5ef15d1",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
