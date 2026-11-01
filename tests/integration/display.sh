@@ -92,6 +92,11 @@ wait_for_output "clicked" 2
 send "rotate 0"
 wait_for_output "rotated 0"
 
+# A tap with no hold puts the press and release in the queue together, and LVGL still
+# has to see both.
+send "@sim touch $button_x $button_y 0"
+wait_for_output "clicked" 3
+
 # Sound is counted and never played, so a run with no output device doesn't hang.
 send "@sim audio"
 wait_for_output "audio samples written: 0"
