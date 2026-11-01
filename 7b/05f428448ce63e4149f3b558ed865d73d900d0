@@ -1,0 +1,27 @@
+.github/assets/preflash-mark-on-dark.svg
+  s_82b4983a83db4b::t_1de6d2967673a5 1-6
+.github/assets/preflash-mark-on-light.svg
+  s_82b4983a83db4b::t_e311e5c4ab18c0 1-6
+.github/assets/render.sh
+  s_82b4983a83db4b::t_a77fa0ed5e9682 1-20
+.github/assets/source/hero.html
+  s_82b4983a83db4b::t_f9b4d52471a1fc 1-35
+.github/assets/source/panels.html
+  s_82b4983a83db4b::t_875d82329a80fa 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7b05f428448ce63e4149f3b558ed865d73d900d0",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "unknown"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
