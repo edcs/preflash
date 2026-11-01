@@ -1,0 +1,24 @@
+runtime/src/os/tasks.cpp
+  s_82b4983a83db4b::t_0a7fbf653a5ef9 8
+  s_82b4983a83db4b::t_28e3f0cecff9d5 63
+runtime/src/os/queues.cpp
+  s_82b4983a83db4b::t_2cbc7de40f14c9 8
+  s_82b4983a83db4b::t_d1c7a4f969ce2a 46
+  s_82b4983a83db4b::t_37346263905063 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "21207800a33565d3431f996df679ee80d9b394a3",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
