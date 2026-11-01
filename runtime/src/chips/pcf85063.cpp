@@ -138,12 +138,9 @@ void Pcf85063::restore(const std::string& value) {
 }
 
 void carry_chips_across_restart() {
-  Pcf85063* newest = nullptr;
-  {
-    std::lock_guard<std::mutex> lock(g_live_mutex);
-    if (!g_live.empty()) newest = g_live.back();
-  }
-  if (newest) newest->save_for_restart();
+  // Held throughout, so the chip can't be destroyed while it is being saved.
+  std::lock_guard<std::mutex> lock(g_live_mutex);
+  if (!g_live.empty()) g_live.back()->save_for_restart();
 }
 
 // Section 8.4: an access blocks the counters, so all of one transfer is one moment.
