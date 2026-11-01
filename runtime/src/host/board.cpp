@@ -29,11 +29,11 @@ const json& member(const json& obj, const std::string& parent, const char* key) 
 int integer(const json& obj, const std::string& parent, const char* key) {
   const json& v = member(obj, parent, key);
   if (!v.is_number_integer()) bad(parent.empty() ? key : parent + "." + key, "must be an integer");
-  // Both bounds are checked on 64 bits, so a large value can't wrap into range.
-  if (v.is_number_unsigned() ? v.get<std::uint64_t>() > static_cast<std::uint64_t>(INT_MAX)
-                             : v.get<std::int64_t>() < INT_MIN) {
-    bad(parent.empty() ? key : parent + "." + key, "is out of range for an integer");
-  }
+  // The parser gives non-negative numbers as unsigned and negative ones as signed;
+  // each is checked on 64 bits so that none can wrap into range.
+  bool fits = v.is_number_unsigned() ? v.get<std::uint64_t>() <= static_cast<std::uint64_t>(INT_MAX)
+                                     : v.get<std::int64_t>() >= INT_MIN && v.get<std::int64_t>() <= INT_MAX;
+  if (!fits) bad(parent.empty() ? key : parent + "." + key, "is out of range for an integer");
   return v.get<int>();
 }
 
