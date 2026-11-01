@@ -1,0 +1,14 @@
+tests/integration/snoozel.sh
+  h_13c4e797d6e9d2 88-90,94-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bdb2197db25c85cdd554fff9f1b2eb5f1cb57fa4",
+  "prompts": {},
+  "humans": {
+    "h_13c4e797d6e9d2": {
+      "author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
