@@ -68,7 +68,8 @@ expect_stale_project() {
 # Builds and runs the unmodified project.
 fresh_copy
 before="$(listing)"
-configure_log="$(configure)" || fail "configure" "$configure_log"
+# -Wall is what ESP-IDF builds with, so the build must be clean under it.
+configure_log="$(cmake -S "$work/project" -B "$work/build" -DCMAKE_C_FLAGS=-Wall -DCMAKE_CXX_FLAGS=-Wall 2>&1)" || fail "configure" "$configure_log"
 build_log="$(cmake --build "$work/build" 2>&1)" || fail "build" "$build_log"
 case "$build_log" in
   *warning*) fail "the build printed a warning" "$build_log" ;;
