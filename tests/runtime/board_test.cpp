@@ -61,3 +61,41 @@ TEST(Board, NonObjectRootNamesTheRoot) {
     EXPECT_NE(std::string(e.what()).find("board: root must be an object"), std::string::npos) << e.what();
   }
 }
+
+namespace {
+
+std::string board_error(std::string json) {
+  try {
+    preflash::parse_board(json);
+  } catch (const std::runtime_error& e) {
+    return e.what();
+  }
+  return "";
+}
+
+std::string with_replaced(const std::string& from, const std::string& to) {
+  std::string json = kBoard;
+  json.replace(json.find(from), from.size(), to);
+  return json;
+}
+
+}  // namespace
+
+TEST(Board, IntegersBeyondIntAreRejectedByName) {
+  EXPECT_NE(board_error(with_replaced("\"width\": 480", "\"width\": 4294967296")).find("display.width"),
+            std::string::npos);
+  EXPECT_NE(board_error(with_replaced("\"width\": 480", "\"width\": 2147483648")).find("out of range"),
+            std::string::npos);
+  EXPECT_NE(board_error(with_replaced("\"pin\": 4", "\"pin\": -2147483649")).find("backlight.pin"),
+            std::string::npos);
+  EXPECT_NE(board_error(with_replaced("\"address\": 81", "\"address\": 18446744073709551615")).find("i2c[0].address"),
+            std::string::npos);
+  EXPECT_EQ(board_error(with_replaced("\"width\": 480", "\"width\": 2147483647")), "");
+}
+
+TEST(Board, DisplaySizeMustBePositive) {
+  EXPECT_NE(board_error(with_replaced("\"width\": 480", "\"width\": 0")).find("display.width must be positive"),
+            std::string::npos);
+  EXPECT_NE(board_error(with_replaced("\"height\": 320", "\"height\": -5")).find("display.height must be positive"),
+            std::string::npos);
+}
