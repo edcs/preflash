@@ -15,7 +15,6 @@ namespace {
 
 // Section 8.1, table 5.
 constexpr uint8_t kControl1 = 0x00;
-constexpr uint8_t kControl2 = 0x01;
 constexpr uint8_t kOffset = 0x02;
 constexpr uint8_t kRamByte = 0x03;
 constexpr uint8_t kSeconds = 0x04;
@@ -212,9 +211,10 @@ void Pcf85063::count_time() {
 }
 
 uint8_t Pcf85063::load(uint8_t reg) {
-  // Control_2, alarms and timer have no model, as in store. A burst wraps to 00h, so
-  // only setting the address can reach past the end.
-  if (reg == kControl2 || reg >= kSecondAlarm) refuse(reg, "reading it has no model");
+  // Control_2, alarms and timer read their reset values: store refuses every write to
+  // them, so those are the values they hold. A burst wraps to 00h, so only setting the
+  // address can reach past the end.
+  if (reg > kLastRegister) refuse(reg, "reading it has no model");
   if (reg == kSeconds) return regs_[reg] | (oscillator_stopped_ ? kOscillatorStopped : 0);
   return regs_[reg];
 }

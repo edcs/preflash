@@ -343,8 +343,6 @@ TEST(Pcf85063DeathTest, ControlBitsWithNoModelStopTheRun) {
 
 TEST(Pcf85063DeathTest, UnmodelledReadNamesChipAndRegister) {
   Pcf85063 rtc;
-  EXPECT_DEATH(take(rtc, 0x01), "pcf85063 register 0x01");  // Control_2
-  EXPECT_DEATH(take(rtc, 0x0b), "pcf85063 register 0x0b");  // an alarm
   EXPECT_DEATH(take(rtc, 0x12), "pcf85063 register 0x12");
 }
 
