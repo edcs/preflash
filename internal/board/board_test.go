@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -97,5 +98,21 @@ func TestMissingBacklightKeyNamesIt(t *testing.T) {
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "backlight."+key)
 		})
+	}
+}
+
+func TestErrorsNameTheAbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile("typo.yaml", []byte("name: Typo\nextends: ESP32-S3-Touch-LCD-4B\nchanges:\n  backlight:\n    pin: nope\n"), 0o644))
+	require.NoError(t, os.WriteFile("size.yaml", []byte("name: Size\nextends: ESP32-S3-Touch-LCD-4B\nchanges:\n  display:\n    width: 0\n"), 0o644))
+
+	for _, name := range []string{"typo.yaml", "size.yaml"} {
+		_, err := Load(name)
+		require.Error(t, err)
+		resolved, evalErr := filepath.EvalSymlinks(dir)
+		require.NoError(t, evalErr)
+		abs := filepath.Join(dir, name)
+		assert.True(t, strings.Contains(err.Error(), abs) || strings.Contains(err.Error(), filepath.Join(resolved, name)), err.Error())
 	}
 }

@@ -51,7 +51,7 @@ func Load(path string) (Board, error) {
 	if err != nil {
 		return Board{}, err
 	}
-	return load(source{path: abs}, path)
+	return load(source{path: abs}, abs)
 }
 
 // LoadStock reads the stock board with this name. It reports fs.ErrNotExist if

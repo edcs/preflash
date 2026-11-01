@@ -34,20 +34,52 @@ func Find(path string) (Project, error) {
 	}
 	dir, err := filepath.EvalSymlinks(abs)
 	if err != nil {
-		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: %w", path, err)
+		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: %w", abs, err)
 	}
 	cmake, err := os.ReadFile(filepath.Join(dir, "CMakeLists.txt"))
 	if errors.Is(err, fs.ErrNotExist) {
-		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: it has no CMakeLists.txt", path)
+		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: it has no CMakeLists.txt", abs)
 	}
 	if err != nil {
 		return Project{}, err
 	}
-	if !strings.Contains(string(cmake), "project.cmake") {
-		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: its CMakeLists.txt doesn't include project.cmake", path)
+	if !strings.Contains(withoutComments(string(cmake)), "project.cmake") {
+		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: its CMakeLists.txt doesn't include project.cmake", abs)
 	}
 	sum := sha256.Sum256([]byte(dir))
 	return Project{Dir: dir, id: filepath.Base(dir) + "-" + hex.EncodeToString(sum[:4])}, nil
+}
+
+// withoutComments drops CMake's line comments and bracket comments, so that a
+// commented-out include doesn't count.
+func withoutComments(src string) string {
+	var out strings.Builder
+	for i := 0; i < len(src); {
+		if src[i] != '#' {
+			out.WriteByte(src[i])
+			i++
+			continue
+		}
+		// #[==[ ... ]==] runs over lines; any other # runs to the end of its line.
+		end := strings.IndexByte(src[i:], '\n')
+		if end < 0 {
+			end = len(src) - i
+		}
+		if rest := src[i+1:]; strings.HasPrefix(rest, "[") {
+			level := len(rest[1:]) - len(strings.TrimLeft(rest[1:], "="))
+			if strings.HasPrefix(rest[1+level:], "[") {
+				closing := "]" + strings.Repeat("=", level) + "]"
+				if at := strings.Index(rest[2+level:], closing); at >= 0 {
+					i += 1 + 2 + level + at + len(closing)
+					continue
+				}
+				i = len(src)
+				continue
+			}
+		}
+		i += end
+	}
+	return out.String()
 }
 
 // StateDir is where this checkout's saved state lives, outside the project.
