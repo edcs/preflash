@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -27,6 +28,8 @@ int g_height = 0;
 SDL_Window* g_window = nullptr;
 SDL_Renderer* g_renderer = nullptr;
 SDL_Texture* g_texture = nullptr;
+// Set by firmware's thread when it first opens the codec, taken by the main loop.
+std::atomic<bool> g_audio_wanted{false};
 
 [[noreturn]] void fail(const char* what) {
   std::fprintf(stderr, "preflash: %s: %s\n", what, SDL_GetError());
@@ -112,10 +115,11 @@ class SdlSink : public audio::Sink {
 };
 
 // A Mac with no output device still runs the firmware: sound is counted and dropped.
-void open_audio() {
+// False if there's no device yet, so that the next codec open can try again.
+bool open_audio() {
   if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
     std::fprintf(stderr, "preflash: no audio, so sound is dropped: %s\n", SDL_GetError());
-    return;
+    return false;
   }
   SDL_AudioSpec want = {};
   want.freq = kDeviceRate;
@@ -126,10 +130,15 @@ void open_audio() {
   const SDL_AudioDeviceID device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
   if (device == 0) {
     std::fprintf(stderr, "preflash: no audio device, so sound is dropped: %s\n", SDL_GetError());
-    return;
+    return false;
   }
   SDL_PauseAudioDevice(device, 0);
   audio::set_sink(new SdlSink(device));
+  return true;
+}
+
+void request_audio_on_codec_open() {
+  audio::set_device_request([] { g_audio_wanted = true; });
 }
 
 }  // namespace
@@ -148,7 +157,10 @@ void open() {
   g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING,
                                 g_width, g_height);
   if (!g_texture) fail("couldn't make the panel's texture");
-  open_audio();
+  // Not opened yet: a Mac with no output device can hold SDL for many seconds, and
+  // firmware that never plays a sound shouldn't wait on it. The first time it opens
+  // the codec, the main loop in run() opens the device.
+  request_audio_on_codec_open();
 }
 
 void run() {
@@ -156,6 +168,9 @@ void run() {
   int shown_brightness = -1;
   for (;;) {
     handle_events();
+    // SDL audio starts on this thread. The window doesn't redraw while the device
+    // opens, but the firmware keeps running, and its sound is dropped until then.
+    if (g_audio_wanted.exchange(false) && !open_audio()) request_audio_on_codec_open();
     if (panel::take_frame(&frame)) {
       SDL_UpdateTexture(g_texture, nullptr, frame.data(), g_width * kBytesPerPixel);
     }

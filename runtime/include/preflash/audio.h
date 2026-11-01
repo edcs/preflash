@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 
 namespace preflash::audio {
 
@@ -19,7 +20,16 @@ class Sink {
   virtual int queued_ms() = 0;
 };
 
+// A sink may arrive after firmware has opened the codec; it is started with the
+// format that is open. Until it does, sound is dropped, taking as long as it would
+// to play.
 void set_sink(Sink* sink);
+
+// Asks the window for an output device, the first time firmware opens the codec.
+// The request runs on the firmware's thread and must only note the wish: the device
+// itself is opened on the main thread, which then calls set_sink if it has one.
+// Installing a request lets the next open ask again.
+void set_device_request(std::function<void()> request);
 
 }  // namespace preflash::audio
 

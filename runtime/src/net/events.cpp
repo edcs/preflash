@@ -222,6 +222,9 @@ esp_err_t esp_event_post_to(esp_event_loop_handle_t loop, esp_event_base_t base,
                             const void* data, size_t data_size, TickType_t ticks_to_wait) {
   if (!loop) return ESP_ERR_INVALID_STATE;
   if (!base || (data_size > 0 && !data)) return ESP_ERR_INVALID_ARG;
+  // As on a device: a handler posting to its own loop never waits, since only that
+  // loop could make the room it would wait for.
+  if (loop->worker_id == std::this_thread::get_id()) ticks_to_wait = 0;
   std::unique_lock<std::mutex> lock(loop->mutex);
   auto room = [loop] { return loop->stopping || loop->queue.size() < loop->capacity; };
   if (ticks_to_wait == portMAX_DELAY) {

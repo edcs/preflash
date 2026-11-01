@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -26,6 +27,8 @@ struct Speaker {
   int rate = 0;
   int volume = 100;
   bool sink_gone = false;
+  // Closers waiting for the lock. A write in the middle of pacing sees it and lets go.
+  std::atomic<int> closers{0};
 };
 
 Speaker& speaker() {
@@ -33,14 +36,19 @@ Speaker& speaker() {
   return s;
 }
 
-audio::Sink* g_sink = nullptr;
+audio::Sink* g_sink = nullptr;  // under the speaker's lock
+std::mutex g_request_mutex;
+std::function<void()> g_request;
+bool g_requested = false;
 std::atomic<size_t> g_frames{0};
 
-// Waits until the sink has room. False if it never drains.
-bool wait_for_room(audio::Sink* sink) {
+// Waits until the sink has room. False if it never drains, or if the codec is
+// being closed, which has no use for the sound.
+bool wait_for_room(audio::Sink* sink, const std::atomic<int>& closers) {
   auto progress = std::chrono::steady_clock::now();
   int last = sink->queued_ms();
   while (last > kMaxQueuedMs) {
+    if (closers > 0) return false;
     std::this_thread::sleep_for(kPoll);
     const int now = sink->queued_ms();
     if (now < last) progress = std::chrono::steady_clock::now();
@@ -54,10 +62,19 @@ bool wait_for_room(audio::Sink* sink) {
 
 namespace audio {
 void set_sink(Sink* sink) {
+  Speaker& s = speaker();
+  std::lock_guard<std::mutex> hold(s.lock);
   g_sink = sink;
   // A new sink gets a fresh chance; only the one that failed is given up on.
-  std::lock_guard<std::mutex> hold(speaker().lock);
-  speaker().sink_gone = false;
+  s.sink_gone = false;
+  // Firmware may have opened the codec before the device was ready.
+  if (sink && s.open) sink->start(s.rate, s.channels);
+}
+
+void set_device_request(std::function<void()> request) {
+  std::lock_guard<std::mutex> hold(g_request_mutex);
+  g_request = std::move(request);
+  g_requested = false;
 }
 }  // namespace audio
 
@@ -85,19 +102,35 @@ int esp_codec_dev_open(esp_codec_dev_handle_t codec, esp_codec_dev_sample_info_t
     return ESP_CODEC_DEV_INVALID_ARG;
   }
   preflash::Speaker& s = preflash::speaker();
-  std::lock_guard<std::mutex> hold(s.lock);
-  s.open = true;
-  s.channels = fs->channel;
-  s.rate = static_cast<int>(fs->sample_rate);
-  if (preflash::g_sink && !s.sink_gone)
-    preflash::g_sink->start(static_cast<int>(fs->sample_rate), fs->channel);
+  {
+    std::lock_guard<std::mutex> hold(s.lock);
+    s.open = true;
+    s.sink_gone = false;  // each open gets a fresh chance at the device
+    s.channels = fs->channel;
+    s.rate = static_cast<int>(fs->sample_rate);
+    if (preflash::g_sink) preflash::g_sink->start(s.rate, s.channels);
+  }
+  // Outside the lock: the device is only wished for here, and opened elsewhere.
+  std::function<void()> ask;
+  {
+    std::lock_guard<std::mutex> hold(preflash::g_request_mutex);
+    if (preflash::g_request && !preflash::g_requested) {
+      preflash::g_requested = true;
+      ask = preflash::g_request;
+    }
+  }
+  if (ask) ask();
   return ESP_CODEC_DEV_OK;
 }
 
 int esp_codec_dev_close(esp_codec_dev_handle_t codec) {
   if (codec != &preflash::speaker()) return ESP_CODEC_DEV_INVALID_ARG;
   preflash::Speaker& s = preflash::speaker();
+  // A write that is pacing holds the lock for up to a chunk of sound. Saying so first
+  // lets it go, so that closing doesn't wait on the sound.
+  ++s.closers;
   std::lock_guard<std::mutex> hold(s.lock);
+  --s.closers;
   s.open = false;
   return ESP_CODEC_DEV_OK;
 }
@@ -135,7 +168,15 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
     const auto* bytes = reinterpret_cast<const uint8_t*>(scaled.data());
     for (size_t at = 0; at < static_cast<size_t>(len); at += chunk_bytes) {
       const size_t n = std::min(chunk_bytes, static_cast<size_t>(len) - at);
-      if (!preflash::wait_for_room(preflash::g_sink)) {
+      if (s.closers > 0) {
+        dropped = 0;  // closing: nothing is left to pace
+        break;
+      }
+      if (!preflash::wait_for_room(preflash::g_sink, s.closers)) {
+        if (s.closers > 0) {
+          dropped = 0;  // closing: nothing is left to pace
+          break;
+        }
         std::fprintf(stderr, "preflash: the audio device stopped playing, so sound is dropped\n");
         s.sink_gone = true;
         break;

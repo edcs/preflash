@@ -7,6 +7,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -64,6 +65,14 @@ std::time_t rtc_seconds(const std::array<uint8_t, 7>& regs) {
   t.tm_year = decimal(regs[6]) + 100;
   return timegm(&t);
 }
+
+// A clock for the RTC that only moves when a test says so.
+struct FakeClock {
+  std::time_t now = 1'800'000'000;
+  std::function<std::time_t()> fn() {
+    return [this] { return now; };
+  }
+};
 
 int16_t little_endian(uint8_t low, uint8_t high) {
   return static_cast<int16_t>(low | (high << 8));
@@ -238,11 +247,12 @@ TEST(Pcf85063, DateSetOneFieldAtATimeCanPassThroughAnImpossibleDay) {
 }
 
 TEST(Pcf85063, MidnightMovesTheDateAndTheWeekday) {
-  Pcf85063 rtc;
+  FakeClock clock;
+  Pcf85063 rtc(clock.fn());
   // 23:59:59 on the last day of February 2031, with a weekday of the firmware's own.
   const std::array<uint8_t, 8> frame = {0x04, 0x59, 0x59, 0x23, 0x28, 0x06, 0x02, 0x31};
   ASSERT_TRUE(rtc.write(frame));
-  sleep(2);
+  clock.now += 2;
   const auto regs = take<7>(rtc, 0x04);
   EXPECT_EQ(regs[2], 0x00) << "hours";
   EXPECT_EQ(regs[3], 0x01) << "day";
@@ -251,10 +261,11 @@ TEST(Pcf85063, MidnightMovesTheDateAndTheWeekday) {
 }
 
 TEST(Pcf85063, YearWrapsAfterNinetyNine) {
-  Pcf85063 rtc;
+  FakeClock clock;
+  Pcf85063 rtc(clock.fn());
   const std::array<uint8_t, 8> frame = {0x04, 0x59, 0x59, 0x23, 0x31, 0x04, 0x12, 0x99};
   ASSERT_TRUE(rtc.write(frame));
-  sleep(2);
+  clock.now += 2;
   EXPECT_EQ(take(rtc, 0x0a), 0x00);
 }
 
@@ -281,13 +292,14 @@ TEST(Pcf85063, WritingSecondsClearsOscillatorStop) {
 }
 
 TEST(Pcf85063, StoppedOscillatorHoldsTheTime) {
-  Pcf85063 rtc;
+  FakeClock clock;
+  Pcf85063 rtc(clock.fn());
   // 12:00:00 with the stop flag set.
   const std::array<uint8_t, 4> frame = {0x04, 0x80, 0x00, 0x12};
   ASSERT_TRUE(rtc.write(frame));
-  sleep(2);
+  clock.now += 2;
   put(rtc, 0x04, 0x00);  // clearing the flag restarts the count from here
-  EXPECT_LE(decimal(take(rtc, 0x04) & 0x7f), 1);
+  EXPECT_EQ(decimal(take(rtc, 0x04) & 0x7f), 0);
   EXPECT_EQ(take(rtc, 0x06), 0x12);
 }
 
@@ -327,6 +339,77 @@ TEST(Pcf85063DeathTest, ControlBitsWithNoModelStopTheRun) {
   Pcf85063 rtc;
   EXPECT_DEATH(put(rtc, 0x00, 0x20), "pcf85063 register 0x00");  // STOP
   EXPECT_DEATH(put(rtc, 0x00, 0x58), "pcf85063 register 0x00");  // software reset
+}
+
+TEST(Pcf85063DeathTest, UnmodelledReadNamesChipAndRegister) {
+  Pcf85063 rtc;
+  EXPECT_DEATH(take(rtc, 0x12), "pcf85063 register 0x12");
+}
+
+TEST(Pcf85063, TimeCarriesAcrossARestart) {
+  FakeClock clock;
+  Pcf85063 before(clock.fn());
+  // 2 March 2031, 12:34:56, with a weekday of the firmware's own.
+  const std::array<uint8_t, 8> frame = {0x04, 0x56, 0x34, 0x12, 0x02, 0x05, 0x03, 0x31};
+  ASSERT_TRUE(before.write(frame));
+  clock.now += 10;  // running when the restart begins
+  before.save_for_restart();
+  // The next process still has the variable that a fresh run would start from.
+  setenv("PREFLASH_RTC_START", "2026-11-01T22:05:09Z", 1);
+  clock.now += 5;  // and the chip keeps counting while the process is replaced
+  Pcf85063 after(clock.fn());
+  unsetenv("PREFLASH_RTC_START");
+
+  const auto regs = take<7>(after, 0x04);
+  EXPECT_EQ(regs, (std::array<uint8_t, 7>{0x11, 0x35, 0x12, 0x02, 0x05, 0x03, 0x31}));
+  EXPECT_EQ(std::getenv("PREFLASH_RTC_CARRY"), nullptr) << "taken once";
+
+  Pcf85063 fresh(clock.fn());  // a chip made later starts from the Mac as usual
+  EXPECT_EQ(rtc_seconds(take<7>(fresh, 0x04)), clock.now);
+}
+
+TEST(Pcf85063, StoppedOscillatorCarriesAcrossARestart) {
+  FakeClock clock;
+  Pcf85063 before(clock.fn());
+  before.set_lost_power(true);
+  before.save_for_restart();
+  Pcf85063 after(clock.fn());
+  EXPECT_EQ(take(after, 0x04) & 0x80, 0x80);
+}
+
+TEST(Pcf85063, CarryWithANonHexRegisterNamesTheVariable) {
+  const std::string registers(34, '0');
+  setenv("PREFLASH_RTC_CARRY", ("100 0 0z" + registers).c_str(), 1);
+  try {
+    Pcf85063 rtc;
+    ADD_FAILURE() << "accepted a bad carry";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string(e.what()).find("PREFLASH_RTC_CARRY"), std::string::npos);
+  }
+  EXPECT_EQ(std::getenv("PREFLASH_RTC_CARRY"), nullptr);
+}
+
+TEST(Pcf85063, GarbledCarryNamesTheVariable) {
+  setenv("PREFLASH_RTC_CARRY", "soon", 1);
+  try {
+    Pcf85063 rtc;
+    ADD_FAILURE() << "accepted a bad carry";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string(e.what()).find("PREFLASH_RTC_CARRY"), std::string::npos);
+  }
+  EXPECT_EQ(std::getenv("PREFLASH_RTC_CARRY"), nullptr);
+}
+
+TEST(Qmi8658DeathTest, UnmodelledReadNamesChipAndRegister) {
+  Qmi8658 imu;
+  EXPECT_DEATH(take(imu, 0x3b), "qmi8658 register 0x3b");  // gyroscope
+  EXPECT_DEATH(take(imu, 0x04), "qmi8658 register 0x04");
+}
+
+TEST(Axp2101DeathTest, UnmodelledReadNamesChipAndRegister) {
+  Axp2101 pmu;
+  EXPECT_DEATH(take(pmu, 0x90), "axp2101 register 0x90");
+  EXPECT_DEATH(take(pmu, 0x30), "axp2101 register 0x30");
 }
 
 TEST(Qmi8658, WhoAmIIsChipId) {

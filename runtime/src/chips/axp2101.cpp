@@ -12,6 +12,7 @@ constexpr uint8_t kPrecharge = 0x61;
 constexpr uint8_t kCharge = 0x62;
 constexpr uint8_t kTermination = 0x63;
 constexpr uint8_t kChargeVoltage = 0x64;
+constexpr uint8_t kGauge = 0xa4;
 
 }  // namespace
 
@@ -28,6 +29,23 @@ Axp2101::Axp2101() : RegisterChip("axp2101") {
   regs_[kTermination] = 0x15;    // 6.13.2.61: on, 125 mA
   regs_[kChargeVoltage] = 0x03;  // 6.13.2.62: 4.2 V
   // The gauge at 0xa4 (6.13.2.88) stays at its default of 0, with nothing to measure.
+}
+
+uint8_t Axp2101::load(uint8_t reg) {
+  switch (reg) {
+    case kStatus1:
+    case kStatus2:
+    case kChipId:
+    case kCommon:
+    case kPrecharge:
+    case kCharge:
+    case kTermination:
+    case kChargeVoltage:
+    case kGauge:
+      return regs_[reg];
+    default:
+      refuse(reg, "reading it has no model");
+  }
 }
 
 // The charger's settings are only stored, because no battery means nothing to

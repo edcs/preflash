@@ -6,6 +6,7 @@
 #include <ctime>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <string>
 
@@ -38,11 +39,14 @@ class RegisterChip : public I2cDevice {
   uint8_t address_ = 0;
 };
 
-// NXP PCF85063A, datasheet rev. 7. Starts from the Mac's clock in UTC. A time
-// firmware sets lasts as long as the process, so not across esp_restart.
+// NXP PCF85063A, datasheet rev. 7. Starts from the Mac's clock in UTC. Its
+// registers keep running through esp_restart, as a chip on its own cell does.
 class Pcf85063 : public RegisterChip {
  public:
   Pcf85063();
+  // Counts by a clock of the caller's instead of the Mac's, which tests move by hand.
+  explicit Pcf85063(std::function<std::time_t()> clock);
+  ~Pcf85063() override;
 
   bool write(std::span<const uint8_t> data) override;
   bool read(std::span<uint8_t> out) override;
@@ -50,15 +54,21 @@ class Pcf85063 : public RegisterChip {
   // Sets or clears the oscillator stop flag, as a flat backup cell would.
   void set_lost_power(bool lost) { oscillator_stopped_ = lost; }
 
+  // Leaves the registers in the environment for the next process to start from.
+  void save_for_restart();
+
  protected:
   uint8_t load(uint8_t reg) override;
   void store(uint8_t reg, uint8_t value) override;
   uint8_t next(uint8_t reg) override;
 
  private:
+  void restore(const std::string& carried);
   void set_fields(const std::tm& t);
   void count_time();
 
+  std::function<std::time_t()> clock_;
+  std::mutex mutex_;  // a restart reads the registers from another task
   std::time_t counted_to_ = 0;  // the moment the time registers show
   std::atomic<bool> oscillator_stopped_{false};
 };
@@ -86,8 +96,13 @@ class Axp2101 : public RegisterChip {
   Axp2101();
 
  protected:
+  uint8_t load(uint8_t reg) override;
   void store(uint8_t reg, uint8_t value) override;
 };
+
+// Called by esp_restart just before it re-runs the process, so that chips which
+// keep their state through a restart can hand it on.
+void carry_chips_across_restart();
 
 using ChipFactory = std::function<std::unique_ptr<I2cDevice>()>;
 

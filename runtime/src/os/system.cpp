@@ -17,6 +17,7 @@
 #include "esp_random.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "preflash/chips.h"
 #include "preflash/fail.h"
 
 namespace {
@@ -118,6 +119,7 @@ void esp_restart(void) {
     preflash_unsupported("esp_restart", "the executable's path is too long to re-run");
   }
   setenv(kRestartedEnv, "1", 1);
+  preflash::carry_chips_across_restart();
   exec_clean(path, *_NSGetArgv());
   preflash_unsupported("esp_restart", "re-running the executable failed");
 }

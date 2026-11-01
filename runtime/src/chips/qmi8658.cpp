@@ -50,6 +50,9 @@ void Qmi8658::take_sample() {
 }
 
 uint8_t Qmi8658::load(uint8_t reg) {
+  const bool modelled = reg <= kCtrl2 || reg == kCtrl7 || reg == kStatus0 ||
+                        (reg >= kAccelX && reg <= kAccelZHigh);
+  if (!modelled) refuse(reg, "reading it has no model");
   if (reg == kStatus0) return regs_[kCtrl7] & kAccelEnable ? kAccelDataReady : 0;
   // Table 26, CTRL1 bit 5: regs_ holds little-endian, so swap within each pair.
   if (reg >= kAccelX && reg <= kAccelZHigh && (regs_[kCtrl1] & kBigEndian)) {
