@@ -1,0 +1,16 @@
+.github/assets/render.sh
+  h_13c4e797d6e9d2 3-4
+README.md
+  h_13c4e797d6e9d2 96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "56c72159d37260219e069bf5c6f6a8aa58b25408",
+  "prompts": {},
+  "humans": {
+    "h_13c4e797d6e9d2": {
+      "author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
