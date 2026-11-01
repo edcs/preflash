@@ -68,7 +68,8 @@ expect_stale_project() {
 # Builds and runs the unmodified project.
 fresh_copy
 before="$(listing)"
-configure_log="$(configure)" || fail "configure" "$configure_log"
+# -Wall is what ESP-IDF builds with, so the build must be clean under it.
+configure_log="$(cmake -S "$work/project" -B "$work/build" -DCMAKE_C_FLAGS=-Wall -DCMAKE_CXX_FLAGS=-Wall 2>&1)" || fail "configure" "$configure_log"
 build_log="$(cmake --build "$work/build" 2>&1)" || fail "build" "$build_log"
 case "$build_log" in
   *warning*) fail "the build printed a warning" "$build_log" ;;
@@ -78,10 +79,13 @@ expect_output "hello from app_main"
 expect_output "CONFIG_THING_VALUE=7"
 expect_output "CONFIG_THING_ENABLED=1"
 expect_output "CONFIG_THING_MASK=0x10"
+expect_output "CONFIG_THING_LIST=a;b[1];c]"
+expect_output "CONFIG_THING_AFTER=9"
 expect_output "CONFIG_IDF_TARGET=esp32s3"
 expect_no_output "CONFIG_THING_DISABLED"
 expect_output "thing=14"
 expect_output "header only=3"
+expect_output "reserved names=11,12"
 expect_output "from folder=5"
 expect_output "clamped=3"
 expect_output "constructor ran"
@@ -151,5 +155,38 @@ dependencies:
     path: ../components/thing
 YML
 configure_log="$(configure)" || fail "configure with only local dependencies" "$configure_log"
+
+# The flow form keeps the path on the dependency's own line.
+fresh_copy
+rm -rf "$work/project/managed_components"
+cat > "$work/project/main/idf_component.yml" <<'YML'
+dependencies:
+  local_thing: { path: ../components/thing }
+  other_thing: { version: "*", path: ../components/thing }
+YML
+configure_log="$(configure)" || fail "configure with flow-style local dependencies" "$configure_log"
+
+# Only a dependency's own path: key makes it local, not other text containing it.
+fresh_copy
+rm -rf "$work/project/managed_components"
+cat > "$work/project/main/idf_component.yml" <<'YML'
+dependencies:
+  vendor/thing:
+    version: "^1"
+    description: "not a path: at all"
+  local_thing:
+    path: ../components/thing
+YML
+expect_stale_project "a downloaded dependency with path: in other text"
+
+fresh_copy
+rm -rf "$work/project/managed_components"
+cat > "$work/project/main/idf_component.yml" <<'YML'
+dependencies:
+  vendor/thing:
+    version: "^1"
+    override_path: ../components/thing
+YML
+expect_stale_project "a key that only ends in path"
 
 echo "PASS: build_fixture"

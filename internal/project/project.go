@@ -34,20 +34,89 @@ func Find(path string) (Project, error) {
 	}
 	dir, err := filepath.EvalSymlinks(abs)
 	if err != nil {
-		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: %w", path, err)
+		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: %w", abs, err)
 	}
 	cmake, err := os.ReadFile(filepath.Join(dir, "CMakeLists.txt"))
 	if errors.Is(err, fs.ErrNotExist) {
-		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: it has no CMakeLists.txt", path)
+		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: it has no CMakeLists.txt", abs)
 	}
 	if err != nil {
 		return Project{}, err
 	}
-	if !strings.Contains(string(cmake), "project.cmake") {
-		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: its CMakeLists.txt doesn't include project.cmake", path)
+	if !strings.Contains(withoutComments(string(cmake)), "project.cmake") {
+		return Project{}, fmt.Errorf("%s is not an ESP-IDF project: its CMakeLists.txt doesn't include project.cmake", abs)
 	}
 	sum := sha256.Sum256([]byte(dir))
 	return Project{Dir: dir, id: filepath.Base(dir) + "-" + hex.EncodeToString(sum[:4])}, nil
+}
+
+// withoutComments drops CMake's line comments and bracket comments, so that a
+// commented-out include doesn't count. A # inside a quoted or bracket argument
+// is text, so those arguments are copied through whole.
+func withoutComments(src string) string {
+	var out strings.Builder
+	for i := 0; i < len(src); {
+		switch src[i] {
+		case '"':
+			end := quotedEnd(src[i:])
+			out.WriteString(src[i : i+end])
+			i += end
+		case '[':
+			end := bracketEnd(src[i:])
+			if end == 0 {
+				end = 1
+			}
+			out.WriteString(src[i : i+end])
+			i += end
+		case '#':
+			if end := bracketEnd(src[i+1:]); end > 0 {
+				i += 1 + end
+				continue
+			}
+			end := strings.IndexByte(src[i:], '\n')
+			if end < 0 {
+				end = len(src) - i
+			}
+			i += end
+		default:
+			out.WriteByte(src[i])
+			i++
+		}
+	}
+	return out.String()
+}
+
+// quotedEnd gives the length of the quoted argument that opens s, or all of s
+// when it never closes.
+func quotedEnd(s string) int {
+	for i := 1; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			i++
+		case '"':
+			return i + 1
+		}
+	}
+	return len(s)
+}
+
+// bracketEnd gives the length of the bracket that opens s, such as [==[ ... ]==],
+// all of s when it never closes, or 0 when s doesn't open one.
+func bracketEnd(s string) int {
+	if !strings.HasPrefix(s, "[") {
+		return 0
+	}
+	level := len(s[1:]) - len(strings.TrimLeft(s[1:], "="))
+	if !strings.HasPrefix(s[1+level:], "[") {
+		return 0
+	}
+	closing := "]" + strings.Repeat("=", level) + "]"
+	body := 2 + level
+	at := strings.Index(s[body:], closing)
+	if at < 0 {
+		return len(s)
+	}
+	return body + at + len(closing)
 }
 
 // StateDir is where this checkout's saved state lives, outside the project.

@@ -1,5 +1,7 @@
 #include "preflash/board.h"
 
+#include <climits>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -27,6 +29,11 @@ const json& member(const json& obj, const std::string& parent, const char* key) 
 int integer(const json& obj, const std::string& parent, const char* key) {
   const json& v = member(obj, parent, key);
   if (!v.is_number_integer()) bad(parent.empty() ? key : parent + "." + key, "must be an integer");
+  // The parser gives non-negative numbers as unsigned and negative ones as signed;
+  // each is checked on 64 bits so that none can wrap into range.
+  bool fits = v.is_number_unsigned() ? v.get<std::uint64_t>() <= static_cast<std::uint64_t>(INT_MAX)
+                                     : v.get<std::int64_t>() >= INT_MIN && v.get<std::int64_t>() <= INT_MAX;
+  if (!fits) bad(parent.empty() ? key : parent + "." + key, "is out of range for an integer");
   return v.get<int>();
 }
 
@@ -48,6 +55,8 @@ Board parse_board(const std::string& source) {
   const json& display = member(root, "", "display");
   b.width = integer(display, "display", "width");
   b.height = integer(display, "display", "height");
+  if (b.width <= 0) bad("display.width", "must be positive");
+  if (b.height <= 0) bad("display.height", "must be positive");
 
   const json& chips = member(root, "", "i2c");
   if (!chips.is_array()) bad("i2c", "must be a list");

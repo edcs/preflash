@@ -31,8 +31,6 @@ namespace {
 using Clock = std::chrono::steady_clock;
 using std::chrono::milliseconds;
 
-constexpr const char* kTag = "wifi";
-
 // Long enough for a caller to see "connecting" before it ends, short enough to keep
 // a run lively.
 constexpr milliseconds kJoinDelay{150};

@@ -75,6 +75,51 @@ func TestNotAnIdfProjectSaysSo(t *testing.T) {
 	})
 }
 
+func TestFindErrorsNameTheAbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	_, err := Find(".")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not an ESP-IDF project")
+	assert.NotContains(t, err.Error(), " . ")
+	assert.Contains(t, err.Error(), dir+" is not")
+
+	_, err = Find("missing")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(dir, "missing"))
+}
+
+func TestHashInsideAnArgumentIsNotAComment(t *testing.T) {
+	for name, line := range map[string]string{
+		"quoted":  `include("/opt/idf#5/tools/cmake/project.cmake")`,
+		"escaped": `set(X "a\"#") include("/opt/idf/tools/cmake/project.cmake")`,
+		"bracket": `include([=[/opt/idf#5/tools/cmake/project.cmake]=])`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, filepath.Join(dir, "CMakeLists.txt"), line+"\nproject(demo)\n")
+			_, err := Find(dir)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestCommentedProjectCmakeIsNotAProject(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "CMakeLists.txt"), "# include($ENV{IDF_PATH}/tools/cmake/project.cmake)\nproject(plain C)\n")
+	_, err := Find(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not an ESP-IDF project")
+
+	writeFile(t, filepath.Join(dir, "CMakeLists.txt"), "#[[ include(project.cmake)\n]] project(plain C)\n")
+	_, err = Find(dir)
+	require.Error(t, err)
+
+	writeFile(t, filepath.Join(dir, "CMakeLists.txt"), "include($ENV{IDF_PATH}/tools/cmake/project.cmake) # the real one\n")
+	_, err = Find(dir)
+	require.NoError(t, err)
+}
+
 func TestBoardWithNothingNamedIsTheDefault(t *testing.T) {
 	p, err := Find(idfProject(t, t.TempDir()))
 	require.NoError(t, err)
