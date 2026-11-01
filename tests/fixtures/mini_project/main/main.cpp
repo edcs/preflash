@@ -24,6 +24,8 @@ extern "C" void app_main(void) {
 #ifdef CONFIG_THING_DISABLED
   printf("CONFIG_THING_DISABLED is defined\n");
 #endif
+  printf("CONFIG_THING_LIST=%s\n", CONFIG_THING_LIST);
+  printf("CONFIG_THING_AFTER=%d\n", CONFIG_THING_AFTER);
   printf("CONFIG_IDF_TARGET=%s\n", CONFIG_IDF_TARGET);
   printf("thing=%d\n", thing_value());
   printf("header only=%d\n", HEADER_ONLY_VALUE);

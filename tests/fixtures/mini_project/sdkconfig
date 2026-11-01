@@ -10,3 +10,6 @@ CONFIG_LV_COLOR_DEPTH=16
 CONFIG_LV_OS_FREERTOS=y
 CONFIG_LV_USE_SDL=y
 CONFIG_FREERTOS_HZ=1000
+CONFIG_THING_LIST="a;b[1];c]"
+# a comment with [ an unbalanced bracket; and a semicolon
+CONFIG_THING_AFTER=9
