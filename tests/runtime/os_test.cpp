@@ -83,12 +83,15 @@ TEST(Queues, FullQueueRefusesWithoutWaiting) {
 
 TEST(Queues, ReceiveBlocksUntilAnotherThreadSends) {
   QueueHandle_t queue = xQueueCreate(1, sizeof(int));
-  auto received = std::async(std::launch::async, [queue] {
+  std::promise<void> started;
+  auto received = std::async(std::launch::async, [queue, &started] {
     int value = 0;
+    started.set_value();
     // Bounded, so a lost wakeup fails the test instead of hanging the future's destructor.
     const BaseType_t got = xQueueReceive(queue, &value, pdMS_TO_TICKS(5000));
     return got == pdTRUE ? value : -1;
   });
+  started.get_future().wait();
   // Still waiting: nothing has been sent.
   EXPECT_EQ(received.wait_for(std::chrono::milliseconds(50)), std::future_status::timeout);
   const int sent = 42;
@@ -101,10 +104,13 @@ TEST(Queues, SendBlocksUntilAnotherThreadReceives) {
   QueueHandle_t queue = xQueueCreate(1, sizeof(int));
   const int first = 1;
   ASSERT_EQ(xQueueSend(queue, &first, 0), pdTRUE);
-  auto sent = std::async(std::launch::async, [queue] {
+  std::promise<void> started;
+  auto sent = std::async(std::launch::async, [queue, &started] {
     const int second = 2;
+    started.set_value();
     return xQueueSend(queue, &second, pdMS_TO_TICKS(5000));
   });
+  started.get_future().wait();
   EXPECT_EQ(sent.wait_for(std::chrono::milliseconds(50)), std::future_status::timeout);
   int value = 0;
   ASSERT_EQ(xQueueReceive(queue, &value, 0), pdTRUE);
