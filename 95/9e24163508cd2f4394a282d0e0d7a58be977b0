@@ -1,0 +1,34 @@
+tests/integration/build_fixture.sh
+  s_82b4983a83db4b::t_9db4c27b34ade2 87
+tests/fixtures/mini_project/main/main.cpp
+  s_82b4983a83db4b::t_9db4c27b34ade2 4,8,34
+runtime/idf/tools/cmake/project.cmake
+  s_82b4983a83db4b::t_bc6c15708aaad8 272-274,340
+tests/fixtures/mini_project/components/test/test.c
+  s_82b4983a83db4b::t_9db4c27b34ade2 1-3
+tests/fixtures/mini_project/components/test/CMakeLists.txt
+  s_82b4983a83db4b::t_9db4c27b34ade2 1
+tests/fixtures/mini_project/components/all/CMakeLists.txt
+  s_82b4983a83db4b::t_9db4c27b34ade2 1
+tests/fixtures/mini_project/components/all/include/all.h
+  s_82b4983a83db4b::t_9db4c27b34ade2 1-3
+tests/fixtures/mini_project/components/test/test.h
+  s_82b4983a83db4b::t_f95d5271535a21 3-6,8-11
+  s_82b4983a83db4b::t_9db4c27b34ade2 1-2,7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "959e24163508cd2f4394a282d0e0d7a58be977b0",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
