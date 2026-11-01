@@ -30,6 +30,7 @@ struct Watchdog {
   uint64_t timeout_us = CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000000ULL;
   bool panic = kPanicAtBoot;
   esp_timer_handle_t timer = nullptr;
+  int64_t deadline = 0;  // when this round ends, or 0 with nothing to wait for
 };
 
 Watchdog& watchdog() {
@@ -38,6 +39,19 @@ Watchdog& watchdog() {
 }
 
 void expired(void*);
+
+// Reports whichever tasks haven't reset this round. False if none are late.
+bool report_late(const Watchdog& w) {
+  std::string late;
+  for (const auto& [task, reset] : w.tasks) {
+    if (!reset) late += std::string(" ") + pcTaskGetName(task);
+  }
+  if (late.empty()) return false;
+  std::fprintf(stderr, "preflash: task watchdog: these tasks didn't reset in time:%s\n",
+               late.c_str());
+  if (w.panic) std::abort();
+  return true;
+}
 
 // Starts a new round, and the wait for its end if there's a task to wait for.
 esp_err_t feed(Watchdog& w) {
@@ -48,21 +62,17 @@ esp_err_t feed(Watchdog& w) {
   }
   esp_timer_stop(w.timer);  // not armed is fine: there may have been nothing to wait for
   for (auto& [task, reset] : w.tasks) reset = false;
-  return w.tasks.empty() ? ESP_OK : esp_timer_start_once(w.timer, w.timeout_us);
+  w.deadline = 0;
+  if (w.tasks.empty()) return ESP_OK;
+  w.deadline = esp_timer_get_time() + static_cast<int64_t>(w.timeout_us);
+  return esp_timer_start_once(w.timer, w.timeout_us);
 }
 
 void expired(void*) {
   Watchdog& w = watchdog();
   std::lock_guard<std::mutex> lock(w.mutex);
-  std::string late;
-  for (const auto& [task, reset] : w.tasks) {
-    if (!reset) late += std::string(" ") + pcTaskGetName(task);
-  }
   // Fired just as the last task unsubscribed or reset: there's nobody to blame.
-  if (late.empty()) return;
-  std::fprintf(stderr, "preflash: task watchdog: these tasks didn't reset in time:%s\n",
-               late.c_str());
-  if (w.panic) std::abort();
+  if (!report_late(w)) return;
   if (feed(w) != ESP_OK) preflash_unsupported("esp_task_wdt", "the watchdog's timer stopped");
 }
 
@@ -101,6 +111,9 @@ esp_err_t esp_task_wdt_reset(void) {
   std::lock_guard<std::mutex> lock(w.mutex);
   auto entry = w.tasks.find(xTaskGetCurrentTaskHandle());
   if (entry == w.tasks.end()) return ESP_ERR_NOT_FOUND;
+  // The timer task can be held up by another timer's callback, where the device's
+  // hardware timer wouldn't be, so a reset that comes too late still counts as late.
+  if (w.deadline != 0 && esp_timer_get_time() >= w.deadline) report_late(w);
   entry->second = true;
   for (const auto& [task, reset] : w.tasks) {
     if (!reset) return ESP_OK;  // the round ends when every task has reset

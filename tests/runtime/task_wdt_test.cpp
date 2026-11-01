@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "esp_task_wdt.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -78,11 +79,33 @@ TEST(TaskWatchdogDeathTest, WithoutPanicItReportsAndCarriesOn) {
       "gentle_one(.|\n)*carried on");
 }
 
+void reset_late_while_the_timer_task_is_busy() {
+  esp_timer_create_args_t args = {};
+  args.callback = [](void*) { std::this_thread::sleep_for(5s); };
+  args.name = "slow";
+  esp_timer_handle_t slow = nullptr;
+  esp_timer_create(&args, &slow);
+  esp_timer_start_once(slow, 0);
+  std::this_thread::sleep_for(20ms);  // the timer task is now asleep in the callback
+  auto strict = config(20, true);
+  esp_task_wdt_reconfigure(&strict);
+  esp_task_wdt_add(nullptr);
+  std::this_thread::sleep_for(60ms);
+  esp_task_wdt_reset();
+  std::this_thread::sleep_for(2s);
+  std::exit(0);
+}
+
+// Unlike the device's hardware timer, the watchdog here shares the timer task.
+TEST(TaskWatchdogDeathTest, LateResetIsCaughtWhileTheTimerTaskIsBusy) {
+  EXPECT_DEATH(reset_late_while_the_timer_task_is_busy(), "task watchdog");
+}
+
 TEST(TaskWatchdog, TaskThatKeepsResettingSurvives) {
-  auto strict = config(40, true);
+  auto strict = config(500, true);
   ASSERT_EQ(esp_task_wdt_reconfigure(&strict), ESP_OK);
   ASSERT_EQ(esp_task_wdt_add(nullptr), ESP_OK);
-  const auto until = std::chrono::steady_clock::now() + 150ms;
+  const auto until = std::chrono::steady_clock::now() + 1500ms;
   while (std::chrono::steady_clock::now() < until) {
     ASSERT_EQ(esp_task_wdt_reset(), ESP_OK);
     std::this_thread::sleep_for(5ms);

@@ -139,6 +139,27 @@ TEST(Tasks, DeletingItselfEndsTheTaskThere) {
   EXPECT_FALSE(ran_on);
 }
 
+TEST(Tasks, DeletingItselfRunsNoDestructors) {
+  static std::atomic<bool> destroyed{false};
+  static std::atomic<bool> about_to_go{false};
+  destroyed = false;
+  about_to_go = false;
+  struct Held {
+    ~Held() { destroyed = true; }
+  };
+  auto body = [](void*) {
+    Held held;
+    about_to_go = true;
+    vTaskDelete(nullptr);
+  };
+  ASSERT_EQ(xTaskCreate(body, "gone", 4096, nullptr, 1, nullptr), pdPASS);
+  const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (!about_to_go && std::chrono::steady_clock::now() < give_up) vTaskDelay(1);
+  ASSERT_TRUE(about_to_go);
+  vTaskDelay(pdMS_TO_TICKS(20));
+  EXPECT_FALSE(destroyed);
+}
+
 TEST(Tasks, DeletingItselfByHandleWorksToo) {
   static std::atomic<int> reached{0};
   reached = 0;

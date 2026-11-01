@@ -106,12 +106,24 @@ TEST(Timer, EarliestFiresFirstWhicheverStartedFirst) {
   static std::atomic<int> order{0};
   static std::atomic<int> late_at{0};
   static std::atomic<int> early_at{0};
+  static std::atomic<int> recorded{0};
   order = 0;
-  esp_timer_handle_t late = make([](void*) { late_at = ++order; }, nullptr);
-  esp_timer_handle_t early = make([](void*) { early_at = ++order; }, nullptr);
+  recorded = 0;
+  esp_timer_handle_t late = make(
+      [](void*) {
+        late_at = ++order;
+        ++recorded;
+      },
+      nullptr);
+  esp_timer_handle_t early = make(
+      [](void*) {
+        early_at = ++order;
+        ++recorded;
+      },
+      nullptr);
   ASSERT_EQ(esp_timer_start_once(late, 40 * 1000), ESP_OK);
   ASSERT_EQ(esp_timer_start_once(early, 2 * 1000), ESP_OK);
-  ASSERT_TRUE(wait_for(order, 2));
+  ASSERT_TRUE(wait_for(recorded, 2));
   EXPECT_LT(early_at, late_at);
 }
 
