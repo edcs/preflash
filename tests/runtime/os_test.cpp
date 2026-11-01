@@ -85,7 +85,8 @@ TEST(Queues, ReceiveBlocksUntilAnotherThreadSends) {
   QueueHandle_t queue = xQueueCreate(1, sizeof(int));
   auto received = std::async(std::launch::async, [queue] {
     int value = 0;
-    const BaseType_t got = xQueueReceive(queue, &value, portMAX_DELAY);
+    // Bounded, so a lost wakeup fails the test instead of hanging the future's destructor.
+    const BaseType_t got = xQueueReceive(queue, &value, pdMS_TO_TICKS(5000));
     return got == pdTRUE ? value : -1;
   });
   // Still waiting: nothing has been sent.
@@ -102,7 +103,7 @@ TEST(Queues, SendBlocksUntilAnotherThreadReceives) {
   ASSERT_EQ(xQueueSend(queue, &first, 0), pdTRUE);
   auto sent = std::async(std::launch::async, [queue] {
     const int second = 2;
-    return xQueueSend(queue, &second, portMAX_DELAY);
+    return xQueueSend(queue, &second, pdMS_TO_TICKS(5000));
   });
   EXPECT_EQ(sent.wait_for(std::chrono::milliseconds(50)), std::future_status::timeout);
   int value = 0;
