@@ -15,6 +15,7 @@ namespace {
 
 // Section 8.1, table 5.
 constexpr uint8_t kControl1 = 0x00;
+constexpr uint8_t kControl2 = 0x01;
 constexpr uint8_t kOffset = 0x02;
 constexpr uint8_t kRamByte = 0x03;
 constexpr uint8_t kSeconds = 0x04;
@@ -127,10 +128,11 @@ void Pcf85063::restore(const std::string& value) {
                       std::strlen(hex) == 2 * kCarriedRegisters && value[end] == '\0';
   if (!parsed)
     throw std::runtime_error(std::string(kCarryEnv) + " isn't what a restart leaves: " + value);
+  if (std::strspn(hex, "0123456789abcdefABCDEF") != 2 * kCarriedRegisters)
+    throw std::runtime_error(std::string(kCarryEnv) + " isn't what a restart leaves: " + value);
   for (size_t i = 0; i < kCarriedRegisters; ++i) {
     unsigned byte = 0;
-    if (std::sscanf(hex + 2 * i, "%2x", &byte) != 1)
-      throw std::runtime_error(std::string(kCarryEnv) + " isn't what a restart leaves: " + value);
+    std::sscanf(hex + 2 * i, "%2x", &byte);
     regs_[i] = static_cast<uint8_t>(byte);
   }
   counted_to_ = static_cast<std::time_t>(counted);
@@ -210,8 +212,9 @@ void Pcf85063::count_time() {
 }
 
 uint8_t Pcf85063::load(uint8_t reg) {
-  // Only reachable by setting the address past the end, since a burst wraps to 00h.
-  if (reg > kLastRegister) refuse(reg, "reading it has no model");
+  // Control_2, alarms and timer have no model, as in store. A burst wraps to 00h, so
+  // only setting the address can reach past the end.
+  if (reg == kControl2 || reg >= kSecondAlarm) refuse(reg, "reading it has no model");
   if (reg == kSeconds) return regs_[reg] | (oscillator_stopped_ ? kOscillatorStopped : 0);
   return regs_[reg];
 }
