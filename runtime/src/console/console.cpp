@@ -51,7 +51,8 @@ State& state() {
 
 // Splits as ESP-IDF's esp_console_split_argv does: words end at a space, a
 // backslash takes the next character literally, and a quote that opens a word
-// holds it together up to the closing quote.
+// holds it together up to the closing quote, or to the end of the line if none
+// closes it.
 std::vector<std::string> split_words(const std::string& line) {
   std::vector<std::string> words;
   std::string word;

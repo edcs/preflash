@@ -179,3 +179,24 @@ TEST_F(Nvs, EraseWipesEverything) {
   ASSERT_EQ(nvs_flash_init(), ESP_OK);
   EXPECT_EQ(nvs_open("ns", NVS_READONLY, &h), ESP_ERR_NVS_NOT_FOUND);
 }
+
+// A device writes the namespace's entry as soon as a read-write open creates it,
+// so it outlives a close that never committed anything.
+TEST_F(Nvs, ReadWriteOpenCreatesTheNamespaceAtOnce) {
+  nvs_handle_t h;
+  EXPECT_EQ(nvs_open("fresh", NVS_READONLY, &h), ESP_ERR_NVS_NOT_FOUND);
+  ASSERT_EQ(nvs_open("fresh", NVS_READWRITE, &h), ESP_OK);
+  nvs_close(h);
+
+  ASSERT_EQ(nvs_open("fresh", NVS_READONLY, &h), ESP_OK);
+  size_t size = 0;
+  EXPECT_EQ(nvs_get_blob(h, "k", nullptr, &size), ESP_ERR_NVS_NOT_FOUND);
+  nvs_close(h);
+}
+
+TEST_F(Nvs, ReadOnlyOpenOfAMissingNamespaceDoesNotCreateIt) {
+  nvs_handle_t h;
+  EXPECT_EQ(nvs_open("absent", NVS_READONLY, &h), ESP_ERR_NVS_NOT_FOUND);
+  EXPECT_EQ(nvs_open("absent", NVS_READONLY, &h), ESP_ERR_NVS_NOT_FOUND);
+  EXPECT_FALSE(fs::exists(dir_ / "nvs" / "absent"));
+}

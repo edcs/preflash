@@ -217,6 +217,17 @@ TEST(Panel, RotatedFlushKeepsPhysicalOrientation) {
 }
 
 TEST(Touch, QuickTapSurvivesBetweenReads) {
+  // An LVGL touch input left over from an earlier test would pop these events
+  // first, so say so instead of failing at random.
+  if (lv_is_initialized()) {
+    ASSERT_TRUE(bsp_display_lock(0));
+    int pointers = 0;
+    for (lv_indev_t* i = lv_indev_get_next(nullptr); i; i = lv_indev_get_next(i)) {
+      pointers += lv_indev_get_type(i) == LV_INDEV_TYPE_POINTER;
+    }
+    bsp_display_unlock();
+    ASSERT_EQ(pointers, 0) << "an earlier test left a touch input reading the queue";
+  }
   touch::push({5, 6, true});
   touch::push({5, 6, false});
 
