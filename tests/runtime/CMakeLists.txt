@@ -55,4 +55,4 @@ add_dependencies(runtime_tests restart_helper)
 
 enable_testing()
 include(GoogleTest)
-gtest_discover_tests(runtime_tests)
+gtest_discover_tests(runtime_tests PROPERTIES TIMEOUT 60)

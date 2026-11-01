@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -213,6 +214,96 @@ TEST(Panel, RotatedFlushKeepsPhysicalOrientation) {
   lv_indev_delete(added);
   // Its reader would otherwise keep popping the touch queue for the tests after this one.
   lv_indev_delete(touch_input);
+  bsp_display_unlock();
+}
+
+namespace {
+
+// A display on the shared panel the way a project's lvgl_port_add_disp call makes one,
+// which a test can set up and tear down without touching the one bsp starts.
+lv_display_t* add_display(bool full_refresh) {
+  const lvgl_port_cfg_t cfg = ESP_LVGL_PORT_INIT_CONFIG();
+  const esp_err_t started = lvgl_port_init(&cfg);
+  EXPECT_TRUE(started == ESP_OK || started == ESP_ERR_INVALID_STATE);
+  lvgl_port_display_cfg_t display = {};
+  display.hres = kWidth;
+  display.vres = kHeight;
+  display.color_format = LV_COLOR_FORMAT_RGB565;
+  display.flags.full_refresh = full_refresh;
+  return lvgl_port_add_disp(&display);
+}
+
+// Its input reader would otherwise keep popping the touch queue for later tests.
+void remove_display(lv_display_t* disp) {
+  for (lv_indev_t* i = lv_indev_get_next(nullptr); i;) {
+    lv_indev_t* next = lv_indev_get_next(i);
+    if (lv_indev_get_display(i) == disp) lv_indev_delete(i);
+    i = next;
+  }
+  lv_display_delete(disp);
+}
+
+// How many pixels of a panel painted with a marker survive a redraw of one small
+// object, which only a display that sends the whole screen would overwrite.
+int pixels_left_after_a_small_redraw(bool full_refresh) {
+  constexpr uint16_t kMarker = 0x1234;
+  lv_display_t* disp = add_display(full_refresh);
+  EXPECT_NE(disp, nullptr);
+  if (!disp) return -1;
+  EXPECT_TRUE(bsp_display_lock(0));
+  lv_obj_t* screen = lv_display_get_screen_active(disp);
+  lv_obj_set_style_bg_color(screen, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
+  lv_obj_t* mark = lv_obj_create(screen);
+  lv_obj_remove_style_all(mark);
+  lv_obj_set_size(mark, 2, 2);
+  lv_obj_set_style_bg_opa(mark, LV_OPA_COVER, 0);
+  lv_refr_now(disp);
+
+  const std::vector<uint16_t> marker(kWidth * kHeight, kMarker);
+  panel::draw(0, 0, kWidth, kHeight, marker.data());
+  lv_obj_set_pos(mark, 1, 1);
+  lv_refr_now(disp);
+
+  const auto frame = current_frame();
+  int left = 0;
+  for (int y = 0; y < kHeight; ++y) {
+    for (int x = 0; x < kWidth; ++x) left += pixel(frame, x, y) == kMarker;
+  }
+  remove_display(disp);
+  bsp_display_unlock();
+  return left;
+}
+
+}  // namespace
+
+TEST(Panel, FullRefreshSendsTheWholeScreenEachTime) {
+  EXPECT_EQ(pixels_left_after_a_small_redraw(true), 0);
+  // Without the option only what changed is sent, so this is what the check above beats.
+  EXPECT_GT(pixels_left_after_a_small_redraw(false), 0);
+}
+
+TEST(Touch, TapWithNoHoldReachesLvgl) {
+  lv_display_t* disp = add_display(false);
+  ASSERT_NE(disp, nullptr);
+  static std::atomic<int> clicks;
+  clicks = 0;
+  ASSERT_TRUE(bsp_display_lock(0));
+  lv_obj_t* button = lv_button_create(lv_display_get_screen_active(disp));
+  lv_obj_set_pos(button, 0, 0);
+  lv_obj_set_size(button, 12, 6);
+  lv_obj_add_event_cb(button, [](lv_event_t*) { ++clicks; }, LV_EVENT_CLICKED, nullptr);
+  lv_refr_now(disp);
+  bsp_display_unlock();
+
+  // The press and release go in together, as "@sim touch x y 0" sends them.
+  touch::push({5, 3, true});
+  touch::push({5, 3, false});
+  for (int i = 0; i < 200 && clicks == 0; ++i) usleep(5000);
+  EXPECT_EQ(clicks, 1);
+
+  ASSERT_TRUE(bsp_display_lock(0));
+  remove_display(disp);
   bsp_display_unlock();
 }
 

@@ -37,9 +37,16 @@ wait_for_exit() {
   ! kill -0 "$app_pid" 2>/dev/null
 }
 
-# Closes stdin and collects the exit status in $app_status.
+# Closes stdin and collects the exit status in $app_status. An app that is still up
+# after ten seconds fails the script instead of hanging it.
 finish_app() {
   exec 3>&-
+  if ! wait_for_exit 100; then
+    kill -9 "$app_pid" 2>/dev/null || true
+    wait "$app_pid" 2>/dev/null || true
+    app_pid=""
+    fail "the app was still running 10 s after it was told to stop" "$(cat "$app_log")"
+  fi
   app_status=0
   wait "$app_pid" || app_status=$?
   app_pid=""
