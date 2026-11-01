@@ -1,0 +1,14 @@
+runtime/src/os/timer.cpp
+  h_13c4e797d6e9d2 8,114-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3ae81c9336c8c86e3de4ed5281617f92ade34f79",
+  "prompts": {},
+  "humans": {
+    "h_13c4e797d6e9d2": {
+      "author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
