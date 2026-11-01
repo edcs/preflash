@@ -51,35 +51,72 @@ func Find(path string) (Project, error) {
 }
 
 // withoutComments drops CMake's line comments and bracket comments, so that a
-// commented-out include doesn't count.
+// commented-out include doesn't count. A # inside a quoted or bracket argument
+// is text, so those arguments are copied through whole.
 func withoutComments(src string) string {
 	var out strings.Builder
 	for i := 0; i < len(src); {
-		if src[i] != '#' {
-			out.WriteByte(src[i])
-			i++
-			continue
-		}
-		// #[==[ ... ]==] runs over lines; any other # runs to the end of its line.
-		end := strings.IndexByte(src[i:], '\n')
-		if end < 0 {
-			end = len(src) - i
-		}
-		if rest := src[i+1:]; strings.HasPrefix(rest, "[") {
-			level := len(rest[1:]) - len(strings.TrimLeft(rest[1:], "="))
-			if strings.HasPrefix(rest[1+level:], "[") {
-				closing := "]" + strings.Repeat("=", level) + "]"
-				if at := strings.Index(rest[2+level:], closing); at >= 0 {
-					i += 1 + 2 + level + at + len(closing)
-					continue
-				}
-				i = len(src)
+		switch src[i] {
+		case '"':
+			end := quotedEnd(src[i:])
+			out.WriteString(src[i : i+end])
+			i += end
+		case '[':
+			end := bracketEnd(src[i:])
+			if end == 0 {
+				end = 1
+			}
+			out.WriteString(src[i : i+end])
+			i += end
+		case '#':
+			if end := bracketEnd(src[i+1:]); end > 0 {
+				i += 1 + end
 				continue
 			}
+			end := strings.IndexByte(src[i:], '\n')
+			if end < 0 {
+				end = len(src) - i
+			}
+			i += end
+		default:
+			out.WriteByte(src[i])
+			i++
 		}
-		i += end
 	}
 	return out.String()
+}
+
+// quotedEnd gives the length of the quoted argument that opens s, or all of s
+// when it never closes.
+func quotedEnd(s string) int {
+	for i := 1; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			i++
+		case '"':
+			return i + 1
+		}
+	}
+	return len(s)
+}
+
+// bracketEnd gives the length of the bracket that opens s, such as [==[ ... ]==],
+// all of s when it never closes, or 0 when s doesn't open one.
+func bracketEnd(s string) int {
+	if !strings.HasPrefix(s, "[") {
+		return 0
+	}
+	level := len(s[1:]) - len(strings.TrimLeft(s[1:], "="))
+	if !strings.HasPrefix(s[1+level:], "[") {
+		return 0
+	}
+	closing := "]" + strings.Repeat("=", level) + "]"
+	body := 2 + level
+	at := strings.Index(s[body:], closing)
+	if at < 0 {
+		return len(s)
+	}
+	return body + at + len(closing)
 }
 
 // StateDir is where this checkout's saved state lives, outside the project.

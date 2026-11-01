@@ -82,11 +82,26 @@ func TestFindErrorsNameTheAbsolutePath(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not an ESP-IDF project")
 	assert.NotContains(t, err.Error(), " . ")
-	assert.Contains(t, err.Error(), filepath.Base(dir)+" is not")
+	assert.Contains(t, err.Error(), dir+" is not")
 
 	_, err = Find("missing")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), filepath.Join(dir, "missing"))
+}
+
+func TestHashInsideAnArgumentIsNotAComment(t *testing.T) {
+	for name, line := range map[string]string{
+		"quoted":  `include("/opt/idf#5/tools/cmake/project.cmake")`,
+		"escaped": `set(X "a\"#") include("/opt/idf/tools/cmake/project.cmake")`,
+		"bracket": `include([=[/opt/idf#5/tools/cmake/project.cmake]=])`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, filepath.Join(dir, "CMakeLists.txt"), line+"\nproject(demo)\n")
+			_, err := Find(dir)
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestCommentedProjectCmakeIsNotAProject(t *testing.T) {

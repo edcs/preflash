@@ -156,6 +156,16 @@ dependencies:
 YML
 configure_log="$(configure)" || fail "configure with only local dependencies" "$configure_log"
 
+# The flow form keeps the path on the dependency's own line.
+fresh_copy
+rm -rf "$work/project/managed_components"
+cat > "$work/project/main/idf_component.yml" <<'YML'
+dependencies:
+  local_thing: { path: ../components/thing }
+  other_thing: { version: "*", path: ../components/thing }
+YML
+configure_log="$(configure)" || fail "configure with flow-style local dependencies" "$configure_log"
+
 # Only a dependency's own path: key makes it local, not other text containing it.
 fresh_copy
 rm -rf "$work/project/managed_components"
