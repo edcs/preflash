@@ -53,7 +53,8 @@ before="$(snapshot)"
 "$scratch/preflash" run --project "$copy" --board "$mod_board" --headless <<< "@sim quit" \
   || fail "the project didn't build and run"
 
-# Each run below starts from no saved state, in the folder preflash uses for this copy.
+# The first run below starts from no saved state, in the folder preflash uses for this
+# copy. The runs after it keep what the one before saved, unless a comment says otherwise.
 real_copy="$(cd "$copy" && pwd -P)"
 state="$HOME/.preflash/state/snoozel-$(printf '%s' "$real_copy" | shasum -a 256 | cut -c1-8)"
 [ -d "$state" ] || fail "no saved state in $state"
@@ -82,15 +83,17 @@ else:
 PY
 }
 
-# LVGL draws on its own time, so this asks again until the panel shows it.
+# LVGL draws on its own time, so this asks again until the panel shows it. A panel that
+# never drew is black too, so black is only asked for in a run that has already shown a
+# picture. The pause between asks defaults to half a second.
 wait_for_shot() {
-  local want="$1" tries path
+  local want="$1" pause="${2:-0.5}" tries path
   for tries in $(seq 1 20); do
     path="$scratch/$want-$tries.bmp"
     send "@sim shot $path"
     wait_for_output "saved $path"
     shot_is "$path" "$want" 2>/dev/null && return 0
-    sleep 0.5
+    sleep "$pause"
   done
   fail "the panel never showed $want" "$(cat "$app_log")"
 }
@@ -145,11 +148,13 @@ wait_for_chips() {
 
 # The enable line sits low from power-on, held by the mod's pull-down, and
 # backlight_hold_off() drives it low without touching the PWM. So the driver shows
-# 100 with the line low until the firmware first sets a level, about 500 ms in.
+# 100 with the line low until the firmware first sets a level. That happens when the
+# splash lights the screen, 500 ms after the splash is drawn, which is right after the
+# "boot rotation" line. Asking once that line is out lands inside that wait.
 start_run_at "$noon" --board "$mod_board"
+wait_for_chips
 send "@sim brightness"
 wait_for_output "brightness: 0 (pwm 100, enable gpio43 low)"
-wait_for_chips
 
 # A daytime boot lights the screen by itself, with no fake clock.
 wait_for_output "desert: "
@@ -201,6 +206,7 @@ send "@sim touch 40 45"
 wait_for_output "menu: closed"
 
 # A lit screen goes dark when the clock jumps into the night.
+wait_for_shot picture
 send "fake $night"
 wait_for_output "fake clock at $night"
 wait_for_shot black
@@ -208,9 +214,11 @@ wait_for_brightness "$dark"
 quit_app
 
 # A night-time boot stays dark. A jump in the clock never lights a dark screen, however
-# late it comes: that takes a tap.
+# late it comes: that takes a tap. The splash is up for 1.5 s, so asking for it fast
+# proves the panel drew before it went black.
 start_run_at "$night" --board "$mod_board"
 wait_for_chips
+wait_for_shot picture 0.05
 wait_for_shot black
 wait_for_brightness "$dark"
 sleep 3
