@@ -380,7 +380,12 @@ TEST(Pcf85063, StoppedOscillatorCarriesAcrossARestart) {
 TEST(Pcf85063, CarryWithANonHexRegisterNamesTheVariable) {
   const std::string registers(34, '0');
   setenv("PREFLASH_RTC_CARRY", ("100 0 0z" + registers).c_str(), 1);
-  EXPECT_THROW(Pcf85063 chip, std::runtime_error);
+  try {
+    Pcf85063 rtc;
+    ADD_FAILURE() << "accepted a bad carry";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string(e.what()).find("PREFLASH_RTC_CARRY"), std::string::npos);
+  }
   EXPECT_EQ(std::getenv("PREFLASH_RTC_CARRY"), nullptr);
 }
 
