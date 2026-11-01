@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Preflash hero</title>
+<!-- Source for hero.png. The transcript and the window are one real session. Render with: sh .github/assets/render.sh -->
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=block" rel="stylesheet">
+<style>
+:root{--ground:#0E1113;--surface:#15191C;--line:#2A3036;--text:#E7ECEF;--muted:#8D98A1;--accent:#5FD4E8;--amber:#F2B84B}
+*{box-sizing:border-box;margin:0}
+html,body{width:1280px;height:680px;background:var(--ground)}
+body{display:flex;align-items:center;justify-content:center;gap:36px;padding:0 36px;
+ background:radial-gradient(760px 520px at 78% 50%,#16323a 0,transparent 70%),var(--ground);font:400 13.5px/1.62 'JetBrains Mono',monospace;color:var(--text)}
+.term{flex:1;min-width:0;height:544px;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 24px 60px #0008}
+.bar{display:flex;gap:8px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.bar i{width:12px;height:12px;border-radius:50%;background:var(--line)}
+pre{padding:18px 20px;font:inherit;white-space:pre}
+.p{color:var(--accent)}.c{font-weight:700}.m{color:var(--muted)}.a{color:var(--amber)}
+.win{flex:none;width:510px;height:544px;border-radius:12px;box-shadow:0 24px 60px #000a;image-rendering:pixelated}
+</style></head><body>
+<div class="term"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="p">$</span> <span class="c">preflash run --board snoozel-4b.yaml</span>
+<span class="m">preflash: building snoozel for snoozel-4b</span>
+<span class="m">I (0) power: charger: pre 01, charge 04, term 11, volt 02 (ESP_OK)</span>
+<span class="m">I (25) snoozel: boot rotation 0 from the sensor</span>
+<span class="m">I (1653) desert: 1 frames, avg 0.1 ms, max 0.1 ms</span>
+<span class="m">I (1778) clock: 1 face draws, avg 0.0 ms, max 0.0 ms</span>
+<span class="m">I (61673) desert: 478 frames, avg 0.1 ms, max 0.9 ms</span>
+<span class="m">I (62672) clock: 60 face draws, avg 0.0 ms, max 0.1 ms</span>
+<span class="c">phase</span>
+2026-07-14 11:13:09 local, day, night 0.00
+<span class="c">rtc</span>
+2026-07-14T10:13:09Z
+<span class="a">@sim</span> <span class="c">brightness</span>
+brightness: 100 (pwm 100, enable gpio43 high)
+<span class="a">@sim</span> <span class="c">shot desert.bmp</span>
+saved desert.bmp</pre></div>
+<img class="win" src="window.png" alt="">
+</body></html>
