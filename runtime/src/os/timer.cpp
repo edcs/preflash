@@ -5,6 +5,7 @@
 #include <mutex>
 #include <new>
 #include <set>
+#include <system_error>
 #include <thread>
 #include <utility>
 
@@ -110,8 +111,13 @@ esp_err_t start(esp_timer_handle_t timer, int64_t alarm, int64_t period) {
     if (timer->is_armed) return ESP_ERR_INVALID_STATE;
     arm(task, timer, alarm, period);
     if (!task.running) {
+      try {
+        std::thread(run_timers).detach();
+      } catch (const std::system_error&) {
+        disarm(task, timer);
+        return ESP_ERR_NO_MEM;
+      }
       task.running = true;
-      std::thread(run_timers).detach();
     }
   }
   task.changed.notify_all();
