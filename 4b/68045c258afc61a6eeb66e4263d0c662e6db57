@@ -1,0 +1,18 @@
+runtime/src/os/system.cpp
+  h_13c4e797d6e9d2 2,53-54
+tests/runtime/helpers/restart_helper.cpp
+  h_13c4e797d6e9d2 7,37
+tests/runtime/os_test.cpp
+  h_13c4e797d6e9d2 219-226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4b68045c258afc61a6eeb66e4263d0c662e6db57",
+  "prompts": {},
+  "humans": {
+    "h_13c4e797d6e9d2": {
+      "author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
