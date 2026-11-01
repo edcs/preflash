@@ -13,6 +13,7 @@
 #include <cstring>
 #include <ctime>
 #include <functional>
+#include <future>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -289,6 +290,42 @@ TEST(Events, HandlersRunInPostOrderAndUnregister) {
   EXPECT_EQ(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &EventLog::on_event),
             ESP_ERR_NOT_FOUND);
   ASSERT_EQ(esp_event_loop_delete_default(), ESP_OK);
+}
+
+namespace {
+
+struct SelfPost {
+  esp_event_loop_handle_t loop = nullptr;
+  std::promise<std::vector<esp_err_t>> results;
+};
+
+void post_until_full(void* arg, esp_event_base_t, int32_t, void*) {
+  auto* state = static_cast<SelfPost*>(arg);
+  std::vector<esp_err_t> results;
+  for (int i = 0; i < 4; ++i)
+    results.push_back(esp_event_post_to(state->loop, WIFI_EVENT, WIFI_EVENT_STA_STOP, nullptr, 0,
+                                        portMAX_DELAY));
+  state->results.set_value(results);
+}
+
+}  // namespace
+
+// A handler can't wait for room that only its own loop could make, so a post from the
+// loop's own task never waits, as on a device.
+TEST(Events, PostFromTheLoopsOwnTaskToAFullQueueTimesOut) {
+  esp_event_loop_args_t args = {};
+  args.queue_size = 2;
+  args.task_name = "own_loop";
+  SelfPost state;
+  ASSERT_EQ(esp_event_loop_create(&args, &state.loop), ESP_OK);
+  ASSERT_EQ(esp_event_handler_register_with(state.loop, WIFI_EVENT, WIFI_EVENT_STA_START,
+                                            post_until_full, &state),
+            ESP_OK);
+  auto done = state.results.get_future();
+  ASSERT_EQ(esp_event_post_to(state.loop, WIFI_EVENT, WIFI_EVENT_STA_START, nullptr, 0, 0), ESP_OK);
+  ASSERT_EQ(done.wait_for(3s), std::future_status::ready) << "the handler waited on its own loop";
+  EXPECT_EQ(done.get(), (std::vector<esp_err_t>{ESP_OK, ESP_OK, ESP_ERR_TIMEOUT, ESP_ERR_TIMEOUT}));
+  ASSERT_EQ(esp_event_loop_delete(state.loop), ESP_OK);
 }
 
 namespace {
