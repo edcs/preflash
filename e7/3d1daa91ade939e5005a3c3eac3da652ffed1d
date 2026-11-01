@@ -1,0 +1,41 @@
+tests/runtime/task_wdt_test.cpp
+  s_82b4983a83db4b::t_18b66cc7386034 1-98
+README.md
+  s_82b4983a83db4b::t_b83363b514d310 92-93
+runtime/include/esp_task_wdt.h
+  s_82b4983a83db4b::t_6cad1bae127c92 1-29
+runtime/include/esp_timer.h
+  s_82b4983a83db4b::t_6247e765794a36 3,6-7,12-28,32-38
+runtime/include/freertos/task.h
+  s_82b4983a83db4b::t_665defc1f4f454 29-35
+runtime/src/os/task_wdt.cpp
+  s_82b4983a83db4b::t_5e2b0ecfbfd8da 1-128
+runtime/src/os/tasks.cpp
+  s_82b4983a83db4b::t_bba864cc06e943 1-2,6,14-16,18,38,42,67-81
+runtime/src/os/timer.cpp
+  s_82b4983a83db4b::t_cb0e0d9157e350 1,3-9,14-17,24-120,123-125,130-168
+tests/integration/snoozel.sh
+  s_82b4983a83db4b::t_efed2b466c2341 164-169
+tests/runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_54927e1463a9cc 40,43-44
+tests/runtime/os_test.cpp
+  s_82b4983a83db4b::t_7b898c18a87c4f 124-183
+tests/runtime/timer_test.cpp
+  s_82b4983a83db4b::t_af1154cce5e0f6 1-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e73d1daa91ade939e5005a3c3eac3da652ffed1d",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
