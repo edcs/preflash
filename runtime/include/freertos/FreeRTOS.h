@@ -11,6 +11,10 @@
 #error "CONFIG_FREERTOS_HZ is not defined: the project's sdkconfig must set it."
 #endif
 
+#if CONFIG_FREERTOS_HZ > 1000
+#error "CONFIG_FREERTOS_HZ above 1000 makes portTICK_PERIOD_MS zero; ESP-IDF allows at most 1000."
+#endif
+
 #define configTICK_RATE_HZ CONFIG_FREERTOS_HZ
 
 typedef int32_t BaseType_t;
