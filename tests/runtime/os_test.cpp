@@ -216,6 +216,14 @@ TEST(Restart, ReExecsTheBinary) {
   EXPECT_NE(output.find("reason=3"), std::string::npos) << output;
 }
 
+TEST(Restart, WorksWithAStandardDescriptorClosed) {
+  TempState state("restart_closed");
+  int status = -1;
+  const std::string output = run_restart_helper("PREFLASH_HELPER_CLOSE_STDIN=1", state, &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("second run:"), std::string::npos) << output;
+}
+
 TEST(Restart, StartsCleanWithoutInheritedDescriptorsOrBlockedSignals) {
   TempState state("restart_clean");
   int status = -1;

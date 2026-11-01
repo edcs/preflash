@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
+#include <unistd.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -33,6 +34,7 @@ int main() {
     }
     return 0;
   }
+  if (std::getenv("PREFLASH_HELPER_CLOSE_STDIN")) close(STDIN_FILENO);
   FILE* made = std::fopen(marker.c_str(), "w");
   if (!made) return 3;
   if (leak) {

@@ -1,4 +1,5 @@
 #include <crt_externs.h>
+#include <fcntl.h>
 #include <mach-o/dyld.h>
 #include <signal.h>
 #include <spawn.h>
@@ -49,7 +50,8 @@ int exec_clean(const char* path, char* const argv[]) {
                                               POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF);
   }
   for (int fd = STDIN_FILENO; !err && fd <= STDERR_FILENO; ++fd) {
-    err = posix_spawn_file_actions_addinherit_np(&actions, fd);
+    // Inheriting a closed descriptor would fail the whole spawn.
+    if (fcntl(fd, F_GETFD) != -1) err = posix_spawn_file_actions_addinherit_np(&actions, fd);
   }
   if (!err) err = posix_spawn(nullptr, path, &actions, &attr, argv, *_NSGetEnviron());
   posix_spawn_file_actions_destroy(&actions);
