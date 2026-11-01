@@ -1,0 +1,28 @@
+tests/runtime/task_wdt_test.cpp
+  s_82b4983a83db4b::t_f434568faa6c92 82-102
+  s_82b4983a83db4b::t_d415f92cd6cc61 9,103,105,108
+README.md
+  s_82b4983a83db4b::t_2bdb16cf64b383 92
+runtime/src/os/task_wdt.cpp
+  s_82b4983a83db4b::t_2c26100edd461e 33,43-55,65-68,75,114-116
+tests/runtime/os_test.cpp
+  s_82b4983a83db4b::t_e33d3a76058d7c 142-162
+tests/runtime/timer_test.cpp
+  s_82b4983a83db4b::t_6a538de555f344 109,111-123,126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f9eddb2d639958629cfb30ed374dd4effb172a05",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
