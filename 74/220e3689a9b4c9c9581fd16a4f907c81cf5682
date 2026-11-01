@@ -1,0 +1,19 @@
+tests/runtime/os_test.cpp
+  s_5981eafe9dd429::t_95d12453e41d52 86-87,89,94,107-108,110,113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "74220e3689a9b4c9c9581fd16a4f907c81cf5682",
+  "prompts": {},
+  "sessions": {
+    "s_5981eafe9dd429": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abb83a1983b0ac298",
+        "model": "unknown"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
