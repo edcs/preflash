@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
+#include <thread>
 #include <vector>
 
 #include "bsp/audio.h"
@@ -29,7 +31,8 @@ class FakeSink : public preflash::audio::Sink {
     waiting = waiting > 100 ? waiting - 100 : 0;  // each look finds it drained a little
     return shown;
   }
-  int rate = 0, channels = 0, waiting = 0, polls = 0, queues = 0, fail_at_queue = 0;
+  int rate = 0, channels = 0, waiting = 0, queues = 0, fail_at_queue = 0;
+  std::atomic<int> polls{0};
   bool fail_queue = false, drain_on_queue = false;
   size_t bytes = 0;
   std::vector<int16_t> last;
@@ -45,10 +48,14 @@ esp_codec_dev_sample_info_t mono(uint32_t rate) {
 
 class Codec : public testing::Test {
  protected:
-  void SetUp() override { preflash::audio::set_sink(nullptr); }
+  void SetUp() override {
+    preflash::audio::set_sink(nullptr);
+    preflash::audio::set_device_request({});
+  }
   void TearDown() override {
     esp_codec_dev_close(speaker_);
     preflash::audio::set_sink(nullptr);
+    preflash::audio::set_device_request({});
   }
   esp_codec_dev_handle_t speaker_ = bsp_audio_codec_speaker_init();
 };
@@ -123,6 +130,78 @@ TEST_F(Codec, SinkThatRefusesSoundIsAbandoned) {
             ESP_CODEC_DEV_OK);
   EXPECT_EQ(sink.queues, 1);  // not tried again
   EXPECT_EQ(preflash::audio_samples_written() - before, 32000u);
+}
+
+TEST_F(Codec, ReopeningGivesTheDeviceAFreshChance) {
+  FakeSink sink;
+  sink.fail_queue = true;
+  preflash::audio::set_sink(&sink);
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(160);
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  ASSERT_EQ(sink.queues, 1);
+  ASSERT_EQ(esp_codec_dev_close(speaker_), ESP_CODEC_DEV_OK);
+
+  sink.fail_queue = false;
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  EXPECT_EQ(sink.queues, 2);
+  EXPECT_EQ(sink.bytes, pcm.size() * 2);
+}
+
+TEST_F(Codec, CloseDoesNotWaitOutAWriteThatIsPacing) {
+  FakeSink sink;
+  sink.waiting = 1'000'000'000;  // never drains enough to have room
+  preflash::audio::set_sink(&sink);
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  std::thread writer([&] {
+    int16_t pcm[160] = {};
+    esp_codec_dev_write(speaker_, pcm, sizeof(pcm));
+  });
+  while (sink.polls < 3) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  const auto start = std::chrono::steady_clock::now();
+  EXPECT_EQ(esp_codec_dev_close(speaker_), ESP_CODEC_DEV_OK);
+  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(500));
+  writer.join();
+}
+
+TEST_F(Codec, DeviceIsAskedForOnTheFirstOpenOnly) {
+  std::atomic<int> asked{0};
+  preflash::audio::set_device_request([&] { ++asked; });
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  EXPECT_EQ(asked, 1);
+  ASSERT_EQ(esp_codec_dev_close(speaker_), ESP_CODEC_DEV_OK);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  EXPECT_EQ(asked, 1);
+}
+
+TEST_F(Codec, DeviceThatArrivesAfterOpenPlaysFromThenOn) {
+  FakeSink sink;
+  std::atomic<int> asked{0};
+  preflash::audio::set_device_request([&] { ++asked; });
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  ASSERT_EQ(asked, 1);
+
+  // Until the device arrives, sound is dropped and still takes its time.
+  std::vector<int16_t> pcm(1600);  // 100 ms
+  const auto start = std::chrono::steady_clock::now();
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100));
+  EXPECT_EQ(sink.queues, 0);
+
+  preflash::audio::set_sink(&sink);
+  EXPECT_EQ(sink.rate, 16000) << "started with the format that is open";
+  EXPECT_EQ(sink.channels, 1);
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  EXPECT_EQ(sink.bytes, pcm.size() * 2);
 }
 
 TEST_F(Codec, WriteBeforeOpenFails) {
