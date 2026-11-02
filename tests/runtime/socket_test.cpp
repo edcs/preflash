@@ -17,10 +17,14 @@
 #include <string>
 #include <thread>
 
+#include "freertos/task.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 #include "preflash/control.h"
 #include "preflash/panel.h"
 #include "preflash/socket.h"
 #include "preflash/touch.h"
+#include "preflash/trace.h"
 
 using nlohmann::json;
 namespace fs = std::filesystem;
@@ -493,6 +497,112 @@ TEST_F(SocketServe, SubscribeKnowsOnlyItsStreams) {
   EXPECT_EQ(client.call({{"op", "subscribe"}, {"streams", {"serial"}}})["ok"], true);
   // Asking twice doesn't replay twice.
   EXPECT_EQ(client.call({{"op", "subscribe"}, {"streams", {"serial"}}})["ok"], true);
+}
+
+TEST_F(SocketServe, ASubscriberToTheTraceHearsItUnderItsOwnEvent) {
+  EXPECT_FALSE(preflash::trace::on());
+  {
+    Client client(path());
+    EXPECT_EQ(client.call({{"op", "subscribe"}, {"streams", {"trace"}}})["ok"], true);
+    EXPECT_TRUE(preflash::trace::on());
+    preflash::trace::note(preflash::trace::Stream::Net, "wifi", "from a test", "data", true);
+    json row;
+    do {
+      row = client.read_line();
+      ASSERT_TRUE(row.is_object());
+    } while (row.value("op", "") != "from a test");
+    EXPECT_EQ(row["event"], "trace");
+    EXPECT_EQ(row["stream"], "net");
+    EXPECT_EQ(row["data"], "data");
+    EXPECT_EQ(row["injected"], true);
+  }
+  // Hanging up ends the subscription, on the connection's own thread.
+  for (int i = 0; i < 200 && preflash::trace::on(); ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_FALSE(preflash::trace::on());
+}
+
+TEST_F(SocketServe, SavingTheTraceNamesWhereItWent) {
+  const fs::path file = fs::temp_directory_path() / ("pfsave" + std::to_string(getpid()));
+  Client client(path());
+  const json saved = client.call({{"op", "trace_save"}, {"path", file.string()}});
+  EXPECT_EQ(saved["ok"], true);
+  EXPECT_EQ(saved["path"], file.string());
+  EXPECT_TRUE(saved["records"].is_number());
+  EXPECT_TRUE(fs::exists(file));
+  fs::remove(file);
+  const json bad = client.call({{"op", "trace_save"}, {"path", "/no/such/folder/x"}});
+  EXPECT_EQ(bad["ok"], false);
+  EXPECT_NE(bad["error"].get<std::string>().find("/no/such/folder/x"), std::string::npos);
+}
+
+TEST_F(SocketServe, SavingWithNoPathUsesTheStateFolder) {
+  const fs::path state = fs::temp_directory_path() / ("pfstate" + std::to_string(getpid()));
+  fs::create_directories(state);
+  setenv("PREFLASH_STATE", state.c_str(), 1);
+  Client client(path());
+  const json saved = client.call({{"op", "trace_save"}});
+  ASSERT_EQ(saved["ok"], true);
+  const fs::path file = saved["path"].get<std::string>();
+  EXPECT_EQ(file.parent_path(), state);
+  EXPECT_TRUE(fs::exists(file));
+  fs::remove_all(state);
+  unsetenv("PREFLASH_STATE");
+  EXPECT_EQ(client.call({{"op", "trace_save"}})["ok"], false);
+}
+
+TEST_F(SocketServe, TasksListWhatFirmwareStartedWithItsDeclaredStack) {
+  static std::atomic<bool> finish{false};
+  finish = false;
+  ASSERT_EQ(xTaskCreate(
+                [](void*) {
+                  while (!finish) vTaskDelay(1);
+                  vTaskDelete(nullptr);
+                },
+                "listed", 3072, nullptr, 1, nullptr),
+            pdPASS);
+  Client client(path());
+  const auto find_task = [&client]() -> json {
+    const json reply = client.call({{"op", "tasks"}});
+    for (const json& task : reply["tasks"]) {
+      if (task["name"] == "listed") return task;
+    }
+    return json();
+  };
+  json listed = find_task();
+  ASSERT_TRUE(listed.is_object());
+  EXPECT_EQ(listed["stack"], 3072);
+  for (int i = 0; i < 100 && listed["state"] != "blocked"; ++i) listed = find_task();
+  EXPECT_EQ(listed["state"], "blocked");
+  finish = true;
+  for (int i = 0; i < 200 && !find_task().is_null(); ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  EXPECT_TRUE(find_task().is_null());
+}
+
+TEST_F(SocketServe, NvsListsNamespacesAndKeysAndNotValues) {
+  const fs::path state = fs::temp_directory_path() / ("pfnvsop" + std::to_string(getpid()));
+  setenv("PREFLASH_STATE", state.c_str(), 1);
+  ASSERT_EQ(nvs_flash_init(), ESP_OK);
+  nvs_handle_t handle;
+  ASSERT_EQ(nvs_open("Wifi/1", NVS_READWRITE, &handle), ESP_OK);
+  ASSERT_EQ(nvs_set_blob(handle, "ssid", "secret", 6), ESP_OK);
+  Client client(path());
+  EXPECT_EQ(client.call({{"op", "nvs"}})["namespaces"][0]["keys"].size(), 0u) << "not committed yet";
+  ASSERT_EQ(nvs_commit(handle), ESP_OK);
+  const json reply = client.call({{"op", "nvs"}});
+  ASSERT_EQ(reply["namespaces"].size(), 1u);
+  EXPECT_EQ(reply["namespaces"][0]["name"], "Wifi/1");
+  EXPECT_EQ(reply["namespaces"][0]["keys"][0]["key"], "ssid");
+  EXPECT_EQ(reply["namespaces"][0]["keys"][0]["size"], 6);
+  EXPECT_EQ(reply.dump().find("secret"), std::string::npos);
+  nvs_close(handle);
+  nvs_flash_deinit();
+  fs::remove_all(state);
+  unsetenv("PREFLASH_STATE");
+  EXPECT_EQ(client.call({{"op", "nvs"}})["namespaces"].size(), 0u);
 }
 
 TEST_F(SocketServe, ClientsComeAndGo) {

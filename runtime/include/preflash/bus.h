@@ -17,6 +17,8 @@ class I2cDevice {
 
 class I2cBus {
  public:
+  explicit I2cBus(int port = 0) : port_(port) {}
+
   // Replaces and destroys any device already at the address.
   void add(uint8_t address, std::unique_ptr<I2cDevice> device);
   // Removes a device and hands it back, or null if there's none, so that a wrapper
@@ -29,6 +31,7 @@ class I2cBus {
   bool transfer(uint8_t address, std::span<const uint8_t> tx, std::span<uint8_t> rx);
 
  private:
+  int port_;
   std::mutex mutex_;
   std::map<uint8_t, std::unique_ptr<I2cDevice>> devices_;
 };

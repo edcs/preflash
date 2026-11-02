@@ -7,6 +7,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "preflash/fail.h"
+#include "preflash/tasks.h"
 #include "ticks.h"
 
 // Items are copied in and out by value, as FreeRTOS does.
@@ -20,6 +21,22 @@ struct QueueDefinition {
   std::deque<std::vector<uint8_t>> items;
 };
 
+namespace {
+
+template <typename Ready>
+bool wait_on(QueueHandle_t queue, std::unique_lock<std::mutex>& lock, TickType_t ticks, Ready ready) {
+  if (ready()) return true;
+  if (ticks == 0) return false;
+  preflash::Blocked blocked;
+  if (ticks == portMAX_DELAY) {
+    queue->changed.wait(lock, ready);
+    return true;
+  }
+  return queue->changed.wait_for(lock, preflash::ticks_to_duration(ticks), ready);
+}
+
+}  // namespace
+
 extern "C" {
 
 QueueHandle_t xQueueCreate(UBaseType_t length, UBaseType_t item_size) {
@@ -30,10 +47,8 @@ QueueHandle_t xQueueCreate(UBaseType_t length, UBaseType_t item_size) {
 BaseType_t xQueueSend(QueueHandle_t queue, const void* item, TickType_t ticks_to_wait) {
   if (!queue) preflash_unsupported("xQueueSend", "the queue handle is null");
   std::unique_lock<std::mutex> lock(queue->mutex);
-  auto room = [queue] { return queue->items.size() < queue->length; };
-  if (ticks_to_wait == portMAX_DELAY) {
-    queue->changed.wait(lock, room);
-  } else if (!queue->changed.wait_for(lock, preflash::ticks_to_duration(ticks_to_wait), room)) {
+  if (!wait_on(queue, lock, ticks_to_wait,
+               [queue] { return queue->items.size() < queue->length; })) {
     return pdFALSE;
   }
   const auto* bytes = static_cast<const uint8_t*>(item);
@@ -46,10 +61,7 @@ BaseType_t xQueueSend(QueueHandle_t queue, const void* item, TickType_t ticks_to
 BaseType_t xQueueReceive(QueueHandle_t queue, void* item, TickType_t ticks_to_wait) {
   if (!queue) preflash_unsupported("xQueueReceive", "the queue handle is null");
   std::unique_lock<std::mutex> lock(queue->mutex);
-  auto any = [queue] { return !queue->items.empty(); };
-  if (ticks_to_wait == portMAX_DELAY) {
-    queue->changed.wait(lock, any);
-  } else if (!queue->changed.wait_for(lock, preflash::ticks_to_duration(ticks_to_wait), any)) {
+  if (!wait_on(queue, lock, ticks_to_wait, [queue] { return !queue->items.empty(); })) {
     return pdFALSE;
   }
   if (queue->item_size > 0) std::memcpy(item, queue->items.front().data(), queue->item_size);

@@ -252,7 +252,7 @@ void Outbox::push_message(std::string line) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (closed_) return;
     message_bytes_ += line.size();
-    items_.push_back({std::move(line), false});
+    items_.push_back({std::move(line), Kind::Message});
     forget(-1);
   }
   ready_.notify_one();
@@ -263,7 +263,7 @@ void Outbox::push_urgent(std::string line) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (closed_) return;
     message_bytes_ += line.size();
-    items_.push_front({std::move(line), false});
+    items_.push_front({std::move(line), Kind::Message});
     forget(-1);
   }
   ready_.notify_one();
@@ -273,16 +273,36 @@ void Outbox::push_serial(const char* data, size_t size) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (closed_) return;
-    items_.push_back({std::string(data, size), true});
+    items_.push_back({std::string(data, size), Kind::Serial});
     serial_bytes_ += size;
     forget(-1);
     for (auto it = items_.begin(); serial_bytes_ > serial_limit_ && it != items_.end();) {
-      if (!it->serial) {
+      if (it->kind != Kind::Serial) {
         ++it;
         continue;
       }
       serial_bytes_ -= it->bytes.size();
       dropped_ += it->bytes.size();
+      it = items_.erase(it);
+      forget(1);
+    }
+  }
+  ready_.notify_one();
+}
+
+void Outbox::push_trace(std::string line) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_) return;
+    trace_bytes_ += line.size();
+    items_.push_back({std::move(line), Kind::Trace});
+    forget(-1);
+    for (auto it = items_.begin(); trace_bytes_ > serial_limit_ && it != items_.end();) {
+      if (it->kind != Kind::Trace) {
+        ++it;
+        continue;
+      }
+      trace_bytes_ -= it->bytes.size();
       it = items_.erase(it);
       forget(1);
     }
@@ -304,12 +324,12 @@ bool Outbox::pop(std::string* line) {
   Item item = std::move(items_.front());
   items_.pop_front();
   in_flight_ = 1;
-  if (item.serial) {
+  if (item.kind == Kind::Serial) {
     serial_bytes_ -= item.bytes.size();
     lock.unlock();
     *line = "{\"event\":\"serial\",\"data\":\"" + base64(item.bytes.data(), item.bytes.size()) + "\"}\n";
   } else {
-    message_bytes_ -= item.bytes.size();
+    (item.kind == Kind::Trace ? trace_bytes_ : message_bytes_) -= item.bytes.size();
     lock.unlock();
     *line = std::move(item.bytes);
     *line += '\n';
@@ -338,6 +358,7 @@ void Outbox::abandon() {
     items_.clear();
     dropped_ = 0;
     serial_bytes_ = 0;
+    trace_bytes_ = 0;
     message_bytes_ = 0;
     // A line popped but not yet sent stays counted until sent() says it's out.
     forget(unsent_ - in_flight_);

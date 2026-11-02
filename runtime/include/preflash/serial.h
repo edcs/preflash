@@ -41,6 +41,9 @@ class Outbox {
   // A reply or an event, without its newline. These are never dropped.
   void push_message(std::string line);
   void push_serial(const char* data, size_t size);
+  // A trace record, with a limit of its own the same size as serial's. Past that the oldest
+  // goes, which a client sees as a gap in the records' numbers.
+  void push_trace(std::string line);
   // A message that goes ahead of everything queued, for news that can't wait behind a
   // slow client's backlog.
   void push_urgent(std::string line);
@@ -59,9 +62,10 @@ class Outbox {
   size_t message_bytes();
 
  private:
+  enum class Kind { Message, Serial, Trace };
   struct Item {
     std::string bytes;
-    bool serial;
+    Kind kind;
   };
   void forget(long items);
 
@@ -70,6 +74,7 @@ class Outbox {
   std::deque<Item> items_;
   size_t serial_limit_;
   size_t serial_bytes_ = 0;
+  size_t trace_bytes_ = 0;
   size_t message_bytes_ = 0;
   size_t dropped_ = 0;
   long unsent_ = 0;
