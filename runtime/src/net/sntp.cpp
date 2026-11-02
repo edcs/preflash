@@ -6,6 +6,7 @@
 #include <string>
 #include <thread>
 
+#include "preflash/crash.h"
 #include "esp_log.h"
 #include "esp_sntp.h"
 #include "preflash/net.h"
@@ -110,7 +111,11 @@ void esp_sntp_init(void) {
     s.status = SNTP_SYNC_STATUS_RESET;
     s.running = true;
     const uint64_t generation = ++s.generation;
-    s.worker = std::thread(work, generation, kFirstSyncDelay);
+    s.worker = std::thread([generation] {
+      preflash::crash::enter_task("sntp");
+      work(generation, kFirstSyncDelay);
+      preflash::crash::leave_task();
+    });
   }
   ESP_LOGI(kTag, "using the Mac's clock: the system time is left alone");
 }

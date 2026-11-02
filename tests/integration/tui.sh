@@ -53,6 +53,18 @@ RC
 
 go build -C "$root" -o "$scratch/preflash" ./cmd/preflash
 
+# Stand-ins, so that the crash screen's keys attach to nothing, edit nothing and leave the
+# Mac's clipboard alone.
+tools="$scratch/tools"
+mkdir "$tools"
+for tool in lldb editor; do
+  printf '#!/bin/sh\necho "$@" > "%s/%s.args"\n' "$tools" "$tool" > "$tools/$tool"
+done
+printf '#!/bin/sh\ncat > "%s/copied"\n' "$tools" > "$tools/pbcopy"
+chmod +x "$tools"/*
+export PREFLASH_LLDB="$tools/lldb" EDITOR="$tools/editor" PREFLASH_PBCOPY="$tools/pbcopy"
+export PREFLASH_E2E_TOOLS="$tools"
+
 # Go caches a passing test by its inputs, and those include neither the binary's source nor
 # the fixture, so -count=1.
 PREFLASH_E2E_BINARY="$scratch/preflash" PREFLASH_E2E_PROJECT="$project" \

@@ -20,7 +20,8 @@ namespace {
 constexpr int kBytesPerPixel = 2;
 constexpr uint32_t kLongestSleepMs = 5;
 
-std::recursive_timed_mutex g_lock;
+// Never destroyed: the LVGL task outlives static destructors.
+std::recursive_timed_mutex& g_lock = *new std::recursive_timed_mutex;
 bool g_started = false;
 
 constexpr int kDegreesPerRotation = 90;

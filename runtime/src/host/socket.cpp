@@ -30,6 +30,7 @@
 #include "esp_timer.h"
 #include "preflash/board.h"
 #include "preflash/control.h"
+#include "preflash/crash.h"
 #include "preflash/hardware.h"
 #include "preflash/net.h"
 #include "preflash/panel.h"
@@ -136,12 +137,15 @@ void op_status(Connection& c, const json&, const json& id) {
             {"frames", panel::frames_drawn()},
             {"fps", panel::fps()},
             {"wifi", wifi_state()},
-            {"serial_port", port::path()}});
+            {"serial_port", port::path()},
+            {"crashed", crash::happened()}});
 }
 
 void op_send(Connection& c, const json& request, const json& id) {
   const auto line = text_field(request, "line");
-  if (!line) {
+  if (crash::happened()) {
+    reply_error(c, id, "the app has crashed");
+  } else if (!line) {
     reply_error(c, id, "send needs a line");
   } else if (line->find_first_of("\r\n") != std::string::npos) {
     reply_error(c, id, "send takes one line, with no newline in it");
@@ -294,7 +298,7 @@ void op_hardware_set(Connection& c, const json& request, const json& id) {
 void op_quit(Connection& c, const json&, const json& id) {
   reply_ok(c, id);
   note_quitting();
-  finish_queued_lines();
+  if (!crash::happened()) finish_queued_lines();
   quit();
 }
 

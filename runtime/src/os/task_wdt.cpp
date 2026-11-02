@@ -6,6 +6,7 @@
 
 #include "esp_task_wdt.h"
 #include "esp_timer.h"
+#include "preflash/crash.h"
 #include "preflash/fail.h"
 
 // Off unless the project starts the watchdog, when every call reports that it
@@ -49,7 +50,10 @@ bool report_late(const Watchdog& w) {
   if (late.empty()) return false;
   std::fprintf(stderr, "preflash: task watchdog: these tasks didn't reset in time:%s\n",
                late.c_str());
-  if (w.panic) std::abort();
+  if (w.panic) {
+    preflash::crash::note("watchdog", ("these tasks didn't reset in time:" + late).c_str());
+    std::abort();
+  }
   return true;
 }
 

@@ -7,6 +7,7 @@
 #include <thread>
 #include <vector>
 
+#include "preflash/crash.h"
 #include "../os/ticks.h"
 #include "esp_event.h"
 #include "preflash/fail.h"
@@ -79,7 +80,11 @@ esp_err_t make_loop(size_t capacity, esp_event_loop** out) {
   auto* loop = new esp_event_loop;
   if (capacity > 0) loop->capacity = capacity;
   try {
-    loop->worker = std::thread([loop] { loop->run(); });
+    loop->worker = std::thread([loop] {
+      preflash::crash::enter_task("sys_evt");
+      loop->run();
+      preflash::crash::leave_task();
+    });
   } catch (const std::system_error&) {
     delete loop;
     return ESP_ERR_NO_MEM;

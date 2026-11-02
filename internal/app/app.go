@@ -18,6 +18,7 @@ import (
 
 	"github.com/edcs/preflash/internal/board"
 	"github.com/edcs/preflash/internal/client"
+	"github.com/edcs/preflash/internal/crash"
 )
 
 const (
@@ -31,6 +32,8 @@ const (
 	answerPatience = 15 * time.Second
 	// drainPatience is how long a stopped app's stream gets to finish.
 	drainPatience = 2 * time.Second
+	// crashPoll spaces out looks for a crash report.
+	crashPoll = 50 * time.Millisecond
 	// watchPause spaces out looks for a socket that hasn't appeared yet.
 	watchPause = 50 * time.Millisecond
 	// traceEvery is how often trace rows reach the screen, and traceHeld how many can wait for
@@ -49,6 +52,11 @@ var (
 	killPatience = 2 * time.Second
 )
 
+// resolveCrash names a report's frames. Tests replace it.
+var resolveCrash = resolveWithAtos
+
+func resolveWithAtos(r *crash.Report, project string) { r.Resolve(project, crash.RunCommand) }
+
 // Event is something that happened to the build or the app.
 type Event any
 
@@ -64,8 +72,14 @@ type (
 	}
 	// Started says an app process began. It isn't answering yet.
 	Started struct {
-		Board board.Board
-		PID   int
+		Board     board.Board
+		PID       int
+		Sanitizer string
+	}
+	// Crashed says the app crashed and is held where it stopped, with its report.
+	Crashed struct {
+		Report *crash.Report
+		PID    int
 	}
 	// Connected says a boot answered on the socket.
 	Connected struct{ Hello client.Hello }
@@ -117,6 +131,11 @@ type Target interface {
 	Install(b board.Board, env []string) (string, []string, error)
 	SocketPath() string
 	LogPath() string
+	CrashPath() string
+	// ProjectDir is the project's folder, which tells its own code from everything else.
+	ProjectDir() string
+	// Sanitized is the same project built with a sanitizer, or plain with none.
+	Sanitized(kind string) Target
 }
 
 // errNotRunning is what a line sent to no app fails with.
@@ -140,6 +159,7 @@ type Supervisor struct {
 	building  bool
 	closed    bool
 	traceStop chan struct{} // closing it ends the trace's connection, nil if there's none
+	sanitizer string
 }
 
 // request is one job for the control connection: lines to send in order, or work to run, or,
@@ -159,6 +179,9 @@ type child struct {
 	finished  chan struct{} // closed once it's fully dealt with
 	stopping  atomic.Bool   // stopped on purpose, so nobody needs to hear about it
 	connected atomic.Bool
+	crashed   atomic.Bool // held after a crash: it can't answer, and has nothing to save
+	log       string
+	report    string // where a crash of this build leaves its report
 }
 
 // New makes a supervisor. Nothing starts until Run.
@@ -209,15 +232,26 @@ func (s *Supervisor) Run(b board.Board) bool {
 	return true
 }
 
+// SetSanitizer chooses the sanitizer for the next run, or none.
+func (s *Supervisor) SetSanitizer(kind string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sanitizer = kind
+}
+
 func (s *Supervisor) run(b board.Board) {
 	s.emit(Building{Board: b})
-	env, err := s.target.Environment(s.headless)
+	s.mu.Lock()
+	sanitizer := s.sanitizer
+	s.mu.Unlock()
+	target := s.target.Sanitized(sanitizer)
+	env, err := target.Environment(s.headless)
 	if err == nil && s.running() == nil {
 		err = s.target.CheckNoApp()
 	}
 	if err == nil {
 		output := &lineWriter{emit: func(line string) { s.emit(BuildOutput{Line: line}) }}
-		err = s.target.Build(s.ctx, env, output)
+		err = target.Build(s.ctx, env, output)
 		output.flush()
 	}
 	if err != nil {
@@ -228,7 +262,7 @@ func (s *Supervisor) run(b board.Board) {
 		return
 	}
 	// Before the old app stops, so a failure here leaves it running.
-	path, runEnv, err := s.target.Install(b, env)
+	path, runEnv, err := target.Install(b, env)
 	if err != nil {
 		s.emit(BuildFailed{Err: err, AppRunning: s.running() != nil})
 		return
@@ -236,7 +270,7 @@ func (s *Supervisor) run(b board.Board) {
 	if old := s.running(); old != nil {
 		s.stop(old)
 	}
-	if err := s.start(b, path, runEnv); err != nil {
+	if err := s.start(target, sanitizer, b, path, runEnv); err != nil {
 		s.emit(BuildFailed{Err: err})
 	}
 }
@@ -248,17 +282,18 @@ func (s *Supervisor) running() *child {
 	return s.current
 }
 
-func (s *Supervisor) start(b board.Board, path string, runEnv []string) error {
-	log, err := os.Create(s.target.LogPath())
+func (s *Supervisor) start(target Target, sanitizer string, b board.Board, path string, runEnv []string) error {
+	log, err := os.Create(target.LogPath())
 	if err != nil {
 		return err
 	}
 	defer log.Close()
 
 	cmd := exec.Command(path)
-	cmd.Env = runEnv
+	// Held, so that g can attach to it and the window keeps its last frame.
+	cmd.Env = append(runEnv[:len(runEnv):len(runEnv)], "PREFLASH_CRASH_HOLD=1")
 	if s.tracing() {
-		cmd.Env = append(cmd.Env[:len(cmd.Env):len(cmd.Env)], "PREFLASH_TRACE=1")
+		cmd.Env = append(cmd.Env, "PREFLASH_TRACE=1")
 	}
 	cmd.Stdout = log
 	cmd.Stderr = log
@@ -271,7 +306,10 @@ func (s *Supervisor) start(b board.Board, path string, runEnv []string) error {
 		exited:   make(chan struct{}),
 		watched:  make(chan struct{}),
 		finished: make(chan struct{}),
+		log:      target.LogPath(),
+		report:   target.CrashPath(),
 	}
+	began := time.Now()
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -288,10 +326,40 @@ func (s *Supervisor) start(b board.Board, path string, runEnv []string) error {
 		cmd.Wait() // the state it leaves says how it went
 		close(c.exited)
 	}()
-	s.emit(Started{Board: b, PID: cmd.Process.Pid})
+	s.emit(Started{Board: b, PID: cmd.Process.Pid, Sanitizer: sanitizer})
 	go s.watch(c)
 	go s.finish(c)
+	go s.watchForCrash(c, began)
 	return nil
+}
+
+// watchForCrash waits for this process's report. It reads a file, not the socket, because a
+// crashed app's firmware can be frozen holding any lock, and only the file is sure to appear.
+func (s *Supervisor) watchForCrash(c *child, began time.Time) {
+	tick := time.NewTicker(crashPoll)
+	defer tick.Stop()
+	for {
+		select {
+		case <-c.exited:
+			return
+		case <-tick.C:
+		}
+		info, err := os.Stat(c.report)
+		if err != nil || info.ModTime().Before(began.Truncate(time.Second)) {
+			continue
+		}
+		report, err := crash.Read(c.report)
+		if err != nil || report.PID != c.cmd.Process.Pid {
+			continue
+		}
+		c.crashed.Store(true)
+		resolveCrash(report, s.target.ProjectDir())
+		if c.stopping.Load() {
+			return // a rebuild got there first, and nobody needs to hear about this app
+		}
+		s.emit(Crashed{Report: report, PID: report.PID})
+		return
+	}
 }
 
 // watch follows the app's stream from when its socket first answers until it has gone.
@@ -362,7 +430,7 @@ func (s *Supervisor) ending(c *child) Exited {
 	crashed, reason := describe(c.cmd.ProcessState)
 	e := Exited{Crashed: crashed, Reason: reason}
 	if !c.connected.Load() {
-		e.Tail = lastLines(s.target.LogPath())
+		e.Tail = lastLines(c.log)
 	}
 	return e
 }
@@ -413,6 +481,11 @@ func lastLines(path string) []string {
 // stop ends an app on purpose: a quit over the socket, then a signal, then a kill.
 func (s *Supervisor) stop(c *child) {
 	c.stopping.Store(true)
+	if c.crashed.Load() {
+		c.cmd.Process.Kill()
+		<-c.finished
+		return
+	}
 	go func() {
 		conn, err := client.Dial(s.target.SocketPath())
 		if err != nil {

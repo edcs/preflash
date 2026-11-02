@@ -11,6 +11,7 @@ test:
 	tests/integration/port.sh
 	tests/integration/lcd.sh
 	tests/integration/debug.sh
+	tests/integration/crash.sh
 	tests/integration/tui.sh
 	tests/integration/snoozel.sh
 	tests/integration/nyx.sh

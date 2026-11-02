@@ -12,6 +12,7 @@
 
 #include "preflash/audio.h"
 #include "preflash/board.h"
+#include "preflash/crash.h"
 #include "preflash/panel.h"
 #include "preflash/socket.h"
 #include "preflash/touch.h"
@@ -38,6 +39,7 @@ std::atomic<bool> g_audio_wanted{false};
 
 // A drag can leave the window, and a release out there must still count.
 void touch_at(int x, int y, bool down) {
+  if (crash::happened()) return;  // nothing will read it
   touch::push({std::clamp(x, 0, g_width - 1), std::clamp(y, 0, g_height - 1), down});
 }
 
@@ -170,7 +172,7 @@ void run() {
     // SDL audio starts on this thread. The window doesn't redraw while the device
     // opens, but the firmware keeps running, and its sound is dropped until then.
     if (g_audio_wanted.exchange(false) && !open_audio()) request_audio_on_codec_open();
-    if (panel::take_frame(&frame)) {
+    if (!crash::happened() && panel::take_frame(&frame)) {
       SDL_UpdateTexture(g_texture, nullptr, frame.data(), g_width * kBytesPerPixel);
     }
     if (panel::brightness() != shown_brightness) {

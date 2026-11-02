@@ -30,6 +30,9 @@ func (m *Model) zones() []zone {
 	if m.debug != nil {
 		return append(zones, m.debugZones()...)
 	}
+	if m.crash != nil {
+		return zones
+	}
 	top := m.height - 2 - len(m.chipRows())
 	for _, c := range m.chipLayout() {
 		zones = append(zones, zone{
@@ -60,6 +63,9 @@ func (m *Model) footerZones() []zone {
 					return nil
 				},
 			})
+		}
+		if cmd := entry.cmd; cmd != nil {
+			zones = append(zones, zone{id: "footer " + entry.key, x0: x, x1: x + width, y: y, act: cmd})
 		}
 		x += width + len(footerGap)
 	}

@@ -1,0 +1,6 @@
+# Races ThreadSanitizer finds in code that isn't Preflash's and that firmware can't change. Each
+# says why it's safe to ignore. Preflash's own code has no entry here.
+
+# LVGL's software renderer checks its unit's current task from the render thread with no lock,
+# and the dispatching thread sets it under a thread sync that wakes the renderer.
+race:render_thread_cb

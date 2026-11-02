@@ -9,6 +9,7 @@
 #include <thread>
 #include <utility>
 
+#include "preflash/crash.h"
 #include "esp_timer.h"
 
 namespace {
@@ -75,6 +76,7 @@ void arm(TimerTask& task, esp_timer* timer, int64_t alarm, int64_t period) {
 }
 
 void run_timers() {
+  preflash::crash::enter_task("esp_timer");
   TimerTask& task = timer_task();
   std::unique_lock<std::mutex> lock(task.mutex);
   for (;;) {
@@ -129,8 +131,9 @@ esp_err_t start(esp_timer_handle_t timer, int64_t alarm, int64_t period) {
 extern "C" {
 
 int64_t esp_timer_get_time(void) {
-  return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() -
-                                                               start_time())
+  // In this order, as the first call sets the start time.
+  const auto start = start_time();
+  return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start)
       .count();
 }
 

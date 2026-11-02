@@ -15,6 +15,7 @@ import (
 	"github.com/edcs/preflash/internal/app"
 	"github.com/edcs/preflash/internal/board"
 	"github.com/edcs/preflash/internal/client"
+	"github.com/edcs/preflash/internal/crash"
 	"github.com/edcs/preflash/internal/project"
 	"github.com/edcs/preflash/internal/rc"
 )
@@ -44,6 +45,7 @@ type Backend interface {
 	Hardware()
 	SetHardware(name, value string)
 	SaveTrace()
+	SetSanitizer(kind string)
 }
 
 // Options is what the app knows about a project before anything runs.
@@ -56,6 +58,9 @@ type Options struct {
 	Choices   []project.Choice        // the boards it can run on
 	Board     *board.Board            // run this straight away, skipping the launch screen
 	Boards    func() []project.Choice // reads the choices again, as files can change meanwhile
+	Headless  bool                    // there's no window
+	Sanitize  string                  // the sanitizer to start with, if any
+	Tools     Tools                   // what the crash screen's keys open
 }
 
 // appState is how the app stands, apart from any build.
@@ -102,6 +107,12 @@ type Model struct {
 	debug *debugView     // the ^D screen, while it shows
 	panel *hardwarePanel // the ^H overlay, while it shows
 
+	crash     *crash.Report // the crash on screen, if any
+	crashPID  int           // the frozen process
+	crashGone bool          // that process has ended since
+	sanitize  string        // the sanitizer the next run uses
+	sanitized string        // the one this app was built with
+
 	pressed string // the zone a press began on
 }
 
@@ -132,6 +143,7 @@ func New(b Backend, opts Options) *Model {
 		console:   newConsole(),
 		input:     in,
 		captures:  map[string]string{},
+		sanitize:  opts.Sanitize,
 	}
 	if opts.Board != nil {
 		m.board = *opts.Board
@@ -197,6 +209,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventMsg:
 		m.event(msg.event)
 		return m, m.listen()
+	case toolDoneMsg:
+		if msg.err != nil {
+			m.say(msg.name+": "+msg.err.Error(), lineBad)
+		}
 	case tickMsg:
 		if m.appUp() {
 			m.b.Status()
@@ -262,6 +278,10 @@ func (m *Model) event(e app.Event) {
 	case app.BuildFailed:
 		m.building = false
 		m.say(e.Err.Error(), lineBad)
+		if m.crash != nil {
+			m.say("The crashed app stays frozen. ^R tries again.", lineDim)
+			return
+		}
 		if e.AppRunning {
 			m.say("The old app keeps running.", lineDim)
 			return
@@ -272,7 +292,14 @@ func (m *Model) event(e app.Event) {
 		m.building = false
 		m.board = e.Board
 		m.state = stateStarting
+		m.sanitized = e.Sanitizer
+		if m.crash != nil {
+			m.say(m.crash.Title, lineBad) // the console keeps what stopped the last boot
+		}
+		m.crash, m.crashGone = nil, false
 		m.newBoot()
+	case app.Crashed:
+		m.crashed(e)
 	case app.Connected:
 		m.state = stateRunning
 		m.newBoot()
@@ -336,6 +363,11 @@ func (m *Model) newBoot() {
 
 func (m *Model) exited(e app.Exited) {
 	m.endLine()
+	if m.crash != nil {
+		m.crashGone = true
+		m.say(e.Reason, lineDim)
+		return
+	}
 	for _, text := range e.Tail {
 		m.say(text, lineText)
 	}
@@ -422,6 +454,9 @@ func (m *Model) key(k tea.KeyPressMsg) tea.Cmd {
 	}
 	if m.debug != nil {
 		return m.debugKey(k)
+	}
+	if m.crash != nil {
+		return m.crashKey(k.String())
 	}
 	switch k.String() {
 	case "ctrl+r":
@@ -613,6 +648,8 @@ func (m *Model) content() string {
 		return m.panelView()
 	case m.debug != nil:
 		return m.debugView()
+	case m.crash != nil:
+		return m.crashView()
 	}
 	return m.runningView()
 }

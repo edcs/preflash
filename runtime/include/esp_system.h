@@ -29,6 +29,8 @@ typedef enum {
 // this re-executes the binary in the same process.
 void esp_restart(void) __attribute__((__noreturn__));
 esp_reset_reason_t esp_reset_reason(void);
+// Stops the program with a message, as a panic does.
+void esp_system_abort(const char* details) __attribute__((__noreturn__));
 
 #ifdef __cplusplus
 }

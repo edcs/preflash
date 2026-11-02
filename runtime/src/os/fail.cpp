@@ -5,11 +5,15 @@
 
 #include "esp_err.h"
 #include "nvs.h"
+#include "preflash/crash.h"
 #include "preflash/serial.h"
 
 [[noreturn]] void preflash_unsupported(const char* call, const char* why) {
   std::fprintf(stderr, "preflash: %s is not supported in the simulator: %s\n", call, why);
   preflash::serial::flush_stdio();
+  char message[512];
+  std::snprintf(message, sizeof message, "%s is not supported in the simulator: %s", call, why);
+  preflash::crash::note("unsupported", message);
   // The handler for SIGABRT drains the stream.
   std::abort();
 }
@@ -48,9 +52,12 @@ const char* esp_err_to_name(esp_err_t code) {
 
 void _esp_error_check_failed(esp_err_t rc, const char* file, int line, const char* function,
                              const char* expression) {
-  std::fprintf(stderr, "ESP_ERROR_CHECK failed: esp_err_t 0x%x (%s) at %s:%d, in %s\n  expression: %s\n",
-               static_cast<unsigned>(rc), esp_err_to_name(rc), file, line, function, expression);
+  std::fprintf(stderr, "ESP_ERROR_CHECK failed: esp_err_t 0x%x (%s) at %p\n",
+               static_cast<unsigned>(rc), esp_err_to_name(rc), __builtin_return_address(0));
+  std::fprintf(stderr, "file: \"%s\" line %d\nfunc: %s\nexpression: %s\n", file, line, function,
+               expression);
   std::fflush(stderr);
+  preflash::crash::note("error_check", esp_err_to_name(rc));
   std::abort();
 }
 

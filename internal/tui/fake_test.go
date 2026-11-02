@@ -28,6 +28,7 @@ type fakeBackend struct {
 	hardware int
 	changes  [][2]string
 	saves    int
+	sanitize []string
 }
 
 func newFake() *fakeBackend { return &fakeBackend{events: make(chan app.Event)} }
@@ -40,6 +41,7 @@ func (f *fakeBackend) Tasks()                   { f.tasks++ }
 func (f *fakeBackend) NVS()                     { f.nvs++ }
 func (f *fakeBackend) Hardware()                { f.hardware++ }
 func (f *fakeBackend) SaveTrace()               { f.saves++ }
+func (f *fakeBackend) SetSanitizer(kind string) { f.sanitize = append(f.sanitize, kind) }
 func (f *fakeBackend) SetHardware(name, value string) {
 	f.changes = append(f.changes, [2]string{name, value})
 }

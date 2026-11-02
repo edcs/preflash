@@ -11,6 +11,7 @@
 #include <thread>
 #include <vector>
 
+#include "preflash/crash.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
@@ -71,7 +72,11 @@ class Scheduler {
     std::lock_guard<std::mutex> lock(mutex_);
     if (thread_.joinable()) return;
     quit_ = false;
-    thread_ = std::thread([this] { run(); });
+    thread_ = std::thread([this] {
+      preflash::crash::enter_task("wifi");
+      run();
+      preflash::crash::leave_task();
+    });
   }
   void stop() {
     std::thread joining;

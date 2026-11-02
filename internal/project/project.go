@@ -9,9 +9,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/edcs/preflash/internal/board"
+	"github.com/edcs/preflash/internal/crash"
 	"github.com/edcs/preflash/internal/rc"
 )
 
@@ -25,6 +28,26 @@ const socketPathLimit = 104
 type Project struct {
 	Dir string
 	id  string // tells this checkout's folders from another copy's
+	// sanitize names the sanitizer this build uses, if any.
+	sanitize string
+}
+
+// Sanitizers are the kinds of build a project can have besides its plain one.
+var Sanitizers = []string{"address", "thread"}
+
+// CheckSanitizer fails on anything but a sanitizer's name, or none.
+func CheckSanitizer(kind string) error {
+	if kind != "" && !slices.Contains(Sanitizers, kind) {
+		return fmt.Errorf("no sanitizer %q: use address or thread", kind)
+	}
+	return nil
+}
+
+// Sanitized is the same checkout built with a sanitizer. Each has a build folder of its own,
+// because every object differs, while saved state and the socket stay the checkout's.
+func (p Project) Sanitized(kind string) Project {
+	p.sanitize = kind
+	return p
 }
 
 // Find checks that path holds an ESP-IDF project. Symlinks are resolved so that
@@ -125,7 +148,31 @@ func bracketEnd(s string) int {
 func (p Project) StateDir() string { return filepath.Join(preflashHome(), "state", p.id) }
 
 // BuildDir is where this checkout is built, outside the project.
-func (p Project) BuildDir() string { return filepath.Join(preflashHome(), "build", p.id) }
+func (p Project) BuildDir() string {
+	if p.sanitize != "" {
+		return filepath.Join(preflashHome(), "build", p.id+"-"+p.sanitize)
+	}
+	return filepath.Join(preflashHome(), "build", p.id)
+}
+
+// CrashPath is where a crash of this build leaves its report.
+func (p Project) CrashPath() string { return filepath.Join(p.BuildDir(), "crash.json") }
+
+// LastCrash reads the newest report of any of this checkout's builds.
+func (p Project) LastCrash() (*crash.Report, error) {
+	newest := ""
+	var when time.Time
+	for _, kind := range append([]string{""}, Sanitizers...) {
+		path := p.Sanitized(kind).CrashPath()
+		if info, err := os.Stat(path); err == nil && info.ModTime().After(when) {
+			newest, when = path, info.ModTime()
+		}
+	}
+	if newest == "" {
+		return nil, fmt.Errorf("no crash report for %s: %w", filepath.Base(p.Dir), fs.ErrNotExist)
+	}
+	return crash.Read(newest)
+}
 
 // SocketPath is where this checkout's running app listens. It's named by a short hash
 // and sits under the cache folder, or the temporary folder if a long HOME leaves no room

@@ -49,6 +49,7 @@ func Root() (string, error) {
 // already there: a real ESP-IDF's IDF_PATH must not reach the build. A link of "" asks for
 // no link beyond the port's own.
 func (p Project) environment(base []string, root, link string, headless bool) []string {
+	var asan, tsan string
 	set := []string{
 		"IDF_PATH=" + filepath.Join(root, "runtime", "idf"),
 		"PREFLASH_BOARD=" + filepath.Join(p.BuildDir(), "board.json"),
@@ -56,6 +57,21 @@ func (p Project) environment(base []string, root, link string, headless bool) []
 		"PREFLASH_PROJECT=" + filepath.Base(p.Dir),
 		"PREFLASH_SOCKET=" + p.SocketPath(),
 		"PREFLASH_PORT=" + p.PortPath(),
+		"PREFLASH_CRASH_FILE=" + p.CrashPath(),
+	}
+	if p.sanitize != "" {
+		log := filepath.Join(p.BuildDir(), "sanitizer.log")
+		set = append(set, "PREFLASH_SANITIZE="+p.sanitize, "PREFLASH_SANITIZER_LOG="+log)
+		// Stopping at the first report makes it a crash like any other. The log goes to a file
+		// because the handler can read that, and the alternate stacks are the runtime's.
+		common := fmt.Sprintf(`abort_on_error=1:halt_on_error=1:use_sigaltstack=0:log_path="%s"`, log)
+		switch p.sanitize {
+		case "address":
+			asan = common + ":detect_leaks=0"
+		case "thread":
+			suppressions := filepath.Join(root, "runtime", "tsan.supp")
+			tsan = fmt.Sprintf(`%s:suppressions="%s"`, common, suppressions)
+		}
 	}
 	if link != "" {
 		set = append(set, "PREFLASH_PORT_LINK="+link)
@@ -68,10 +84,31 @@ func (p Project) environment(base []string, root, link string, headless bool) []
 		name, _, _ := strings.Cut(entry, "=")
 		switch name {
 		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_PROJECT", "PREFLASH_SOCKET", "PREFLASH_HEADLESS",
-			"PREFLASH_PORT", "PREFLASH_PORT_LINK", "PREFLASH_PORT_FDS", "PREFLASH_TRACE":
+			"PREFLASH_PORT", "PREFLASH_PORT_LINK", "PREFLASH_PORT_FDS", "PREFLASH_TRACE",
+			"PREFLASH_CRASH_FILE", "PREFLASH_CRASH_HOLD", "PREFLASH_SANITIZE", "PREFLASH_SANITIZER_LOG":
+		case "ASAN_OPTIONS":
+			if asan == "" {
+				env = append(env, entry)
+			} else {
+				_, mine, _ := strings.Cut(entry, "=")
+				asan = mine + ":" + asan
+			}
+		case "TSAN_OPTIONS":
+			if tsan == "" {
+				env = append(env, entry)
+			} else {
+				_, mine, _ := strings.Cut(entry, "=")
+				tsan = mine + ":" + tsan
+			}
 		default:
 			env = append(env, entry)
 		}
+	}
+	if asan != "" {
+		set = append(set, "ASAN_OPTIONS="+asan)
+	}
+	if tsan != "" {
+		set = append(set, "TSAN_OPTIONS="+tsan)
 	}
 	return append(env, set...)
 }
@@ -105,6 +142,11 @@ func (p Project) Run(b board.Board, headless bool) error {
 		return err
 	}
 	env := p.environment(os.Environ(), root, link, headless)
+	// With a window, a crash stops in place and keeps its last frame. A script running with
+	// none needs the process to end and say so.
+	if !headless {
+		env = append(env, "PREFLASH_CRASH_HOLD=1")
+	}
 	fmt.Fprintf(os.Stderr, "preflash: building %s for %s\n", filepath.Base(p.Dir), b.Name)
 	ctx, cancel := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer cancel()

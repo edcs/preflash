@@ -59,6 +59,10 @@ void hold_input();
 // pointing at someone's terminal once the device's name is reused. Async-signal-safe.
 void remove_links();
 
+// Closes the terminal, as unplugging a board would, for a process that stays up after a
+// crash. Async-signal-safe.
+void hang_up();
+
 // The path to give a companion app: the link, or the device if the link failed. Empty with
 // no port.
 std::string path();

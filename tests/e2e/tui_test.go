@@ -32,6 +32,20 @@ const (
 	ctrlR        = "\x12"
 )
 
+// waitForFile waits for a stand-in for lldb, the editor or the clipboard to leave its mark.
+func waitForFile(t *testing.T, path, want string) {
+	t.Helper()
+	deadline := time.Now().Add(patience)
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(path); err == nil && strings.Contains(string(data), want) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	data, _ := os.ReadFile(path)
+	t.Fatalf("%s never held %q: %q", path, want, data)
+}
+
 // setup finds the binary and the project tests/integration/tui.sh prepared.
 func setup(t *testing.T) (string, string) {
 	t.Helper()
@@ -198,10 +212,24 @@ func TestTheWholeApp(t *testing.T) {
 	term.waitGone("backlight mod")
 	term.wait("● running", "backlight 100%")
 
-	// A crash keeps what it said, and ^R recovers.
+	// A crash keeps what it said and holds the app, each key opens what it says, and ^R recovers.
 	term.typed("6")
-	term.wait("■ crashed", "esp_console_repl_del", "The app died: abort trap.")
+	term.wait("■ crashed", "unsupported call on the console task, frozen where it happened",
+		"esp_console_repl_del is not supported", "main/main.cpp:", "› unsupported_command", "g open debugger")
 	term.snapshot("crashed-100x30")
+	tools := os.Getenv("PREFLASH_E2E_TOOLS")
+	term.typed("g")
+	waitForFile(t, filepath.Join(tools, "lldb.args"), "-p ")
+	term.wait("■ crashed")
+	term.typed("e")
+	waitForFile(t, filepath.Join(tools, "editor.args"), "/main/main.cpp")
+	term.typed("y")
+	waitForFile(t, filepath.Join(tools, "copied"), "esp_console_repl_del is not supported")
+	term.wait("Report copied.")
+	if output, err := exec.Command(binary, "crash", "--project", project).CombinedOutput(); err != nil ||
+		!strings.Contains(string(output), "› unsupported_command") {
+		t.Errorf("preflash crash: %v\n%s", err, output)
+	}
 	term.key(ctrlR)
 	term.waitLong(buildPatience, "● running")
 
