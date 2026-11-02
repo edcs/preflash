@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -76,6 +77,9 @@ func (p Project) environment(base []string, root, link string, headless bool) []
 	if link != "" {
 		set = append(set, "PREFLASH_PORT_LINK="+link)
 	}
+	if p.sdkconfig != "" {
+		set = append(set, "PREFLASH_SDKCONFIG="+p.sdkconfig)
+	}
 	if headless {
 		set = append(set, "PREFLASH_HEADLESS=1")
 	}
@@ -85,7 +89,8 @@ func (p Project) environment(base []string, root, link string, headless bool) []
 		switch name {
 		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_PROJECT", "PREFLASH_SOCKET", "PREFLASH_HEADLESS",
 			"PREFLASH_PORT", "PREFLASH_PORT_LINK", "PREFLASH_PORT_FDS", "PREFLASH_TRACE",
-			"PREFLASH_CRASH_FILE", "PREFLASH_CRASH_HOLD", "PREFLASH_SANITIZE", "PREFLASH_SANITIZER_LOG":
+			"PREFLASH_CRASH_FILE", "PREFLASH_CRASH_HOLD", "PREFLASH_SANITIZE", "PREFLASH_SANITIZER_LOG",
+			"PREFLASH_SDKCONFIG", "PREFLASH_MANAGED_COMPONENTS":
 		case "ASAN_OPTIONS":
 			if asan == "" {
 				env = append(env, entry)
@@ -118,6 +123,9 @@ func (p Project) environment(base []string, root, link string, headless bool) []
 func (p Project) Run(b board.Board, headless bool) error {
 	root, err := Root()
 	if err != nil {
+		return err
+	}
+	if p, err = p.forBoard(b); err != nil {
 		return err
 	}
 	if err := p.checkSocketPath(); err != nil {
@@ -224,6 +232,17 @@ func (p Project) makeDirs() error {
 // them. They get a group of their own for that, so a compiler goes too, and a chance to
 // clean up, so a half-written object can't pass for a finished one in the next build.
 func (p Project) Build(ctx context.Context, env []string, output io.Writer) error {
+	root, err := Root()
+	if err != nil {
+		return err
+	}
+	fetched, err := p.fetchComponents(ctx, root, output)
+	if err != nil {
+		return err
+	}
+	if fetched != "" {
+		env = append(slices.Clone(env), "PREFLASH_MANAGED_COMPONENTS="+fetched)
+	}
 	jobs := strconv.Itoa(runtime.NumCPU())
 	steps := [][]string{
 		{"-S", p.Dir, "-B", p.BuildDir()},
@@ -245,9 +264,12 @@ func (p Project) Build(ctx context.Context, env []string, output io.Writer) erro
 }
 
 // Environment gets the folders ready and gives the variables a build and its app run with.
-func (p Project) Environment(headless bool) ([]string, error) {
+func (p Project) Environment(b board.Board, headless bool) ([]string, error) {
 	root, err := Root()
 	if err != nil {
+		return nil, err
+	}
+	if p, err = p.forBoard(b); err != nil {
 		return nil, err
 	}
 	if err := p.checkSocketPath(); err != nil {

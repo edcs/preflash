@@ -656,3 +656,35 @@ func TestLastCrashIsTheNewestOfAnyBuild(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, report.PID)
 }
+
+func TestABoardCanHaveAnSdkconfigOfItsOwn(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := idfProject(t, t.TempDir())
+	writeFile(t, filepath.Join(dir, "sdkconfig"), "CONFIG_A=y\n")
+	writeFile(t, filepath.Join(dir, "sdkconfig.small"), "CONFIG_B=y\n")
+	writeFile(t, filepath.Join(dir, ".preflashrc"), "sdkconfig:\n  small: sdkconfig.small\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+
+	env, err := p.Environment(board.Board{Name: "small"}, true)
+	require.NoError(t, err)
+	assert.Contains(t, env, "PREFLASH_SDKCONFIG="+filepath.Join(p.Dir, "sdkconfig.small"))
+
+	env, err = p.Environment(board.Board{Name: "other"}, true)
+	require.NoError(t, err)
+	for _, entry := range env {
+		assert.NotContains(t, entry, "PREFLASH_SDKCONFIG=")
+	}
+}
+
+func TestAnSdkconfigThatIsntThereStopsTheRun(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := idfProject(t, t.TempDir())
+	writeFile(t, filepath.Join(dir, ".preflashrc"), "sdkconfig:\n  small: sdkconfig.small\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+
+	_, err = p.Environment(board.Board{Name: "small"}, true)
+
+	require.ErrorContains(t, err, "sdkconfig.small")
+}

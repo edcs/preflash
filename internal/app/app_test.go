@@ -48,7 +48,7 @@ func newTarget(t *testing.T, script string) *fakeTarget {
 	return &fakeTarget{dir: dir, script: script}
 }
 
-func (f *fakeTarget) Environment(headless bool) ([]string, error) {
+func (f *fakeTarget) Environment(b board.Board, headless bool) ([]string, error) {
 	f.headles = headless
 	return []string{"PATH=" + os.Getenv("PATH"), "FROM_TARGET=1"}, nil
 }

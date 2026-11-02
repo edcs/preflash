@@ -29,6 +29,9 @@ type Config struct {
 	Status    []Field
 	// SerialLink is a path for a link to the serial port, as the project wrote it.
 	SerialLink string
+	// Sdkconfigs names the sdkconfig to build each board with, for a project that builds
+	// differently per board. A board that isn't listed uses the project's sdkconfig.
+	Sdkconfigs map[string]string
 }
 
 // Shortcut sends lines to the console, once any values it asks for are in.
@@ -140,6 +143,8 @@ func (p parser) config(root *yaml.Node) (Config, error) {
 			c.Status, err = p.status(value)
 		case "serial_link":
 			c.SerialLink, err = p.text(value, "serial_link")
+		case "sdkconfig":
+			c.Sdkconfigs, err = p.sdkconfigs(value)
 		default:
 			err = p.fail(keyNode, "unknown key %q", key)
 		}
@@ -157,6 +162,22 @@ func (p parser) text(n *yaml.Node, what string) (string, error) {
 		return "", p.fail(n, "%s must be text", what)
 	}
 	return n.Value, nil
+}
+
+func (p parser) sdkconfigs(n *yaml.Node) (map[string]string, error) {
+	if n.Kind != yaml.MappingNode {
+		return nil, p.fail(n, "sdkconfig must be a map of boards to files")
+	}
+	files := map[string]string{}
+	err := p.entries(n, func(key string, _, value *yaml.Node) error {
+		file, err := p.text(value, "sdkconfig."+key)
+		if err == nil && file == "" {
+			err = p.fail(value, "sdkconfig.%s needs a file", key)
+		}
+		files[key] = file
+		return err
+	})
+	return files, err
 }
 
 func (p parser) console(n *yaml.Node) (string, error) {

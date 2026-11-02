@@ -30,6 +30,8 @@ type Project struct {
 	id  string // tells this checkout's folders from another copy's
 	// sanitize names the sanitizer this build uses, if any.
 	sanitize string
+	// sdkconfig is the file this build's options come from, if it isn't the usual one.
+	sdkconfig string
 }
 
 // Sanitizers are the kinds of build a project can have besides its plain one.
@@ -48,6 +50,27 @@ func CheckSanitizer(kind string) error {
 func (p Project) Sanitized(kind string) Project {
 	p.sanitize = kind
 	return p
+}
+
+// forBoard is the same checkout with the sdkconfig .preflashrc names for the board, for a
+// project that builds differently per board. It keeps one build folder, because a build
+// follows whichever sdkconfig it's given.
+func (p Project) forBoard(b board.Board) (Project, error) {
+	config, _, err := rc.Load(p.Dir)
+	if err != nil {
+		return p, err
+	}
+	p.sdkconfig = ""
+	file, ok := config.Sdkconfigs[b.Name]
+	if !ok {
+		return p, nil
+	}
+	path := filepath.Join(p.Dir, file)
+	if _, err := os.Stat(path); err != nil {
+		return p, fmt.Errorf("%s names an sdkconfig for %s: %w", rc.FileName, b.Name, err)
+	}
+	p.sdkconfig = path
+	return p, nil
 }
 
 // Find checks that path holds an ESP-IDF project. Symlinks are resolved so that

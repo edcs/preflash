@@ -1,6 +1,7 @@
 # Stands in for ESP-IDF's project.cmake, so that a project's own CMake builds
 # natively when IDF_PATH points here. It reads the project and writes only to the
-# build folder: sdkconfig and managed_components/ must already be in place.
+# build folder: sdkconfig and managed_components/ must already be in place, unless Preflash
+# points PREFLASH_SDKCONFIG or PREFLASH_MANAGED_COMPONENTS somewhere else.
 
 get_filename_component(PREFLASH_RUNTIME_DIR "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
 set(PREFLASH_GEN_LV_CONFIG "${CMAKE_CURRENT_LIST_DIR}/../gen_lv_config.py")
@@ -27,6 +28,9 @@ endfunction()
 # CMake variable. A macro, so those variables land in the directory's scope.
 macro(preflash_load_sdkconfig config_dir)
   set(preflash_sdkconfig "${CMAKE_SOURCE_DIR}/sdkconfig")
+  if(NOT "$ENV{PREFLASH_SDKCONFIG}" STREQUAL "")
+    set(preflash_sdkconfig "$ENV{PREFLASH_SDKCONFIG}")
+  endif()
   if(NOT EXISTS "${preflash_sdkconfig}")
     preflash_stop_stale_project("No sdkconfig in ${CMAKE_SOURCE_DIR}.")
   endif()
@@ -124,8 +128,8 @@ function(preflash_manifest_downloads manifest out)
   endif()
 endfunction()
 
-function(preflash_check_managed_components component_dirs)
-  if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/managed_components")
+function(preflash_check_managed_components component_dirs managed_dir)
+  if(IS_DIRECTORY "${managed_dir}")
     return()
   endif()
   foreach(dir IN LISTS component_dirs)
@@ -180,9 +184,13 @@ function(preflash_find_project_components out)
       preflash_collect_components("${CMAKE_SOURCE_DIR}/${entry}" dirs)
     endif()
   endforeach()
-  preflash_check_managed_components("${dirs}")
-  if(EXISTS "${CMAKE_SOURCE_DIR}/managed_components")
-    preflash_collect_components("${CMAKE_SOURCE_DIR}/managed_components" dirs)
+  set(managed_dir "${CMAKE_SOURCE_DIR}/managed_components")
+  if(NOT "$ENV{PREFLASH_MANAGED_COMPONENTS}" STREQUAL "")
+    set(managed_dir "$ENV{PREFLASH_MANAGED_COMPONENTS}")
+  endif()
+  preflash_check_managed_components("${dirs}" "${managed_dir}")
+  if(EXISTS "${managed_dir}")
+    preflash_collect_components("${managed_dir}" dirs)
   endif()
 
   set(names "")
@@ -305,7 +313,7 @@ function(preflash_add_lvgl dir config_dir)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   execute_process(
     COMMAND "${Python3_EXECUTABLE}" "${PREFLASH_GEN_LV_CONFIG}"
-            "${CMAKE_SOURCE_DIR}/sdkconfig" "${config_dir}/preflash_lv_config.h"
+            "${preflash_sdkconfig}" "${config_dir}/preflash_lv_config.h"
             "$ENV{PREFLASH_SANITIZE}"
     RESULT_VARIABLE result)
   if(NOT result EQUAL 0)
