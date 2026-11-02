@@ -26,6 +26,9 @@ const usage = `usage: preflash [command] [--project dir]
   port                              print the virtual serial port's path
   shot <file.png|file.bmp>          save what the panel shows
   touch x y [ms]                    press the panel
+  trace [--stream x] [--json]       print what firmware does to the hardware and follow it
+  trace --save file                 save what the app has kept of that
+  hardware [name value] [--json]    show or change the board's hardware and forced failures
   quit                              stop the running app
 `
 
@@ -40,6 +43,9 @@ func main() {
 		"shot":   shot,
 		"touch":  touch,
 		"quit":   quit,
+
+		"trace":    trace,
+		"hardware": hardware,
 	}
 	command, args := chooseCommand(os.Args[1:], interactive())
 	if commands[command] == nil {

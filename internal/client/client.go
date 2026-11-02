@@ -83,9 +83,10 @@ type Status struct {
 
 // Event is a message from the app that answers no request.
 type Event struct {
-	Kind  string // "serial", "dropped" or "restarting"
-	Data  []byte // what came out of the serial stream
-	Bytes int    // how much a dropped event lost
+	Kind  string      // "serial", "dropped", "restarting" or "trace"
+	Data  []byte      // what came out of the serial stream
+	Bytes int         // how much a dropped event lost
+	Trace TraceRecord // a trace event's record
 }
 
 // wire is every field a reply or an event can carry that this file reads itself.
@@ -194,7 +195,7 @@ func (c *Client) Call(op string, fields map[string]any, reply any) error {
 		}
 		if message.ID == nil {
 			if message.Event != "" {
-				c.pending = append(c.pending, message.event())
+				c.pending = append(c.pending, message.event(raw))
 				continue
 			}
 			// The app couldn't tie its complaint to a request.
@@ -220,7 +221,17 @@ func replyError(message wire) error {
 	return errors.New(message.Error)
 }
 
-func (w wire) event() Event { return Event{Kind: w.Event, Data: w.Data, Bytes: w.Bytes} }
+// event reads a message that has an event in it. A trace row's fields sit beside the event's
+// name, so they come from the raw line.
+func (w wire) event(raw []byte) Event {
+	e := Event{Kind: w.Event, Data: w.Data, Bytes: w.Bytes}
+	if w.Event == "trace" {
+		// Numbers and strings that don't fit leave a row with less in it, which is all
+		// a client of a newer app can expect.
+		json.Unmarshal(raw, &e.Trace)
+	}
+	return e
+}
 
 // Next waits for the next event. The error wraps ErrStopped once the app has gone.
 func (c *Client) Next() (Event, error) {
@@ -230,12 +241,12 @@ func (c *Client) Next() (Event, error) {
 		return next, nil
 	}
 	for {
-		_, message, err := c.readLine()
+		raw, message, err := c.readLine()
 		if err != nil {
 			return Event{}, err
 		}
 		if message.Event != "" {
-			return message.event(), nil
+			return message.event(raw), nil
 		}
 	}
 }
@@ -351,10 +362,29 @@ type Watcher struct {
 	Serial     func([]byte) error // the next bytes of the stream
 	Dropped    func(int)          // this many bytes went because the reader fell behind
 	Restarting func()             // the app said it's restarting
+	Trace      func(TraceRecord)  // the next trace record
+	Streams    []string           // what to subscribe to, serial if it names none
+	Stop       <-chan struct{}    // closing this ends the watch, nil if it runs to the end
 }
 
-// Watch subscribes to the serial stream and follows it through restarts, starting with
-// what the app has kept. It returns nil when the app stops.
+func (w Watcher) stopped() bool {
+	select {
+	case <-w.Stop:
+		return true
+	default:
+		return false
+	}
+}
+
+func (w Watcher) streams() []string {
+	if len(w.Streams) == 0 {
+		return []string{"serial"}
+	}
+	return w.Streams
+}
+
+// Watch subscribes to the watcher's streams and follows them through restarts, starting with
+// what the app has kept. It returns nil when the app stops or the watcher's Stop closes.
 func Watch(path string, w Watcher) error {
 	c, err := Dial(path)
 	if err != nil {
@@ -364,10 +394,22 @@ func Watch(path string, w Watcher) error {
 		if w.Connected != nil {
 			w.Connected(c.Hello)
 		}
+		// Closing the connection is what gets a read to return.
+		done := make(chan struct{})
+		go func(c *Client) {
+			select {
+			case <-w.Stop:
+				c.Close()
+			case <-done:
+			}
+		}(c)
 		restarting, err := watchOne(c, w)
+		close(done)
 		pid := c.Hello.PID
 		c.Close()
 		switch {
+		case w.stopped():
+			return nil
 		case err != nil:
 			return err
 		case restarting:
@@ -398,7 +440,7 @@ func Watch(path string, w Watcher) error {
 // of any serial still queued, so this reads on to the hang-up.
 func watchOne(c *Client, w Watcher) (bool, error) {
 	// An app that stops here can still have said it's restarting, so the loop looks.
-	if err := c.Subscribe("serial"); err != nil && !errors.Is(err, ErrStopped) {
+	if err := c.Subscribe(w.streams()...); err != nil && !errors.Is(err, ErrStopped) {
 		return false, err
 	}
 	restarting := false
@@ -425,6 +467,10 @@ func watchOne(c *Client, w Watcher) (bool, error) {
 			restarting = true
 			if w.Restarting != nil {
 				w.Restarting()
+			}
+		case "trace":
+			if w.Trace != nil {
+				w.Trace(event.Trace)
 			}
 		}
 	}

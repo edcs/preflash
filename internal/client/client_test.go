@@ -751,3 +751,117 @@ func TestAwaitStopsWhenTheProcessDies(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotRunning)
 	assert.Less(t, time.Since(start), time.Second)
 }
+
+func TestWatchHearsTheTraceWhenAskedAndStopsWhenTold(t *testing.T) {
+	path := shortPath(t)
+	app := startFake(t, path, func(req map[string]any, reply func(string)) {
+		reply(ok(req))
+		reply(`{"event":"trace","stream":"i2c","seq":3,"us":251204000,"bus":1,"address":81,"subject":"1:0x51","device":"PCF85063","op":"read","detail":"NACK (injected)","injected":true}`)
+	})
+
+	rows := make(chan TraceRecord, 1)
+	stop := make(chan struct{})
+	finished := make(chan error, 1)
+	go func() {
+		finished <- Watch(path, Watcher{
+			Streams: []string{"trace"},
+			Stop:    stop,
+			Trace:   func(r TraceRecord) { rows <- r },
+		})
+	}()
+
+	row := <-rows
+	assert.Equal(t, "i2c", row.Stream)
+	assert.Equal(t, uint64(3), row.Seq)
+	assert.Equal(t, 1, row.Bus)
+	assert.Equal(t, 81, row.Address)
+	assert.Equal(t, "PCF85063", row.Device)
+	assert.Equal(t, "NACK (injected)", row.Detail)
+	assert.True(t, row.Injected)
+	assert.Equal(t, "04:11.204", row.Time())
+	assert.Equal(t, []any{"trace"}, app.seen()[0]["streams"])
+
+	close(stop)
+	select {
+	case err := <-finished:
+		assert.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("Watch outlasted its stop")
+	}
+}
+
+func TestEventsKeepTheirTraceRowsWhileACallWaits(t *testing.T) {
+	path := shortPath(t)
+	startFake(t, path, func(req map[string]any, reply func(string)) {
+		reply(`{"event":"trace","stream":"net","seq":1,"us":1,"subject":"wifi","op":"join","detail":"x","injected":false}`)
+		reply(ok(req))
+	})
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+	require.NoError(t, c.Send("x"))
+	event, err := c.Next()
+	require.NoError(t, err)
+	assert.Equal(t, "trace", event.Kind)
+	assert.Equal(t, "join", event.Trace.Op)
+}
+
+func TestTheTimeOfARowShowsHoursOnceThereAreAny(t *testing.T) {
+	assert.Equal(t, "1:00:00.001", TraceRecord{Us: 3600_001_000}.Time())
+}
+
+func TestDebugCallsReadTheirReplies(t *testing.T) {
+	path := shortPath(t)
+	startFake(t, path, func(req map[string]any, reply func(string)) {
+		id := int(req["id"].(float64))
+		switch req["op"] {
+		case "tasks":
+			reply(fmt.Sprintf(`{"id":%d,"ok":true,"tasks":[{"name":"main","state":"blocked","stack":3584}]}`, id))
+		case "nvs":
+			reply(fmt.Sprintf(`{"id":%d,"ok":true,"namespaces":[{"name":"wifi","keys":[{"key":"ssid","size":6}]}]}`, id))
+		case "hardware", "hardware_set":
+			reply(fmt.Sprintf(`{"id":%d,"ok":true,"items":[{"name":"rtc","label":"RTC","group":"Break something","applies":"boot","value":"healthy","next":"flat","options":[{"value":"healthy","label":"healthy"},{"value":"flat","label":"flat backup cell"}]}]}`, id))
+		case "trace_save":
+			reply(fmt.Sprintf(`{"id":%d,"ok":true,"path":"/saved","records":12}`, id))
+		}
+	})
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+
+	tasks, err := c.Tasks()
+	require.NoError(t, err)
+	assert.Equal(t, []Task{{Name: "main", State: "blocked", Stack: 3584}}, tasks)
+
+	spaces, err := c.NVS()
+	require.NoError(t, err)
+	assert.Equal(t, []Namespace{{Name: "wifi", Keys: []NVSKey{{Key: "ssid", Size: 6}}}}, spaces)
+
+	items, err := c.Hardware()
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "flat backup cell", items[0].Label("flat"))
+	assert.True(t, items[0].Waiting())
+
+	items, err = c.SetHardware("rtc", "flat")
+	require.NoError(t, err)
+	assert.Len(t, items, 1)
+
+	saved, records, err := c.SaveTrace("")
+	require.NoError(t, err)
+	assert.Equal(t, "/saved", saved)
+	assert.Equal(t, 12, records)
+}
+
+func TestSavingWithNoPathLeavesItOutOfTheRequest(t *testing.T) {
+	path := shortPath(t)
+	app := startFake(t, path, func(req map[string]any, reply func(string)) {
+		reply(fmt.Sprintf(`{"id":%d,"ok":true,"path":"/s","records":0}`, int(req["id"].(float64))))
+	})
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+	_, _, err = c.SaveTrace("")
+	require.NoError(t, err)
+	assert.NotContains(t, app.seen()[0], "path")
+}

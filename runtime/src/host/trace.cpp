@@ -257,7 +257,7 @@ nlohmann::json to_json(const Record& record) {
                         {"us", record.us},
                         {"subject", record.subject},
                         {"op", record.op},
-                        {"data", record.data},
+                        {"detail", record.data},
                         {"injected", record.injected}};
   if (record.stream == Stream::I2c) {
     row["bus"] = record.bus;

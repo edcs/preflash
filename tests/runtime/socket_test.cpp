@@ -515,7 +515,7 @@ TEST_F(SocketServe, ASubscriberToTheTraceHearsItUnderItsOwnEvent) {
     } while (row.value("op", "") != "from a test");
     EXPECT_EQ(row["event"], "trace");
     EXPECT_EQ(row["stream"], "net");
-    EXPECT_EQ(row["data"], "data");
+    EXPECT_EQ(row["detail"], "data");
     EXPECT_EQ(row["injected"], true);
   }
   // Hanging up ends the subscription, on the connection's own thread.
