@@ -1,0 +1,29 @@
+runtime/src/console/console.cpp
+  s_82b4983a83db4b::t_91d110c33ba09b 47-48
+runtime/src/host/main.cpp
+  s_82b4983a83db4b::t_92b84a043d4a17 115,120,125
+runtime/src/host/serial.cpp
+  s_82b4983a83db4b::t_6630f1625c0ede 320
+runtime/src/host/socket.cpp
+  s_82b4983a83db4b::t_ff902c7f909fdf 247-250,252,289-295,308,341
+tests/runtime/net_test.cpp
+  s_82b4983a83db4b::t_41873777411cfc 764,766,768,771,773
+tests/runtime/socket_test.cpp
+  s_82b4983a83db4b::t_2ffc18a49328f7 274-307
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "33dce4e305f4075dc5bc4dd4d40177c45b6b0a74",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
