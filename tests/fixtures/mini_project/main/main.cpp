@@ -15,6 +15,7 @@ extern const uint8_t notes_end[] asm("_binary_notes_txt_end");
 
 extern "C" int from_folder_value(void);
 extern "C" int lv_stand_in_os_none(void);
+extern "C" int lv_stand_in_os_threads(void);
 extern "C" int lv_stand_in_color_depth(void);
 extern "C" int lv_stand_in_sdl(void);
 
@@ -36,7 +37,7 @@ extern "C" void app_main(void) {
   printf("embedded=%.*s\n", static_cast<int>(hello_end - hello_start), hello_start);
   // A text file ends in a NUL that counts towards its length, as on ESP-IDF.
   printf("embedded text=%s length=%d\n", notes_start, static_cast<int>(notes_end - notes_start));
-  printf("lvgl os_none=%d color_depth=%d sdl=%d\n", lv_stand_in_os_none(),
+  printf("lvgl os_none=%d os_threads=%d color_depth=%d sdl=%d\n", lv_stand_in_os_none(), lv_stand_in_os_threads(),
          lv_stand_in_color_depth(), lv_stand_in_sdl());
 #ifdef ESP_PLATFORM
   printf("ESP_PLATFORM is defined\n");

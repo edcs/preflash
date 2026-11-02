@@ -300,7 +300,7 @@ function(idf_component_register)
 endfunction()
 
 # Built from its sources because its own CMakeLists.txt expects the real ESP-IDF
-# build, and with LV_OS_NONE because the host has no FreeRTOS for LVGL to use.
+# build. The project's LV_OS_FREERTOS becomes pthreads, as the host has no FreeRTOS.
 function(preflash_add_lvgl dir config_dir)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   execute_process(
