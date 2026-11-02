@@ -269,7 +269,23 @@ func (m *Model) launchKey(k tea.KeyPressMsg) {
 		m.launchEnter()
 	case "esc":
 		m.closePicker()
+	case "s":
+		m.nextSanitizer()
 	}
+}
+
+// nextSanitizer moves through the plain build and each sanitizer.
+func (m *Model) nextSanitizer() {
+	kinds := append([]string{""}, project.Sanitizers...)
+	m.sanitize = kinds[(slices.Index(kinds, m.sanitize)+1)%len(kinds)]
+	m.b.SetSanitizer(m.sanitize)
+}
+
+func (m *Model) sanitizerLabel() string {
+	if m.sanitize == "" {
+		return "sanitizer off"
+	}
+	return "sanitizer " + m.sanitize
 }
 
 // closePicker goes back to the running screen, if there's one to go back to.

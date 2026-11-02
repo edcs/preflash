@@ -17,6 +17,7 @@ var (
 	colourMuted   = lipgloss.Color("#8D98A1")
 	colourAmber   = lipgloss.Color("#F2B84B")
 	colourBad     = lipgloss.Color("#FF9A70")
+	colourBadEdge = lipgloss.Color("#5B4034")
 )
 
 var (
@@ -29,6 +30,7 @@ var (
 	styleBad      = lipgloss.NewStyle().Foreground(colourBad)
 	styleBadBold  = lipgloss.NewStyle().Foreground(colourBad).Bold(true)
 	styleRule     = lipgloss.NewStyle().Foreground(colourLine)
+	styleBadEdge  = lipgloss.NewStyle().Foreground(colourBadEdge)
 	styleSelected = lipgloss.NewStyle().Foreground(colourGround).Background(colourAccent)
 )
 
@@ -38,8 +40,12 @@ type segStyle = lipgloss.Style
 // surfaceStyle paints a bar or a chip.
 var surfaceStyle = lipgloss.NewStyle().Background(colourSurface)
 
-// sidePad is the empty cells at each side of the window.
-const sidePad = 2
+const (
+	// sidePad is the empty cells at each side of the window.
+	sidePad = 2
+	// boxPad is the empty cells inside a box's sides.
+	boxPad = 1
+)
 
 // seg is a run of text in one style.
 type seg struct {

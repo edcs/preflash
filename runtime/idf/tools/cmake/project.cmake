@@ -306,6 +306,7 @@ function(preflash_add_lvgl dir config_dir)
   execute_process(
     COMMAND "${Python3_EXECUTABLE}" "${PREFLASH_GEN_LV_CONFIG}"
             "${CMAKE_SOURCE_DIR}/sdkconfig" "${config_dir}/preflash_lv_config.h"
+            "$ENV{PREFLASH_SANITIZE}"
     RESULT_VARIABLE result)
   if(NOT result EQUAL 0)
     message(FATAL_ERROR "Couldn't write the LVGL config from sdkconfig: ${result}")
@@ -349,7 +350,9 @@ function(preflash_link_app config_dir)
          "LV_CONF_KCONFIG_EXTERNAL_INCLUDE=\"preflash_lv_config.h\"")
   endif()
 
-  set(options "")
+  # A crash report needs the debug information, whatever build type the project asked for,
+  # and every caller, which a tail call would leave off its stack.
+  set(options -g -fno-optimize-sibling-calls)
   if(NOT CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_DISABLE)
     # CMake's release flags would turn off asserts that the firmware's build keeps.
     list(APPEND options -UNDEBUG)
@@ -402,6 +405,15 @@ macro(project name)
   endif()
 
   _project(${name} C CXX ASM)
+
+  # On everything, runtime included, so that a report crosses the two whole. The build folder
+  # is the sanitizer's own: the Go side keeps these objects apart from plain ones.
+  if(NOT "$ENV{PREFLASH_SANITIZE}" STREQUAL "")
+    add_compile_options(
+      "$<$<COMPILE_LANGUAGE:C,CXX>:-fsanitize=$ENV{PREFLASH_SANITIZE}>"
+      "$<$<COMPILE_LANGUAGE:C,CXX>:-fno-omit-frame-pointer>")
+    add_link_options("-fsanitize=$ENV{PREFLASH_SANITIZE}")
+  endif()
 
   preflash_add_components("${PREFLASH_CONFIG_DIR}")
   add_subdirectory("${PREFLASH_RUNTIME_DIR}" "${CMAKE_BINARY_DIR}/preflash_runtime")

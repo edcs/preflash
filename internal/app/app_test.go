@@ -27,6 +27,7 @@ const patience = 5 * time.Second
 
 // fakeTarget builds by calling build, and runs a shell script as the app.
 type fakeTarget struct {
+	sanitizers []string
 	dir        string
 	script     string
 	build      func(out io.Writer) error
@@ -76,6 +77,14 @@ func (f *fakeTarget) Install(b board.Board, env []string) (string, []string, err
 }
 func (f *fakeTarget) SocketPath() string { return filepath.Join(f.dir, "s") }
 func (f *fakeTarget) LogPath() string    { return filepath.Join(f.dir, "app.log") }
+func (f *fakeTarget) CrashPath() string  { return filepath.Join(f.dir, "crash.json") }
+func (f *fakeTarget) ProjectDir() string { return f.dir }
+func (f *fakeTarget) Sanitized(kind string) Target {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sanitizers = append(f.sanitizers, kind)
+	return f
+}
 
 func (f *fakeTarget) setBuild(build func(io.Writer) error) {
 	f.mu.Lock()
@@ -398,6 +407,100 @@ func TestARestartIsPassedOn(t *testing.T) {
 	socket.write(`{"event":"restarting"}`)
 
 	next[Restarting](t, s, nil)
+}
+
+// The app has no way to say over the socket that it crashed, so the file is what counts.
+func writeCrash(t *testing.T, f *fakeTarget, pid int) {
+	t.Helper()
+	next := f.CrashPath() + ".next"
+	body := fmt.Sprintf(`{"pid":%d,"signal":"SIGSEGV","address":"0x0","access":"read","task":"lvgl"}`, pid)
+	require.NoError(t, os.WriteFile(next, []byte(body), 0o644))
+	require.NoError(t, os.Rename(next, f.CrashPath()))
+}
+
+func TestACrashReportArrivesWithTheAppStillUp(t *testing.T) {
+	f := newTarget(t, "exec sleep 30")
+	s, _, begun := started(t, f)
+
+	writeCrash(t, f, begun.PID)
+
+	crashed := next[Crashed](t, s, nil)
+	assert.Equal(t, begun.PID, crashed.PID)
+	assert.Equal(t, "memory error on the lvgl task", crashed.Report.Headline())
+	assert.True(t, alive(begun.PID), "a held app stays up for the debugger")
+}
+
+func TestAnAppIsToldToHoldACrash(t *testing.T) {
+	f := newTarget(t, "echo hold=$PREFLASH_CRASH_HOLD; exec sleep 30")
+	_, _, _ = started(t, f)
+	eventually(t, "the app's output", func() bool { return strings.Contains(f.log(t), "hold=1") })
+}
+
+func TestAnOldReportFromAnotherProcessIsIgnored(t *testing.T) {
+	f := newTarget(t, "exec sleep 30")
+	writeCrash(t, f, 1)
+	s, _, _ := started(t, f)
+	quiet(t, s, 2*crashPoll)
+}
+
+func TestAnOldReportWithTheSamePIDIsIgnored(t *testing.T) {
+	f := newTarget(t, "exec sleep 30")
+	s, _, begun := started(t, f)
+	writeCrash(t, f, begun.PID)
+	old := time.Now().Add(-time.Hour)
+	require.NoError(t, os.Chtimes(f.CrashPath(), old, old))
+	quiet(t, s, 2*crashPoll)
+}
+
+func TestARebuildReplacesACrashedAppStraightAway(t *testing.T) {
+	f := newTarget(t, "trap '' TERM; while :; do sleep 1; done")
+	s, _, begun := started(t, f)
+	writeCrash(t, f, begun.PID)
+	next[Crashed](t, s, nil)
+
+	before := time.Now()
+	require.True(t, s.Run(testBoard))
+	next[Started](t, s, nil)
+
+	assert.False(t, alive(begun.PID))
+	assert.Less(t, time.Since(before), stopPatience, "a frozen app can't answer a quit")
+}
+
+func TestClosingEndsACrashedApp(t *testing.T) {
+	f := newTarget(t, "trap '' TERM; while :; do sleep 1; done")
+	s, _, begun := started(t, f)
+	writeCrash(t, f, begun.PID)
+	next[Crashed](t, s, nil)
+
+	s.Close()
+
+	assert.False(t, alive(begun.PID))
+}
+
+func TestAFailedBuildLeavesACrashedAppHeld(t *testing.T) {
+	f := newTarget(t, "exec sleep 30")
+	s, _, begun := started(t, f)
+	writeCrash(t, f, begun.PID)
+	next[Crashed](t, s, nil)
+	f.setBuild(func(io.Writer) error { return errors.New("no") })
+
+	require.True(t, s.Run(testBoard))
+
+	assert.True(t, next[BuildFailed](t, s, nil).AppRunning)
+	assert.True(t, alive(begun.PID))
+}
+
+func TestASanitizerAppliesToTheNextRun(t *testing.T) {
+	f := newTarget(t, "exec sleep 30")
+	s, _, _ := started(t, f)
+	s.SetSanitizer("thread")
+
+	require.True(t, s.Run(testBoard))
+
+	assert.Equal(t, "thread", next[Started](t, s, nil).Sanitizer)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	assert.Contains(t, f.sanitizers, "thread")
 }
 
 func TestHowTheAppStoppedDecidesTheState(t *testing.T) {

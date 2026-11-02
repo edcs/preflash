@@ -13,13 +13,16 @@ import (
 	"time"
 
 	"github.com/edcs/preflash/internal/client"
+	"github.com/edcs/preflash/internal/crash"
 	"github.com/edcs/preflash/internal/project"
 )
 
 const usage = `usage: preflash [command] [--project dir]
 
-  tui [--board file] [--headless]   open the terminal app, the default in a terminal
-  run [--board file] [--headless]   build the project and run it
+  tui [--board file] [--headless] [--sanitize address|thread]
+                                    open the terminal app, the default in a terminal
+  run [--board file] [--headless] [--sanitize address|thread]
+                                    build the project and run it
   send <line...>                    send a line to the firmware's console
   status [--json]                   show how the running app stands
   serial                            print the serial stream and follow it
@@ -29,6 +32,7 @@ const usage = `usage: preflash [command] [--project dir]
   trace [--stream x] [--json]       print what firmware does to the hardware and follow it
   trace --save file                 save what the app has kept of that
   hardware [name value] [--json]    show or change the board's hardware and forced failures
+  crash [--json]                    print the last crash report
   quit                              stop the running app
 `
 
@@ -46,6 +50,7 @@ func main() {
 
 		"trace":    trace,
 		"hardware": hardware,
+		"crash":    crashReport,
 	}
 	command, args := chooseCommand(os.Args[1:], interactive())
 	if commands[command] == nil {
@@ -78,7 +83,11 @@ func run(args []string) error {
 	flags, dir := newFlags("run")
 	boardName := flags.String("board", "", "board file, or a stock board's name")
 	headless := flags.Bool("headless", false, "run with no window")
+	sanitize := flags.String("sanitize", "", "build with a sanitizer: address or thread")
 	if err := noArguments(flags, args); err != nil {
+		return err
+	}
+	if err := project.CheckSanitizer(*sanitize); err != nil {
 		return err
 	}
 
@@ -90,7 +99,30 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	return p.Run(b, *headless)
+	return p.Sanitized(*sanitize).Run(b, *headless)
+}
+
+// crashReport needs no running app: the report outlives the process.
+func crashReport(args []string) error {
+	flags, dir := newFlags("crash")
+	asJSON := flags.Bool("json", false, "print the report as the app wrote it")
+	if err := noArguments(flags, args); err != nil {
+		return err
+	}
+	p, err := project.Find(*dir)
+	if err != nil {
+		return err
+	}
+	report, err := p.LastCrash()
+	if err != nil {
+		return err
+	}
+	report.Resolve(p.Dir, crash.RunCommand)
+	if *asJSON {
+		return json.NewEncoder(os.Stdout).Encode(report)
+	}
+	fmt.Print(report.Text())
+	return nil
 }
 
 // A line can hold words that look like flags, so flags come before it.
@@ -132,6 +164,9 @@ func status(args []string) error {
 		fmt.Printf("wifi       %s\n", s.WiFi)
 		if s.SerialPort != "" {
 			fmt.Printf("port       %s\n", s.SerialPort)
+		}
+		if s.Crashed {
+			fmt.Println("crashed    yes: preflash crash shows the report")
 		}
 		return nil
 	})

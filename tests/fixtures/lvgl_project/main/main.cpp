@@ -10,6 +10,7 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "lvgl.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -94,6 +95,45 @@ int hang_command(int, char**) {
 
 // A call the simulator refuses, which stops the process.
 int unsupported_command(int, char**) { return g_repl->del(g_repl); }
+
+// Ways for firmware to die, each from a line of its own to tie a report to.
+int null_command(int, char**) {
+  volatile int* nowhere = nullptr;
+  return *nowhere;
+}
+
+int abort_command(int, char**) { abort(); }
+
+int check_command(int, char**) {
+  ESP_ERROR_CHECK(ESP_ERR_NO_MEM);
+  return 0;
+}
+
+int panic_command(int, char**) { esp_system_abort("heap corrupt"); }
+
+// Inside an allocation LVGL made, where only its own allocator would know the bounds.
+int overflow_command(int, char**) {
+  auto* block = static_cast<volatile char*>(lv_malloc(16));
+  block[16] = 1;
+  ESP_LOGI(kTag, "overflowed %d", block[0]);
+  return 0;
+}
+
+int g_racy = 0;
+
+void race_task(void*) {
+  for (;;) {
+    g_racy = g_racy + 1;
+    vTaskDelay(1);
+  }
+}
+
+// Two tasks and no lock.
+int race_command(int, char**) {
+  xTaskCreate(race_task, "racer", 4096, nullptr, 1, nullptr);
+  xTaskCreate(race_task, "racer2", 4096, nullptr, 1, nullptr);
+  return 0;
+}
 
 // The chips, as a driver reaches them. Each says what came back, so a test can see a forced
 // failure arrive through the calls a real one would.
@@ -198,6 +238,12 @@ void start_console() {
   add_command("flood", flood_command);
   add_command("hang", hang_command);
   add_command("unsupported", unsupported_command);
+  add_command("null", null_command);
+  add_command("abort", abort_command);
+  add_command("check", check_command);
+  add_command("panic", panic_command);
+  add_command("overflow", overflow_command);
+  add_command("race", race_command);
   add_command("rtc", rtc_command);
   add_command("accel", accel_command);
   add_command("power", power_command);

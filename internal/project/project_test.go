@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -574,4 +576,83 @@ func TestStopSignalsLeaveAnIgnoredInterruptAlone(t *testing.T) {
 	signal.Ignore(os.Interrupt)
 	defer signal.Reset(os.Interrupt)
 	assert.NotContains(t, stopSignals(), os.Interrupt)
+}
+
+func TestASanitizerBuildsInItsOwnFolder(t *testing.T) {
+	t.Setenv("HOME", "/home/me")
+	p := Project{Dir: "/x/demo", id: "demo-12345678"}
+	assert.Equal(t, "/home/me/.preflash/build/demo-12345678-address", p.Sanitized("address").BuildDir())
+	assert.Equal(t, "/home/me/.preflash/build/demo-12345678-thread", p.Sanitized("thread").BuildDir())
+	assert.Equal(t, p.BuildDir(), p.Sanitized("").BuildDir())
+	assert.Equal(t, p.StateDir(), p.Sanitized("address").StateDir(), "saved state stays the checkout's")
+	assert.Equal(t, p.SocketPath(), p.Sanitized("thread").SocketPath(), "one app per checkout still")
+}
+
+func TestOnlyKnownSanitizersPass(t *testing.T) {
+	assert.NoError(t, CheckSanitizer(""))
+	assert.NoError(t, CheckSanitizer("address"))
+	assert.NoError(t, CheckSanitizer("thread"))
+	assert.ErrorContains(t, CheckSanitizer("memory"), "address or thread")
+}
+
+func optionOf(env []string, name string) string {
+	for _, entry := range env {
+		if value, ok := strings.CutPrefix(entry, name+"="); ok {
+			return value
+		}
+	}
+	return ""
+}
+
+func TestEnvironmentAsksForCrashReports(t *testing.T) {
+	t.Setenv("HOME", "/home/me")
+	p := Project{Dir: "/x/demo", id: "demo-1"}
+	env := p.environment([]string{"PREFLASH_CRASH_FILE=/old", "PREFLASH_CRASH_HOLD=1", "PREFLASH_SANITIZE=thread", "PREFLASH_SANITIZER_LOG=/old"}, "/repo", "", false)
+	assert.Equal(t, "/home/me/.preflash/build/demo-1/crash.json", optionOf(env, "PREFLASH_CRASH_FILE"))
+	assert.NotContains(t, env, "PREFLASH_CRASH_FILE=/old")
+	assert.NotContains(t, env, "PREFLASH_CRASH_HOLD=1")
+	assert.NotContains(t, env, "PREFLASH_SANITIZE=thread")
+	assert.NotContains(t, env, "PREFLASH_SANITIZER_LOG=/old")
+}
+
+func TestEnvironmentSetsUpTheSanitizerAndKeepsTheUsersOptions(t *testing.T) {
+	t.Setenv("HOME", "/home/me")
+	p := Project{Dir: "/x/demo", id: "demo-1"}.Sanitized("address")
+	env := p.environment([]string{"ASAN_OPTIONS=verbosity=1"}, "/repo", "", false)
+	assert.Contains(t, env, "PREFLASH_SANITIZE=address")
+	log := "/home/me/.preflash/build/demo-1-address/sanitizer.log"
+	assert.Contains(t, env, "PREFLASH_SANITIZER_LOG="+log)
+	options := optionOf(env, "ASAN_OPTIONS")
+	assert.True(t, strings.HasPrefix(options, "verbosity=1:"), options)
+	for _, want := range []string{"abort_on_error=1", "halt_on_error=1", "use_sigaltstack=0", `log_path="` + log + `"`} {
+		assert.Contains(t, options, want)
+	}
+
+	thread := Project{Dir: "/x/demo", id: "demo-1"}.Sanitized("thread")
+	options = optionOf(thread.environment(nil, "/repo", "", false), "TSAN_OPTIONS")
+	assert.Contains(t, options, "abort_on_error=1")
+	assert.Contains(t, options, "halt_on_error=1")
+	assert.Contains(t, options, `suppressions="/repo/runtime/tsan.supp"`)
+}
+
+func TestLastCrashIsTheNewestOfAnyBuild(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p := Project{Dir: "/x/demo", id: "demo-1"}
+	_, err := p.LastCrash()
+	assert.ErrorIs(t, err, fs.ErrNotExist)
+
+	write := func(q Project, pid int, age time.Duration) {
+		require.NoError(t, os.MkdirAll(q.BuildDir(), 0o755))
+		path := q.CrashPath()
+		require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(`{"pid":%d}`, pid)), 0o644))
+		when := time.Now().Add(-age)
+		require.NoError(t, os.Chtimes(path, when, when))
+	}
+	write(p, 1, time.Hour)
+	write(p.Sanitized("address"), 2, time.Minute)
+	write(p.Sanitized("thread"), 3, time.Hour)
+
+	report, err := p.LastCrash()
+	require.NoError(t, err)
+	assert.Equal(t, 2, report.PID)
 }

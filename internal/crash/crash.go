@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -91,14 +92,21 @@ func Read(path string) (*Report, error) {
 // named stays an address, because a poor report still beats none.
 func (r *Report) Resolve(project string, run Runner) {
 	r.project = project
-	r.Rebuilt = r.UUID != "" && r.UUID != fileUUID(r.Executable)
-	stack := parseSanitizerStack(r.Sanitizer)
-	if len(stack) == 0 {
-		stack = r.symbolise(run)
+	r.Rebuilt = r.UUID != "" && !strings.EqualFold(r.UUID, fileUUID(r.Executable))
+	// A sanitizer stops on the thread it caught, so the handler's frames are the error's own,
+	// and atos gives them whole paths where a sanitizer's own stack has bare file names.
+	r.Stack = r.symbolise(run)
+	if !hasSource(r.Stack) {
+		if stack := parseSanitizerStack(r.Sanitizer); len(stack) > 0 {
+			r.Stack = stack
+		}
 	}
-	r.Stack = stack
 	r.At = r.crashFrame()
 	r.describe()
+}
+
+func hasSource(stack []Frame) bool {
+	return slices.ContainsFunc(stack, func(f Frame) bool { return f.File != "" })
 }
 
 // fileUUID reads an executable's build ID, or nothing if it has gone.
@@ -156,9 +164,9 @@ func (r *Report) symbolise(run Runner) []Frame {
 		return nil
 	}
 	if !r.Rebuilt {
-		args := append([]string{"-o", r.Executable, "-l", r.LoadAddress, "-i", "-fullPath"}, asked...)
+		args := append([]string{"-o", r.symbols(run), "-l", r.LoadAddress, "-i", "-fullPath"}, asked...)
 		if output, err := run("atos", args...); err == nil {
-			return dropStaleLink(parseAtos(string(output)), lrAt)
+			return withoutThreadStart(dropStaleLink(parseAtos(string(output)), lrAt))
 		}
 	}
 	stack := make([]Frame, 0, len(kept))
@@ -168,6 +176,42 @@ func (r *Report) symbolise(run Runner) []Frame {
 		}
 	}
 	return stack
+}
+
+// symbols gives the file for atos to read. The build leaves debug information in its objects,
+// and atos only reads a dSYM, so this gathers one the first time an app crashes. That takes
+// seconds, which nobody should pay on every build.
+func (r *Report) symbols(run Runner) string {
+	dsym := r.Executable + ".dSYM"
+	dwarf := filepath.Join(dsym, "Contents", "Resources", "DWARF", filepath.Base(r.Executable))
+	built, err := os.Stat(r.Executable)
+	if err != nil {
+		return r.Executable
+	}
+	if gathered, err := os.Stat(dwarf); err == nil && !gathered.ModTime().Before(built.ModTime()) {
+		return dwarf
+	}
+	if _, err := run("dsymutil", r.Executable, "-o", dsym); err != nil {
+		return r.Executable
+	}
+	if _, err := os.Stat(dwarf); err != nil {
+		return r.Executable
+	}
+	return dwarf
+}
+
+// withoutThreadStart drops what every thread begins with: the C++ library's frames, and the
+// wrapper that starts a task.
+func withoutThreadStart(stack []Frame) []Frame {
+	end := len(stack)
+	for end > 1 {
+		function := stack[end-1].Function
+		if !strings.Contains(function, "std::__1::") && !strings.Contains(function, "xTaskCreatePinnedToCore::") {
+			break
+		}
+		end--
+	}
+	return stack[:end]
 }
 
 // atosLine is atos's answer for an address it knows the source of, and one it doesn't.
@@ -226,6 +270,7 @@ func dropStaleLink(groups [][]Frame, lrAt int) []Frame {
 
 // functionName cuts a demangled name's arguments, which the screen has no room for.
 func functionName(name string) string {
+	name = strings.ReplaceAll(name, "(anonymous namespace)::", "")
 	name = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(name), " const"))
 	if !strings.HasSuffix(name, ")") {
 		return name
@@ -238,9 +283,6 @@ func functionName(name string) string {
 		case '(':
 			depth--
 			if depth == 0 {
-				if i == 0 {
-					return name // the whole name is in brackets, such as (anonymous namespace)
-				}
 				return name[:i]
 			}
 		}
@@ -251,10 +293,11 @@ func functionName(name string) string {
 var (
 	sanitizerFrame   = regexp.MustCompile(`^\s+#\d+ (?:0x[0-9a-f]+ in )?(.+?) (/\S+?|\S+\.\w+):(\d+)(?::\d+)?(?: \(.*\))?$`)
 	sanitizerAny     = regexp.MustCompile(`^\s+#\d+ `)
-	sanitizerSummary = regexp.MustCompile(`^SUMMARY: (\w+): (.+?)(?: \S+:\d+(?::\d+)?)?(?: in .+)?$`)
+	sanitizerSummary = regexp.MustCompile(`^SUMMARY: (\w+): (.+?)(?: \S+:\d+(?::\d+)?| \(\S+\))?(?: in .+)?$`)
 )
 
-// parseSanitizerStack takes the report's first stack, which is where the error happened.
+// parseSanitizerStack takes the report's first stack, which is where the error happened. It's
+// the fallback for an app that has been rebuilt, as a sanitizer named its frames at the time.
 func parseSanitizerStack(text string) []Frame {
 	var stack []Frame
 	began := false
@@ -421,7 +464,11 @@ func (r *Report) Text() string {
 	if r.Location != "" {
 		fmt.Fprintln(&out, r.Location)
 	}
-	fmt.Fprintf(&out, "%s, %s at %s\n", r.Headline(), r.Signal, r.Address)
+	if r.Signal == "SIGSEGV" || r.Signal == "SIGBUS" {
+		fmt.Fprintf(&out, "%s, %s at %s\n", r.Headline(), r.Signal, r.Address)
+	} else {
+		fmt.Fprintf(&out, "%s, %s\n", r.Headline(), r.Signal)
+	}
 	if r.Rebuilt {
 		fmt.Fprintln(&out, "The app has been rebuilt since, so frames can't be named.")
 	}

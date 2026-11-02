@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -43,8 +44,13 @@ func (m *Model) toolbarTop() string {
 		{styleStrong, cleanText(m.opts.Name)}, {styleDim, "  "},
 		{styleDim, boardSummary(m.board)},
 	}
+	if m.sanitized != "" {
+		left = append(left, seg{styleAmber, "  " + m.sanitized + " sanitizer"})
+	}
 	right := []seg{m.stateMark()}
-	if m.reported && m.appUp() {
+	if m.crash != nil {
+		right = append(right, seg{styleDim, "  " + clock(m.crash.UptimeMs)})
+	} else if m.reported && m.appUp() {
 		right = append(right, seg{styleDim, "  " + clock(m.status.UptimeMs)})
 	}
 	return bar(left, right, m.width)
@@ -82,6 +88,9 @@ func clock(ms int64) string {
 }
 
 func (m *Model) toolbarBottom() string {
+	if m.crash != nil {
+		return bar([]seg{{styleDim, cleanText(m.crash.Headline()) + ", frozen where it happened"}}, nil, m.width)
+	}
 	if !m.appUp() {
 		return bar([]seg{{styleDim, m.reason}}, nil, m.width)
 	}
@@ -163,6 +172,9 @@ func (m *Model) consoleWidth() int { return max(m.width-2*sidePad, 1) }
 
 // consoleHeight is what's left once everything else has its rows.
 func (m *Model) consoleHeight() int {
+	if m.crash != nil {
+		return max(m.crashBodyRows()-len(m.fittedCrashBox()), 1)
+	}
 	return max(m.height-toolbarRows-1-len(m.chipRows())-2, 1)
 }
 
@@ -277,6 +289,7 @@ func (m *Model) inputRow() string {
 type footerEntry struct {
 	key, label string
 	act        func()
+	cmd        func() tea.Cmd // for an entry that hands the terminal to another program
 }
 
 // footerEntries gives the entries at the left, and the one at the right.
@@ -287,6 +300,7 @@ func (m *Model) footerEntries() ([]footerEntry, footerEntry) {
 		left := []footerEntry{
 			{key: "↑↓", label: "choose"},
 			{key: "enter", label: "build and run", act: m.launchEnter},
+			{key: "s", label: m.sanitizerLabel(), act: m.nextSanitizer},
 		}
 		if m.canGoBack {
 			left = append(left, footerEntry{key: "esc", label: "back", act: m.closePicker})
@@ -305,6 +319,13 @@ func (m *Model) footerEntries() ([]footerEntry, footerEntry) {
 			{key: "space", label: "pause", act: m.togglePause},
 			{key: "s", label: "save trace", act: m.b.SaveTrace},
 			{key: "esc", label: "console", act: m.closeDebug},
+		}, quit
+	case m.crash != nil:
+		return []footerEntry{
+			{key: "g", label: "open debugger", cmd: m.openDebugger},
+			{key: "e", label: "open in editor", cmd: m.openEditor},
+			{key: "y", label: "copy report", act: m.copyReport},
+			{key: "^R", label: "rebuild and restart", act: m.rebuild},
 		}, quit
 	case m.ask != nil:
 		return []footerEntry{

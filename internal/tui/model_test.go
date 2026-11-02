@@ -351,7 +351,7 @@ func TestAnExitGoesToStopped(t *testing.T) {
 	wantScreen(t, m, "○ stopped", "last words", "The app exited.", "^R builds and runs")
 }
 
-func TestACrashGoesToCrashedAndKeepsTheOutput(t *testing.T) {
+func TestAnAppThatDiesUnreportedGoesToCrashedAndKeepsTheOutput(t *testing.T) {
 	m := running(t, newFake())
 	serial(m, "preflash: esp_foo is not simulated\n")
 	feed(m, app.Exited{Crashed: true, Reason: "The app died: abort trap."})

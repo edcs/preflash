@@ -79,6 +79,8 @@ type Status struct {
 	WiFi      string `json:"wifi"`
 	// SerialPort is the path a companion app opens, empty if the app has no port.
 	SerialPort string `json:"serial_port"`
+	// Crashed says firmware has crashed and the app is held where it stopped.
+	Crashed bool `json:"crashed"`
 }
 
 // Event is a message from the app that answers no request.

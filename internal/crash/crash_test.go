@@ -65,6 +65,49 @@ func TestAddressesOutsideTheAppAreLeftOutAndCallersLookedUpAtTheirCall(t *testin
 	assert.NotContains(t, asked, "0x18fffffff")
 }
 
+// atos reads a dSYM and not the debug map in the objects, so one has to exist.
+func TestDebugSymbolsAreGatheredOnceForAtos(t *testing.T) {
+	r := sampleReport(t)
+	dwarf := filepath.Join(r.Executable+".dSYM", "Contents", "Resources", "DWARF", filepath.Base(r.Executable))
+	var commands [][]string
+	runner := func(name string, args ...string) ([]byte, error) {
+		commands = append(commands, append([]string{name}, args...))
+		if name == "dsymutil" {
+			require.NoError(t, os.MkdirAll(filepath.Dir(dwarf), 0o755))
+			require.NoError(t, os.WriteFile(dwarf, nil, 0o644))
+		}
+		return []byte(atosOutput), nil
+	}
+	r.Resolve("/p", runner)
+	require.Len(t, commands, 2)
+	assert.Equal(t, []string{"dsymutil", r.Executable, "-o", r.Executable + ".dSYM"}, commands[0])
+	assert.Equal(t, "atos", commands[1][0])
+	assert.Contains(t, commands[1], dwarf)
+
+	commands = nil
+	r.Resolve("/p", runner)
+	require.Len(t, commands, 1, "already gathered for this executable")
+	assert.Equal(t, "atos", commands[0][0])
+}
+
+func TestNamesLoseWhatNobodyTyped(t *testing.T) {
+	assert.Equal(t, "null_command", functionName("(anonymous namespace)::null_command(int, char**)"))
+	assert.Equal(t, "preflash::line_task", functionName("preflash::(anonymous namespace)::line_task(void*)"))
+}
+
+func TestTheThreadStartIsLeftOffTheStack(t *testing.T) {
+	r := sampleReport(t)
+	r.Frames = []string{"0x100001000", "0x100002000"}
+	r.Resolve("/p", fakeAtos(`task(void*) (in app) (/p/main/a.cpp:3)
+xTaskCreatePinnedToCore::$_0::operator()() const (in app) (/r/tasks.cpp:113)
+void std::__1::__thread_execute[abi:nqe220106]<a>(b) (in app) (/sdk/thread.h:7)
+
+void* std::__1::__thread_proxy[abi:nqe220106]<std::__1::tuple<a>>(void*) (in app) (/sdk/thread.h:7)
+
+`))
+	require.Len(t, r.Stack, 1)
+}
+
 func TestInlinedFramesEachGetARow(t *testing.T) {
 	r := sampleReport(t)
 	r.Frames = []string{"0x100001000", "0x100002000"}
@@ -219,7 +262,7 @@ SUMMARY: ThreadSanitizer: data race /p/main/race.cpp:11:3 in t(void*)
 func TestAddressSanitizerReportsLeadTheReport(t *testing.T) {
 	r := sampleReport(t)
 	r.Signal, r.Sanitizer = "SIGABRT", asanReport
-	r.Resolve("/p", fakeAtos(atosOutput))
+	r.Resolve("/p", fakeAtos(""))
 	assert.Equal(t, "heap-buffer-overflow in leaf", r.Title)
 	assert.Equal(t, "memory error on the lvgl task", r.Headline())
 	assert.Equal(t, "main/a.cpp:9", r.Location)
@@ -231,11 +274,27 @@ func TestAddressSanitizerReportsLeadTheReport(t *testing.T) {
 func TestThreadSanitizerReportsLeadTheReport(t *testing.T) {
 	r := sampleReport(t)
 	r.Signal, r.Sanitizer = "SIGABRT", tsanReport
-	r.Resolve("/p", fakeAtos(atosOutput))
+	r.Resolve("/p", fakeAtos(""))
 	assert.Equal(t, "data race in t", r.Title)
 	assert.Equal(t, "data race on the lvgl task", r.Headline())
 	require.Len(t, r.Stack, 1)
 	assert.Equal(t, 11, r.Stack[0].Line)
+}
+
+func TestASummaryWithNoSourceStillGivesTheKind(t *testing.T) {
+	r := sampleReport(t)
+	r.Signal = "SIGABRT"
+	r.Sanitizer = "SUMMARY: ThreadSanitizer: data race (app:arm64+0x100048f3c) in dispatch+0x70\n"
+	r.Resolve("/p", fakeAtos(atosOutput))
+	assert.Equal(t, "data race in show_lost_time_card", r.Title)
+}
+
+func TestAtosBeatsASanitizersBareFileNames(t *testing.T) {
+	r := sampleReport(t)
+	r.Signal, r.Sanitizer = "SIGABRT", asanReport
+	r.Resolve("/p", fakeAtos(atosOutput))
+	assert.Equal(t, "/p/components/ui/cards.cpp", r.Stack[0].File)
+	assert.Equal(t, "heap-buffer-overflow in show_lost_time_card", r.Title)
 }
 
 func TestTextHasEverythingAPersonWouldPaste(t *testing.T) {
