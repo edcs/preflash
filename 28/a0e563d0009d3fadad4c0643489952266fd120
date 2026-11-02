@@ -1,0 +1,30 @@
+internal/board/board_test.go
+  s_82b4983a83db4b::t_8a1e19ab156a3f 189-298
+boards/esp32-s3-touch-lcd-3.49.yaml
+  s_82b4983a83db4b::t_22e6e80226d064 1-17
+boards/esp32-s3-touch-lcd-4b.yaml
+  s_82b4983a83db4b::t_22e6e80226d064 21
+internal/board/board.go
+  s_82b4983a83db4b::t_22e6e80226d064 26-27,33-34,42-44,53-54,71-77,125-134,154-157,197-241
+  s_82b4983a83db4b::t_2b3edf01e941cd 242
+internal/project/choices.go
+  s_82b4983a83db4b::t_0143c6cd72f332 28-29,55-65
+internal/project/project_test.go
+  s_82b4983a83db4b::t_cf38f52bae469b 398,414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "28a0e563d0009d3fadad4c0643489952266fd120",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
