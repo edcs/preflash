@@ -128,9 +128,12 @@ func TestTheWholeApp(t *testing.T) {
 	term.wait("Applied now.")
 	term.key(keyEsc)
 	term.waitGone("esc close")
-	term.typed("rtc")
-	term.key(keyEnter)
+	// Tracing runs while the view is open, so the line comes from a second terminal.
 	term.key(ctrlD)
+	term.wait("tab next view")
+	if output, err := exec.Command(binary, "send", "--project", project, "rtc").CombinedOutput(); err != nil {
+		t.Fatalf("send: %v: %s", err, output)
+	}
 	term.wait("0x51", "PCF85063", "read")
 	term.snapshot("debug-100x30")
 	term.key(keyEsc)
