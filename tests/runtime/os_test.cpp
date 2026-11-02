@@ -7,12 +7,14 @@
 #include <filesystem>
 #include <future>
 #include <string>
+#include <thread>
 
 #include "esp_err.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "preflash/fail.h"
 
@@ -320,3 +322,88 @@ TEST(Restart, StartsCleanWithoutInheritedDescriptorsOrBlockedSignals) {
   EXPECT_NE(output.find("signals=unblocked"), std::string::npos) << output;
   EXPECT_NE(output.find("ignored=no"), std::string::npos) << output;
 }
+
+TEST(Semaphore, ABinaryOneStartsEmpty) {
+  SemaphoreHandle_t semaphore = xSemaphoreCreateBinary();
+  ASSERT_NE(semaphore, nullptr);
+  EXPECT_EQ(xSemaphoreTake(semaphore, 0), pdFALSE);
+  EXPECT_EQ(xSemaphoreGive(semaphore), pdTRUE);
+  EXPECT_EQ(xSemaphoreGive(semaphore), pdFALSE);
+  EXPECT_EQ(xSemaphoreTake(semaphore, 0), pdTRUE);
+  EXPECT_EQ(xSemaphoreTake(semaphore, 0), pdFALSE);
+  vSemaphoreDelete(semaphore);
+}
+
+TEST(Semaphore, GivingFromAnInterruptWakesATaker) {
+  SemaphoreHandle_t semaphore = xSemaphoreCreateBinary();
+  std::thread giver([semaphore] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    BaseType_t woken = pdTRUE;
+    EXPECT_EQ(xSemaphoreGiveFromISR(semaphore, &woken), pdTRUE);
+  });
+  EXPECT_EQ(xSemaphoreTake(semaphore, portMAX_DELAY), pdTRUE);
+  giver.join();
+  vSemaphoreDelete(semaphore);
+}
+
+TEST(Semaphore, TheWokenFlagIsOptional) {
+  SemaphoreHandle_t semaphore = xSemaphoreCreateBinary();
+  EXPECT_EQ(xSemaphoreGiveFromISR(semaphore, nullptr), pdTRUE);
+  EXPECT_EQ(xSemaphoreGiveFromISR(semaphore, nullptr), pdFALSE);
+  vSemaphoreDelete(semaphore);
+}
+
+TEST(Semaphore, ATakeTimesOut) {
+  SemaphoreHandle_t semaphore = xSemaphoreCreateBinary();
+  const auto before = std::chrono::steady_clock::now();
+  EXPECT_EQ(xSemaphoreTake(semaphore, pdMS_TO_TICKS(20)), pdFALSE);
+  EXPECT_GE(std::chrono::steady_clock::now() - before, std::chrono::milliseconds(20));
+  vSemaphoreDelete(semaphore);
+}
+
+TEST(Semaphore, AMutexStartsFree) {
+  SemaphoreHandle_t mutex = xSemaphoreCreateMutex();
+  EXPECT_EQ(xSemaphoreTake(mutex, 0), pdTRUE);
+  EXPECT_EQ(xSemaphoreTake(mutex, 0), pdFALSE);
+  EXPECT_EQ(xSemaphoreGive(mutex), pdTRUE);
+  EXPECT_EQ(xSemaphoreTake(mutex, 0), pdTRUE);
+  vSemaphoreDelete(mutex);
+}
+
+TEST(Semaphore, ACountingOneHoldsItsCount) {
+  SemaphoreHandle_t semaphore = xSemaphoreCreateCounting(3, 2);
+  EXPECT_EQ(uxSemaphoreGetCount(semaphore), 2u);
+  EXPECT_EQ(xSemaphoreGive(semaphore), pdTRUE);
+  EXPECT_EQ(xSemaphoreGive(semaphore), pdFALSE);
+  EXPECT_EQ(xSemaphoreTake(semaphore, 0), pdTRUE);
+  EXPECT_EQ(uxSemaphoreGetCount(semaphore), 2u);
+  vSemaphoreDelete(semaphore);
+}
+
+TEST(Tasks, TheTickCountMoves) {
+  const TickType_t before = xTaskGetTickCount();
+  vTaskDelay(pdMS_TO_TICKS(10));
+  EXPECT_GE(xTaskGetTickCount() - before, pdMS_TO_TICKS(10));
+}
+
+TEST(Tasks, DelayUntilKeepsAFixedPeriod) {
+  TickType_t wake = xTaskGetTickCount();
+  const TickType_t start = wake;
+  vTaskDelayUntil(&wake, pdMS_TO_TICKS(10));
+  EXPECT_EQ(wake, start + pdMS_TO_TICKS(10));
+  EXPECT_GE(xTaskGetTickCount(), wake);
+  vTaskDelayUntil(&wake, pdMS_TO_TICKS(10));
+  EXPECT_EQ(wake, start + pdMS_TO_TICKS(20));
+}
+
+TEST(Tasks, ALateDelayUntilReturnsAtOnce) {
+  TickType_t wake = xTaskGetTickCount();
+  vTaskDelay(pdMS_TO_TICKS(30));
+  const auto before = std::chrono::steady_clock::now();
+  vTaskDelayUntil(&wake, pdMS_TO_TICKS(1));
+  EXPECT_LT(std::chrono::steady_clock::now() - before, std::chrono::milliseconds(20));
+}
+
+static void IRAM_ATTR attributed_function() {}
+
+TEST(Attributes, AFunctionCanGoInInstructionRam) { attributed_function(); }

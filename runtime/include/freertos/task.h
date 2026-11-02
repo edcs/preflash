@@ -25,6 +25,10 @@ static inline BaseType_t xTaskCreate(TaskFunction_t task, const char* name, uint
 }
 
 void vTaskDelay(TickType_t ticks);
+// Sleeps until *previous_wake + increment, and moves *previous_wake there, so a loop keeps
+// its period whatever each pass took. One running late doesn't sleep.
+void vTaskDelayUntil(TickType_t* previous_wake, TickType_t increment);
+TickType_t xTaskGetTickCount(void);
 
 // A task can only delete itself, with its own handle or nullptr. As on the device,
 // that ends it on the spot and its C++ destructors don't run. Any other handle aborts.

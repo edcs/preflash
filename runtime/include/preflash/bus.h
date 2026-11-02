@@ -53,6 +53,9 @@ void expander_power_on();
 // What's on the pin. Nothing drives an input here, so the chip's pull-up holds it high.
 bool expander_level(int bit);
 
+// Whether firmware has started this SPI bus.
+bool spi_bus_started(int host);
+
 // The level on a pin. Nothing drives a pin until firmware or a test does, and such a
 // pin reads as its pull resistor holds it, or low if firmware has set none. What a
 // test or the outside drives wins over a pull.
