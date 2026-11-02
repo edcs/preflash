@@ -281,3 +281,30 @@ TEST(SerialPump, BinaryOutputArrivesWhole) {
   EXPECT_EQ(status, 0) << output;
   EXPECT_EQ(output, std::string("\xff\x00\xfe\n", 4));
 }
+
+TEST(Outbox, DropsTheOldestTraceAndKeepsReplies) {
+  serial::Outbox box(4);
+  box.push_trace("aaa");
+  box.push_message("reply");
+  box.push_trace("bbb");
+  std::string line;
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "reply\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "bbb\n");
+  box.sent();
+}
+
+TEST(Outbox, TraceAndSerialHaveSeparateLimits) {
+  serial::Outbox box(4);
+  box.push_serial("abcd", 4);
+  box.push_trace("wxyz");
+  std::string line;
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_NE(line.find("\"serial\""), std::string::npos);
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "wxyz\n");
+  box.sent();
+}

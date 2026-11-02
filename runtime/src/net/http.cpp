@@ -12,6 +12,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "preflash/trace.h"
 #include "preflash/fail.h"
 #include "preflash/net.h"
 
@@ -322,6 +323,16 @@ struct esp_http_client {
   }
 };
 
+namespace {
+
+void trace_request(const esp_http_client& client, const std::string& outcome, bool injected = false) {
+  if (!preflash::trace::on()) return;
+  preflash::trace::note(preflash::trace::Stream::Net, "http", method_name(client.method),
+                        client.url + " " + outcome, injected);
+}
+
+}  // namespace
+
 extern "C" {
 
 esp_err_t esp_crt_bundle_attach(void*) { return ESP_OK; }
@@ -364,6 +375,7 @@ esp_err_t esp_http_client_perform(esp_http_client_handle_t client) {
   if (client->easy) esp_http_client_close(client);
   if (!preflash::net_online()) {
     ESP_LOGW(kTag, "no route: the simulated network is offline");
+    trace_request(*client, "offline (injected)", true);
     client->emit(HTTP_EVENT_ERROR);
     return ESP_ERR_HTTP_CONNECT;
   }
@@ -374,6 +386,7 @@ esp_err_t esp_http_client_perform(esp_http_client_handle_t client) {
   const int status = client->status;
   const int64_t length = client->content_length;
   const std::vector<std::pair<std::string, std::string>> headers = client->reply_headers;
+  trace_request(*client, result == CURLE_OK ? std::to_string(status) : "failed");
   client->stop();
   // The reply stays readable after the transfer, as with the device's client.
   client->status = status;
@@ -490,6 +503,7 @@ esp_err_t esp_http_client_open(esp_http_client_handle_t client, int write_len) {
   if (client->easy) esp_http_client_close(client);
   if (!preflash::net_online()) {
     ESP_LOGW(kTag, "no route: the simulated network is offline");
+    trace_request(*client, "offline (injected)", true);
     return ESP_ERR_HTTP_CONNECT;
   }
   if (!client->start(true)) return ESP_ERR_NO_MEM;
@@ -499,9 +513,11 @@ esp_err_t esp_http_client_open(esp_http_client_handle_t client, int write_len) {
   if (!client->headers_done) {
     const CURLcode result = client->result;
     client->note_failure();
+    trace_request(*client, "failed");
     client->stop();
     return result == CURLE_OK ? ESP_ERR_HTTP_FETCH_HEADER : map_error(result);
   }
+  trace_request(*client, std::to_string(client->status));
   return ESP_OK;
 }
 

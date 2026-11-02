@@ -1,9 +1,11 @@
 #include <map>
 #include <mutex>
+#include <string>
 
 #include "driver/gpio.h"
 #include "preflash/bus.h"
 #include "preflash/fail.h"
+#include "preflash/trace.h"
 
 namespace {
 
@@ -39,6 +41,17 @@ void settle(Pin* pin) {
   } else {
     pin->level = pin->driven ? pin->outside : pin->pull_up;
   }
+}
+
+const char* direction_name(gpio_mode_t mode) {
+  if (mode & kOpenDrainBit) return "open drain";
+  if (mode & kOutputBit) return "output";
+  return mode & kInputBit ? "input" : "off";
+}
+
+void trace_pin(gpio_num_t pin, const char* op, const char* data) {
+  preflash::trace::note(preflash::trace::Stream::Gpio, ("gpio" + std::to_string(pin)).c_str(), op,
+                        data);
 }
 
 bool valid_mask(uint64_t mask) {
@@ -124,6 +137,7 @@ esp_err_t gpio_set_direction(gpio_num_t gpio_num, gpio_mode_t mode) {
   pin.output = (mode & kOutputBit) != 0;
   pin.open_drain = (mode & kOpenDrainBit) != 0;
   settle(&pin);
+  if (preflash::trace::on()) trace_pin(gpio_num, "direction", direction_name(mode));
   return ESP_OK;
 }
 
@@ -133,6 +147,7 @@ esp_err_t gpio_set_level(gpio_num_t gpio_num, uint32_t level) {
   Pin& pin = g_pins[gpio_num];
   pin.latch = level != 0;
   settle(&pin);
+  if (preflash::trace::on()) trace_pin(gpio_num, "level", level ? "high" : "low");
   return ESP_OK;
 }
 

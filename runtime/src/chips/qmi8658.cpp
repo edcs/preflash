@@ -1,4 +1,5 @@
 #include "preflash/chips.h"
+#include "preflash/hardware.h"
 
 namespace preflash {
 namespace {
@@ -40,11 +41,17 @@ void Qmi8658::reset() {
 }
 
 // Section 5.7, table 29. Only stored while the accelerometer runs, so the
-// registers keep their last value when it's off.
+// registers keep their last value when it's off. Gravity is +Y upright and +X with the
+// board turned a quarter clockwise, whichever way hardware::rotation has it.
 void Qmi8658::take_sample() {
   if (!(regs_[kCtrl7] & kAccelEnable)) return;
   const int range = regs_[kCtrl2] >> kFullScaleShift;
-  const int y = kLsbPerGAt2G >> range;
+  const int one_g = kLsbPerGAt2G >> range;
+  const int degrees = hardware::rotation();
+  const int x = degrees == 90 ? one_g : degrees == 270 ? -one_g : 0;
+  const int y = degrees == 0 ? one_g : degrees == 180 ? -one_g : 0;
+  regs_[kAccelX] = static_cast<uint8_t>(x);
+  regs_[kAccelX + 1] = static_cast<uint8_t>(x >> 8);
   regs_[kAccelY] = static_cast<uint8_t>(y);
   regs_[kAccelY + 1] = static_cast<uint8_t>(y >> 8);
 }
@@ -54,6 +61,7 @@ uint8_t Qmi8658::load(uint8_t reg) {
                         (reg >= kAccelX && reg <= kAccelZHigh);
   if (!modelled) refuse(reg, "reading it has no model");
   if (reg == kStatus0) return regs_[kCtrl7] & kAccelEnable ? kAccelDataReady : 0;
+  if (reg >= kAccelX && reg <= kAccelZHigh) take_sample();
   // Table 26, CTRL1 bit 5: regs_ holds little-endian, so swap within each pair.
   if (reg >= kAccelX && reg <= kAccelZHigh && (regs_[kCtrl1] & kBigEndian)) {
     return regs_[((reg - kAccelX) ^ 1) + kAccelX];

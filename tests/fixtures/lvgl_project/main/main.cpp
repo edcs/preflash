@@ -2,11 +2,16 @@
 #include <cstdlib>
 
 #include "bsp/esp-bsp.h"
+#include "driver/gpio.h"
+#include "driver/i2c_master.h"
 #include "esp_console.h"
+#include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 
 namespace {
 
@@ -90,6 +95,92 @@ int hang_command(int, char**) {
 // A call the simulator refuses, which stops the process.
 int unsupported_command(int, char**) { return g_repl->del(g_repl); }
 
+// The chips, as a driver reaches them. Each says what came back, so a test can see a forced
+// failure arrive through the calls a real one would.
+i2c_master_dev_handle_t chip(uint16_t address) {
+  i2c_device_config_t config = {};
+  config.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+  config.device_address = address;
+  config.scl_speed_hz = 400000;
+  i2c_master_dev_handle_t handle = nullptr;
+  ESP_ERROR_CHECK(i2c_master_bus_add_device(bsp_i2c_get_handle(), &config, &handle));
+  return handle;
+}
+
+int rtc_command(int, char**) {
+  static i2c_master_dev_handle_t rtc = chip(0x51);
+  const uint8_t seconds = 0x04;
+  uint8_t value = 0;
+  const esp_err_t err = i2c_master_transmit_receive(rtc, &seconds, 1, &value, 1, 100);
+  ESP_LOGI(kTag, "rtc err %d stopped %d", err, value >> 7);
+  return 0;
+}
+
+int accel_command(int, char**) {
+  static i2c_master_dev_handle_t imu = chip(0x6b);
+  const uint8_t setup[][2] = {{0x02, 0x40}, {0x08, 0x01}};
+  esp_err_t err = ESP_OK;
+  for (const auto& write : setup) {
+    if (err == ESP_OK) err = i2c_master_transmit(imu, write, sizeof write, 100);
+  }
+  const uint8_t first = 0x35;
+  uint8_t data[6] = {};
+  if (err == ESP_OK) err = i2c_master_transmit_receive(imu, &first, 1, data, sizeof data, 100);
+  const int x = static_cast<int16_t>(data[0] | data[1] << 8);
+  const int y = static_cast<int16_t>(data[2] | data[3] << 8);
+  ESP_LOGI(kTag, "accel err %d x %d y %d", err, x, y);
+  return 0;
+}
+
+int power_command(int, char**) {
+  static i2c_master_dev_handle_t pmu = chip(0x34);
+  const uint8_t status = 0x00;
+  const uint8_t gauge = 0xa4;
+  uint8_t values[2] = {};
+  esp_err_t err = i2c_master_transmit_receive(pmu, &status, 1, &values[0], 1, 100);
+  if (err == ESP_OK) err = i2c_master_transmit_receive(pmu, &gauge, 1, &values[1], 1, 100);
+  ESP_LOGI(kTag, "power err %d status %02x gauge %d", err, values[0], values[1]);
+  return 0;
+}
+
+int save_command(int, char**) {
+  ESP_ERROR_CHECK(nvs_flash_init());
+  nvs_handle_t handle;
+  ESP_ERROR_CHECK(nvs_open("fixture", NVS_READWRITE, &handle));
+  ESP_ERROR_CHECK(nvs_set_blob(handle, "greeting", "hello", 5));
+  ESP_ERROR_CHECK(nvs_commit(handle));
+  nvs_close(handle);
+  ESP_LOGI(kTag, "saved");
+  return 0;
+}
+
+int pin_command(int, char**) {
+  ESP_ERROR_CHECK(gpio_set_direction(GPIO_NUM_7, GPIO_MODE_OUTPUT));
+  ESP_ERROR_CHECK(gpio_set_level(GPIO_NUM_7, 1));
+  ESP_LOGI(kTag, "pin set");
+  return 0;
+}
+
+void wait_forever(void*) {
+  for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
+}
+
+int spawn_command(int, char**) {
+  xTaskCreate(wait_forever, "spawned", 2560, nullptr, 2, nullptr);
+  ESP_LOGI(kTag, "spawned");
+  return 0;
+}
+
+int fetch_command(int, char**) {
+  esp_http_client_config_t config = {};
+  config.url = "http://127.0.0.1:9/nothing";
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  const esp_err_t err = esp_http_client_perform(client);
+  esp_http_client_cleanup(client);
+  ESP_LOGI(kTag, "fetched, err %d", err);
+  return 0;
+}
+
 void add_command(const char* name, esp_console_cmd_func_t func) {
   esp_console_cmd_t cmd = {};
   cmd.command = name;
@@ -107,6 +198,13 @@ void start_console() {
   add_command("flood", flood_command);
   add_command("hang", hang_command);
   add_command("unsupported", unsupported_command);
+  add_command("rtc", rtc_command);
+  add_command("accel", accel_command);
+  add_command("power", power_command);
+  add_command("save", save_command);
+  add_command("pin", pin_command);
+  add_command("spawn", spawn_command);
+  add_command("fetch", fetch_command);
   esp_console_repl_config_t config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
   esp_console_dev_usb_serial_jtag_config_t device = ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_console_new_repl_usb_serial_jtag(&device, &config, &g_repl));

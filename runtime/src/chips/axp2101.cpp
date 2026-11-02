@@ -1,4 +1,7 @@
+#include <algorithm>
+
 #include "preflash/chips.h"
+#include "preflash/hardware.h"
 
 namespace preflash {
 namespace {
@@ -14,13 +17,29 @@ constexpr uint8_t kTermination = 0x63;
 constexpr uint8_t kChargeVoltage = 0x64;
 constexpr uint8_t kGauge = 0xa4;
 
+constexpr uint8_t kVbusGood = 0x20;        // 6.13.2.1
+constexpr uint8_t kBatteryPresent = 0x08;  // 6.13.2.1
+constexpr uint8_t kSoftOff = 0x01;         // 6.13.2.7
+// 6.13.2.2: system on, with the battery's current and the charger's state in the other bits.
+constexpr uint8_t kNoCurrentNotCharging = 0x15;
+constexpr uint8_t kCharging = 0x32;
+constexpr uint8_t kChargeDone = 0x14;
+constexpr uint8_t kDischarging = 0x55;
+
+uint8_t status1() {
+  return (hardware::usb_in() ? kVbusGood : 0) | (hardware::battery_percent() >= 0 ? kBatteryPresent : 0);
+}
+
+uint8_t status2() {
+  const int percent = hardware::battery_percent();
+  if (percent < 0) return kNoCurrentNotCharging;
+  if (!hardware::usb_in()) return kDischarging;
+  return percent < 100 ? kCharging : kChargeDone;
+}
+
 }  // namespace
 
 Axp2101::Axp2101() : RegisterChip("axp2101") {
-  // 6.13.2.1: VBUS good, and bit 3 clear because there's no battery.
-  regs_[kStatus1] = 0x20;
-  // 6.13.2.2: system on, battery current standby, not charging.
-  regs_[kStatus2] = 0x15;
   // The datasheet leaves this value out. It's the one drivers check for.
   regs_[kChipId] = 0x4a;
   regs_[kCommon] = 0x30;         // 6.13.2.7
@@ -28,20 +47,22 @@ Axp2101::Axp2101() : RegisterChip("axp2101") {
   regs_[kCharge] = 0x08;         // 6.13.2.60: set by eFuse, so this 200 mA is a stand-in
   regs_[kTermination] = 0x15;    // 6.13.2.61: on, 125 mA
   regs_[kChargeVoltage] = 0x03;  // 6.13.2.62: 4.2 V
-  // The gauge at 0xa4 (6.13.2.88) stays at its default of 0, with nothing to measure.
 }
 
 uint8_t Axp2101::load(uint8_t reg) {
   switch (reg) {
     case kStatus1:
+      return status1();
     case kStatus2:
+      return status2();
+    case kGauge:  // 6.13.2.88: 0 with nothing to measure
+      return static_cast<uint8_t>(std::max(hardware::battery_percent(), 0));
     case kChipId:
     case kCommon:
     case kPrecharge:
     case kCharge:
     case kTermination:
     case kChargeVoltage:
-    case kGauge:
       return regs_[reg];
     default:
       refuse(reg, "reading it has no model");
@@ -52,6 +73,10 @@ uint8_t Axp2101::load(uint8_t reg) {
 // charge. Each mask leaves out the read-only bits.
 void Axp2101::store(uint8_t reg, uint8_t value) {
   switch (reg) {
+    case kCommon:  // 6.13.2.7
+      if ((value ^ regs_[reg]) & ~kSoftOff) refuse(reg, "only the soft power-off bit is modelled");
+      if (value & kSoftOff) hardware::switch_off();
+      break;
     case kPrecharge:  // 6.13.2.59
       regs_[reg] = value & 0x0f;
       break;

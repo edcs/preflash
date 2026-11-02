@@ -24,6 +24,12 @@ func (m *Model) zones() []zone {
 	if m.picking {
 		return append(zones, m.boardZones()...)
 	}
+	if m.panel != nil {
+		return zones
+	}
+	if m.debug != nil {
+		return append(zones, m.debugZones()...)
+	}
 	top := m.height - 2 - len(m.chipRows())
 	for _, c := range m.chipLayout() {
 		zones = append(zones, zone{
@@ -56,6 +62,9 @@ func (m *Model) footerZones() []zone {
 			})
 		}
 		x += width + len(footerGap)
+	}
+	if right.key == "" {
+		return zones
 	}
 	return append(zones, zone{
 		id: "footer quit",

@@ -5,6 +5,8 @@
 #include "driver/i2c_master.h"
 #include "preflash/bus.h"
 #include "preflash/fail.h"
+#include "preflash/hardware.h"
+#include "preflash/trace.h"
 
 struct i2c_master_bus_t {
   int port;
@@ -40,13 +42,15 @@ I2cDevice* I2cBus::device(uint8_t address) {
 bool I2cBus::transfer(uint8_t address, std::span<const uint8_t> tx, std::span<uint8_t> rx) {
   std::lock_guard<std::mutex> lock(mutex_);
   const auto it = devices_.find(address);
-  if (it == devices_.end()) return false;
-  if (!it->second->write(tx)) return false;
-  return rx.empty() || it->second->read(rx);
+  const bool injected = it != devices_.end() && hardware::i2c_nacks(port_, address);
+  const bool acked = it != devices_.end() && !injected && it->second->write(tx) &&
+                     (rx.empty() || it->second->read(rx));
+  if (trace::on()) trace::i2c(port_, address, tx, rx, acked, injected);
+  return acked;
 }
 
 I2cBus& i2c_bus(int port) {
-  static std::array<I2cBus, kI2cPorts> buses;
+  static std::array<I2cBus, kI2cPorts> buses = {I2cBus(0), I2cBus(1)};
   return buses.at(port);
 }
 

@@ -218,7 +218,7 @@ func TestUnreadableRcIsAnError(t *testing.T) {
 
 func TestEnvironmentForTheApp(t *testing.T) {
 	base := []string{"PATH=/bin", "PREFLASH_HEADLESS=1", "IDF_PATH=/real/esp-idf", "PREFLASH_SOCKET=/old.sock",
-		"PREFLASH_PORT=/old.tty", "PREFLASH_PORT_LINK=/old-link.tty", "PREFLASH_PORT_FDS=7:8"}
+		"PREFLASH_PORT=/old.tty", "PREFLASH_PORT_LINK=/old-link.tty", "PREFLASH_PORT_FDS=7:8", "PREFLASH_TRACE=1"}
 	p := Project{Dir: "/x/demo", id: "demo-12345678"}
 	t.Setenv("HOME", "/home/me")
 
@@ -231,7 +231,7 @@ func TestEnvironmentForTheApp(t *testing.T) {
 	assert.Contains(t, windowed, "PREFLASH_SOCKET="+p.SocketPath())
 	assert.NotContains(t, windowed, "PREFLASH_SOCKET=/old.sock")
 	assert.Contains(t, windowed, "PREFLASH_PORT="+p.PortPath())
-	for _, stale := range []string{"PREFLASH_PORT=/old.tty", "PREFLASH_PORT_LINK=/old-link.tty", "PREFLASH_PORT_FDS=7:8"} {
+	for _, stale := range []string{"PREFLASH_PORT=/old.tty", "PREFLASH_PORT_LINK=/old-link.tty", "PREFLASH_PORT_FDS=7:8", "PREFLASH_TRACE=1"} {
 		assert.NotContains(t, windowed, stale)
 	}
 	assert.NotContains(t, windowed, "PREFLASH_HEADLESS=1")

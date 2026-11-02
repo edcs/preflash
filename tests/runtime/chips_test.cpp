@@ -688,7 +688,7 @@ TEST(Axp2101, ReadOnlyBitsStayClear) {
 
 TEST(Axp2101DeathTest, UnmodelledWriteNamesChipAndRegister) {
   Axp2101 pmu;
-  EXPECT_DEATH(put(pmu, 0x10, 0x31), "axp2101 register 0x10");  // soft power-off
+  EXPECT_DEATH(put(pmu, 0x10, 0x34), "axp2101 register 0x10");  // anything but soft power-off
   EXPECT_DEATH(put(pmu, 0x90, 0x01), "axp2101 register 0x90");
 }
 

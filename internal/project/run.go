@@ -68,7 +68,7 @@ func (p Project) environment(base []string, root, link string, headless bool) []
 		name, _, _ := strings.Cut(entry, "=")
 		switch name {
 		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_PROJECT", "PREFLASH_SOCKET", "PREFLASH_HEADLESS",
-			"PREFLASH_PORT", "PREFLASH_PORT_LINK", "PREFLASH_PORT_FDS":
+			"PREFLASH_PORT", "PREFLASH_PORT_LINK", "PREFLASH_PORT_FDS", "PREFLASH_TRACE":
 		default:
 			env = append(env, entry)
 		}

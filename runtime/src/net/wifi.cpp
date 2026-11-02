@@ -14,6 +14,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
+#include "preflash/trace.h"
 #include "preflash/fail.h"
 #include "preflash/net.h"
 
@@ -201,6 +202,10 @@ wifi_ap_record_t ap_for(const std::string& ssid) {
   return r;
 }
 
+void trace_wifi(const char* op, const std::string& data, bool injected = false) {
+  if (preflash::trace::on()) preflash::trace::note(preflash::trace::Stream::Net, "wifi", op, data, injected);
+}
+
 // Ends the join under way: the step that decides how it goes.
 void finish_join(uint64_t epoch) {
   Radio& r = radio();
@@ -219,9 +224,11 @@ void finish_join(uint64_t epoch) {
     }
   }
   if (fails) {
+    trace_wifi("join failed", ssid_text(ap.ssid) + " (injected)", true);
     post_disconnected(ap, WIFI_REASON_AUTH_FAIL);
     return;
   }
+  trace_wifi("connected", ssid_text(ap.ssid));
   wifi_event_sta_connected_t connected{};
   std::memcpy(connected.ssid, ap.ssid, 32);
   connected.ssid_len = static_cast<uint8_t>(strnlen(reinterpret_cast<const char*>(ap.ssid), 32));
@@ -535,6 +542,7 @@ esp_err_t esp_wifi_connect(void) {
     r.link = Link::Joining;
     r.join_fails = g_force_failure.load();
     epoch = ++r.epoch;  // a join already under way is replaced
+    trace_wifi("join", ssid_text(r.config.sta.ssid));
   }
   r.scheduler.after(kJoinDelay, [epoch] { finish_join(epoch); });
   return ESP_OK;
@@ -554,6 +562,7 @@ esp_err_t esp_wifi_disconnect(void) {
     r.link = Link::Down;
     ++r.epoch;
   }
+  trace_wifi("disconnected", ssid_text(ap.ssid));
   // A leave the firmware asked for still reports, with the reason the device gives.
   post_disconnected(ap, WIFI_REASON_ASSOC_LEAVE);
   if (had_ip) preflash_net_post_lost_ip();

@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <exception>
 #include <list>
 #include <map>
@@ -29,11 +30,15 @@
 #include "esp_timer.h"
 #include "preflash/board.h"
 #include "preflash/control.h"
+#include "preflash/hardware.h"
 #include "preflash/net.h"
 #include "preflash/panel.h"
 #include "preflash/port.h"
 #include "preflash/serial.h"
+#include "preflash/storage.h"
+#include "preflash/tasks.h"
 #include "preflash/touch.h"
+#include "preflash/trace.h"
 
 namespace preflash::socket {
 namespace {
@@ -63,6 +68,7 @@ struct Connection {
   int fd;
   serial::Outbox out;
   std::optional<int> subscription;
+  std::optional<int> trace_subscription;
 };
 
 struct Clients {
@@ -160,16 +166,75 @@ void op_subscribe(Connection& c, const json& request, const json& id) {
     return;
   }
   for (const json& stream : *streams) {
-    if (stream != "serial") {
+    if (stream != "serial" && stream != "trace") {
       reply_error(c, id, "unknown stream: " + encode(stream));
       return;
     }
   }
   reply_ok(c, id);
-  if (streams->empty() || c.subscription) return;
-  c.subscription = serial::subscribe([out = &c.out](const char* data, size_t size) {
-    out->push_serial(data, size);
-  });
+  const auto asked_for = [streams](const char* name) {
+    return std::find(streams->begin(), streams->end(), json(name)) != streams->end();
+  };
+  if (asked_for("serial") && !c.subscription) {
+    c.subscription = serial::subscribe([out = &c.out](const char* data, size_t size) {
+      out->push_serial(data, size);
+    });
+  }
+  if (asked_for("trace") && !c.trace_subscription) {
+    try {
+      c.trace_subscription = trace::subscribe([out = &c.out](const trace::Record& record) {
+        json row = trace::to_json(record);
+        row["event"] = "trace";
+        out->push_trace(encode(row));
+      });
+    } catch (const std::system_error&) {
+      serial::notice("preflash: couldn't start the trace\n");
+    }
+  }
+}
+
+// A path of the state folder's for a trace saved with none given.
+std::optional<std::string> default_trace_path() {
+  const char* state = std::getenv("PREFLASH_STATE");
+  if (!state || !*state) return std::nullopt;
+  const std::time_t now = std::time(nullptr);
+  std::tm local{};
+  localtime_r(&now, &local);
+  char name[40];
+  std::strftime(name, sizeof name, "trace-%Y%m%d-%H%M%S.jsonl", &local);
+  return std::string(state) + "/" + name;
+}
+
+void op_trace_save(Connection& c, const json& request, const json& id) {
+  const auto path = request.contains("path") ? text_field(request, "path") : default_trace_path();
+  if (!path) {
+    reply_error(c, id, "trace_save needs a path");
+    return;
+  }
+  try {
+    const size_t records = trace::save(*path);
+    reply_ok(c, id, {{"path", *path}, {"records", records}});
+  } catch (const std::exception& e) {
+    reply_error(c, id, e.what());
+  }
+}
+
+void op_tasks(Connection& c, const json&, const json& id) {
+  json tasks = json::array();
+  for (const TaskInfo& task : task_list()) {
+    tasks.push_back({{"name", task.name}, {"state", task.state}, {"stack", task.stack}});
+  }
+  reply_ok(c, id, {{"tasks", tasks}});
+}
+
+void op_nvs(Connection& c, const json&, const json& id) {
+  json namespaces = json::array();
+  for (const NvsNamespace& space : nvs_contents()) {
+    json keys = json::array();
+    for (const NvsKey& key : space.keys) keys.push_back({{"key", key.key}, {"size", key.size}});
+    namespaces.push_back({{"name", space.name}, {"keys", keys}});
+  }
+  reply_ok(c, id, {{"namespaces", namespaces}});
 }
 
 void op_frame(Connection& c, const json&, const json& id) {
@@ -207,6 +272,25 @@ void op_shot(Connection& c, const json& request, const json& id) {
   reply_ok(c, id);
 }
 
+void op_hardware(Connection& c, const json&, const json& id) {
+  reply_ok(c, id, {{"items", hardware::describe()}});
+}
+
+void op_hardware_set(Connection& c, const json& request, const json& id) {
+  const auto name = text_field(request, "name");
+  const auto value = text_field(request, "value");
+  if (!name || !value) {
+    reply_error(c, id, "hardware_set needs a name and a value");
+    return;
+  }
+  const std::string error = hardware::set(*name, *value);
+  if (!error.empty()) {
+    reply_error(c, id, error);
+    return;
+  }
+  op_hardware(c, request, id);
+}
+
 void op_quit(Connection& c, const json&, const json& id) {
   reply_ok(c, id);
   note_quitting();
@@ -219,6 +303,8 @@ using Op = void (*)(Connection&, const json& request, const json& id);
 const std::map<std::string, Op> kOps = {
     {"hello", op_hello}, {"status", op_status}, {"send", op_send}, {"subscribe", op_subscribe},
     {"frame", op_frame}, {"touch", op_touch},   {"shot", op_shot}, {"quit", op_quit},
+    {"tasks", op_tasks}, {"nvs", op_nvs},       {"trace_save", op_trace_save},
+    {"hardware", op_hardware}, {"hardware_set", op_hardware_set},
 };
 
 void handle_line(Connection& c, const std::string& line) {
@@ -287,6 +373,7 @@ void read_requests(std::shared_ptr<Connection> c) {
     }
   }
   if (c->subscription) serial::unsubscribe(*c->subscription);
+  if (c->trace_subscription) trace::unsubscribe(*c->trace_subscription);
   forget(c);
   c->out.close();
   if (cut_off) {

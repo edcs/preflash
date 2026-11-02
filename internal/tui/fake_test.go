@@ -22,6 +22,12 @@ type fakeBackend struct {
 	runs     []board.Board
 	statuses int
 	busy     bool
+	traces   []bool
+	tasks    int
+	nvs      int
+	hardware int
+	changes  [][2]string
+	saves    int
 }
 
 func newFake() *fakeBackend { return &fakeBackend{events: make(chan app.Event)} }
@@ -29,6 +35,14 @@ func newFake() *fakeBackend { return &fakeBackend{events: make(chan app.Event)} 
 func (f *fakeBackend) Events() <-chan app.Event { return f.events }
 func (f *fakeBackend) Send(lines ...string)     { f.sent = append(f.sent, lines) }
 func (f *fakeBackend) Status()                  { f.statuses++ }
+func (f *fakeBackend) Trace(on bool)            { f.traces = append(f.traces, on) }
+func (f *fakeBackend) Tasks()                   { f.tasks++ }
+func (f *fakeBackend) NVS()                     { f.nvs++ }
+func (f *fakeBackend) Hardware()                { f.hardware++ }
+func (f *fakeBackend) SaveTrace()               { f.saves++ }
+func (f *fakeBackend) SetHardware(name, value string) {
+	f.changes = append(f.changes, [2]string{name, value})
+}
 func (f *fakeBackend) Run(b board.Board) bool {
 	if f.busy {
 		return false
@@ -113,6 +127,14 @@ func press(m *Model, key string) tea.Cmd {
 		k = tea.KeyPressMsg{Code: tea.KeyUp}
 	case "down":
 		k = tea.KeyPressMsg{Code: tea.KeyDown}
+	case "left":
+		k = tea.KeyPressMsg{Code: tea.KeyLeft}
+	case "right":
+		k = tea.KeyPressMsg{Code: tea.KeyRight}
+	case "tab":
+		k = tea.KeyPressMsg{Code: tea.KeyTab}
+	case " ":
+		k = tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 	case "pgup":
 		k = tea.KeyPressMsg{Code: tea.KeyPgUp}
 	case "pgdown":

@@ -390,12 +390,6 @@ func TestDroppedOutputIsShown(t *testing.T) {
 	wantScreen(t, m, "4096 bytes of serial were dropped")
 }
 
-func TestTheFooterHidesWhatIsNotHereYet(t *testing.T) {
-	m := running(t, newFake())
-	wantScreen(t, m, "^R rebuild", "^B board", "^L clear", "^C quit")
-	refuseScreen(t, m, "^D", "^H", "debug", "hardware")
-}
-
 func TestControlCQuits(t *testing.T) {
 	m := running(t, newFake())
 	cmd := press(m, "ctrl+c")

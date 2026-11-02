@@ -1,5 +1,6 @@
 #include "nvs.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -13,6 +14,8 @@
 
 #include "nvs_flash.h"
 #include "preflash/fail.h"
+#include "preflash/storage.h"
+#include "preflash/trace.h"
 
 namespace fs = std::filesystem;
 
@@ -54,6 +57,20 @@ std::string file_name(const std::string& name) {
       char hex[4];
       std::snprintf(hex, sizeof hex, "%%%02X", c);
       out += hex;
+    }
+  }
+  return out;
+}
+
+// The other way from file_name.
+std::string device_name(const std::string& file) {
+  std::string out;
+  for (size_t i = 0; i < file.size(); ++i) {
+    if (file[i] == '%' && i + 2 < file.size()) {
+      out += static_cast<char>(std::stoi(file.substr(i + 1, 2), nullptr, 16));
+      i += 2;
+    } else {
+      out += file[i];
     }
   }
   return out;
@@ -105,12 +122,44 @@ bool write_file(const fs::path& path, const Blob& bytes) {
   return !ec;
 }
 
+// Values can be Wi-Fi credentials and a saved trace travels, so rows carry sizes only.
+void trace_key(const Handle& h, const char* key, const char* op, const std::string& data) {
+  preflash::trace::note(preflash::trace::Stream::Nvs, (h.name + "/" + key).c_str(), op, data);
+}
+
 Handle* find(nvs_handle_t handle) {
   auto it = g_handles.find(handle);
   return it == g_handles.end() ? nullptr : &it->second;
 }
 
 }  // namespace
+
+namespace preflash {
+
+std::vector<NvsNamespace> nvs_contents() {
+  std::vector<NvsNamespace> contents;
+  const char* state = std::getenv("PREFLASH_STATE");
+  if (!state || !*state) return contents;
+  std::lock_guard<std::mutex> lock(g_mutex);
+  std::error_code ec;
+  for (const auto& folder : fs::directory_iterator(fs::path(state) / "nvs", ec)) {
+    if (!folder.is_directory(ec)) continue;
+    NvsNamespace space{device_name(folder.path().filename().string()), {}};
+    for (const auto& file : fs::directory_iterator(folder.path(), ec)) {
+      if (file.path().extension() != ".bin") continue;
+      const uintmax_t size = file.file_size(ec);
+      if (!ec) space.keys.push_back({device_name(file.path().stem().string()), size});
+    }
+    std::sort(space.keys.begin(), space.keys.end(),
+              [](const NvsKey& a, const NvsKey& b) { return a.key < b.key; });
+    contents.push_back(std::move(space));
+  }
+  std::sort(contents.begin(), contents.end(),
+            [](const NvsNamespace& a, const NvsNamespace& b) { return a.name < b.name; });
+  return contents;
+}
+
+}  // namespace preflash
 
 extern "C" {
 
@@ -176,6 +225,7 @@ esp_err_t nvs_set_blob(nvs_handle_t handle, const char* key, const void* value, 
   if (h->read_only) return ESP_ERR_NVS_READ_ONLY;
   const auto* bytes = static_cast<const uint8_t*>(value);
   h->pending[key] = length == 0 ? Blob() : Blob(bytes, bytes + length);
+  if (preflash::trace::on()) trace_key(*h, key, "set", std::to_string(length) + " bytes");
   return ESP_OK;
 }
 
@@ -221,6 +271,7 @@ esp_err_t nvs_erase_key(nvs_handle_t handle, const char* key) {
   }
   if (!exists) return ESP_ERR_NVS_NOT_FOUND;
   h->pending[key] = std::nullopt;
+  if (preflash::trace::on()) trace_key(*h, key, "erase", "");
   return ESP_OK;
 }
 
@@ -242,6 +293,11 @@ esp_err_t nvs_commit(nvs_handle_t handle) {
       fs::remove(path, ec);
       if (ec) return ESP_FAIL;
     }
+  }
+  if (preflash::trace::on()) {
+    const size_t keys = h->pending.size();
+    preflash::trace::note(preflash::trace::Stream::Nvs, h->name.c_str(), "commit",
+                          std::to_string(keys) + (keys == 1 ? " key" : " keys"));
   }
   h->pending.clear();
   return ESP_OK;

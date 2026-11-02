@@ -616,3 +616,137 @@ func TestAFailedInstallKeepsTheOldAppRunning(t *testing.T) {
 	assert.True(t, failed.AppRunning)
 	assert.True(t, alive(begun.PID))
 }
+
+// fakeTraceApp answers a subscribe to the trace with one row, and the debug ops.
+func fakeTraceApp(t *testing.T, path string) (subscribed chan struct{}) {
+	t.Helper()
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	t.Cleanup(func() { listener.Close() })
+	subscribed = make(chan struct{}, 8)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				scanner := bufio.NewScanner(conn)
+				for scanner.Scan() {
+					var req map[string]any
+					if json.Unmarshal(scanner.Bytes(), &req) != nil {
+						return
+					}
+					id := int(req["id"].(float64))
+					switch req["op"] {
+					case "hello":
+						fmt.Fprintf(conn, `{"id":%d,"ok":true,"protocol":1,"project":"demo","board":"B","pid":%d}`+"\n", id, os.Getpid())
+					case "subscribe":
+						fmt.Fprintf(conn, `{"id":%d,"ok":true}`+"\n", id)
+						if streams, _ := req["streams"].([]any); len(streams) == 1 && streams[0] == "trace" {
+							fmt.Fprintln(conn, `{"event":"trace","stream":"net","seq":0,"us":1,"subject":"wifi","op":"join","detail":"home","injected":false}`)
+							subscribed <- struct{}{}
+						}
+					case "hardware_set":
+						if req["name"] == "bad" {
+							fmt.Fprintf(conn, `{"id":%d,"ok":false,"error":"no hardware called bad"}`+"\n", id)
+							continue
+						}
+						fmt.Fprintf(conn, `{"id":%d,"ok":true,"items":[{"name":"rtc"}]}`+"\n", id)
+					case "tasks":
+						fmt.Fprintf(conn, `{"id":%d,"ok":true,"tasks":[{"name":"main"}]}`+"\n", id)
+					case "nvs":
+						fmt.Fprintf(conn, `{"id":%d,"ok":true,"namespaces":[{"name":"wifi"}]}`+"\n", id)
+					case "trace_save":
+						fmt.Fprintf(conn, `{"id":%d,"ok":true,"path":"/saved","records":3}`+"\n", id)
+					default:
+						fmt.Fprintf(conn, `{"id":%d,"ok":true}`+"\n", id)
+					}
+				}
+			}()
+		}
+	}()
+	return subscribed
+}
+
+func TestTheTraceFollowsOnlyWhileAsked(t *testing.T) {
+	target := newTarget(t, "sleep 30")
+	subscribed := fakeTraceApp(t, target.SocketPath())
+	s := New(target, true)
+	defer s.Close()
+	require.True(t, s.Run(board.Board{Name: "b"}))
+	next[Connected](t, s, nil)
+
+	s.Trace(true)
+	rows := next[TraceRows](t, s, nil)
+	assert.True(t, rows.Reset)
+	require.Len(t, rows.Rows, 1)
+	assert.Equal(t, "join", rows.Rows[0].Op)
+	<-subscribed
+
+	s.Trace(false)
+	s.Trace(true)
+	rows = next[TraceRows](t, s, nil)
+	assert.True(t, rows.Reset, "asking again replays the ring")
+}
+
+func TestAnAppStartedWhileTracingIsToldToTraceFromBoot(t *testing.T) {
+	target := newTarget(t, `echo "trace=$PREFLASH_TRACE"; sleep 30`)
+	fakeTraceApp(t, target.SocketPath())
+	s := New(target, true)
+	defer s.Close()
+	s.Trace(true)
+	require.True(t, s.Run(board.Board{Name: "b"}))
+	next[TraceRows](t, s, nil)
+	eventually(t, "the app's output", func() bool { return strings.Contains(target.log(t), "trace=1") })
+}
+
+func TestDebugRequestsAnswerAsEvents(t *testing.T) {
+	target := newTarget(t, "sleep 30")
+	fakeTraceApp(t, target.SocketPath())
+	s := New(target, true)
+	defer s.Close()
+	require.True(t, s.Run(board.Board{Name: "b"}))
+	next[Connected](t, s, nil)
+
+	s.Tasks()
+	assert.Equal(t, "main", next[Tasks](t, s, nil).Tasks[0].Name)
+	s.NVS()
+	assert.Equal(t, "wifi", next[NVS](t, s, nil).Namespaces[0].Name)
+	s.SetHardware("rtc", "flat")
+	assert.Equal(t, "rtc", next[Hardware](t, s, nil).Items[0].Name)
+	s.SetHardware("bad", "x")
+	assert.ErrorContains(t, next[HardwareFailed](t, s, nil).Err, "no hardware called bad")
+	s.SaveTrace()
+	saved := next[TraceSaved](t, s, nil)
+	assert.Equal(t, "/saved", saved.Path)
+	assert.Equal(t, 3, saved.Records)
+}
+
+func TestAnAppTheTraceCantTalkToIsReportedOnce(t *testing.T) {
+	target := newTarget(t, "sleep 30")
+	listener, err := net.Listen("unix", target.SocketPath())
+	require.NoError(t, err)
+	t.Cleanup(func() { listener.Close() })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				lines := bufio.NewScanner(conn)
+				for lines.Scan() {
+					fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":99,"project":"demo","board":"B","pid":1}`)
+				}
+			}()
+		}
+	}()
+	s := New(target, true)
+	defer s.Close()
+	s.Trace(true)
+	assert.ErrorContains(t, next[SendFailed](t, s, nil).Err, "protocol")
+	quiet(t, s, 500*time.Millisecond)
+}
