@@ -129,6 +129,16 @@ func TestDialRefusesAnotherProtocol(t *testing.T) {
 	assert.Contains(t, err.Error(), "99")
 }
 
+func TestDialGivesUpOnAListenerThatNeverAnswers(t *testing.T) {
+	path := shortPath(t)
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	defer listener.Close()
+
+	_, err = Dial(path)
+	assert.ErrorIs(t, err, ErrNotRunning)
+}
+
 func TestStatusReadsEveryField(t *testing.T) {
 	path := shortPath(t)
 	startFake(t, path, func(req map[string]any, reply func(string)) {
@@ -320,7 +330,6 @@ func TestFollowPassesOnDrops(t *testing.T) {
 	path := shortPath(t)
 	listener, err := net.Listen("unix", path)
 	require.NoError(t, err)
-	defer listener.Close()
 	go func() {
 		conn, err := listener.Accept()
 		require.NoError(t, err)
@@ -331,6 +340,7 @@ func TestFollowPassesOnDrops(t *testing.T) {
 		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
 		fmt.Fprintln(conn, `{"event":"dropped","bytes":5}`)
 		conn.Close()
+		listener.Close()
 	}()
 
 	var warnings []string

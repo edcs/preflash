@@ -27,6 +27,8 @@ const restartGrace = 15 * time.Second
 // queue can take a while.
 const quitGrace = 30 * time.Second
 
+const helloGrace = 2 * time.Second
+
 const dialPause = 20 * time.Millisecond
 
 var (
@@ -115,11 +117,20 @@ func dialOnce(path string) (*Client, error) {
 		return nil, err
 	}
 	c := &Client{conn: conn, reader: bufio.NewReader(conn)}
+	// A listener that's stopped still accepts, so hello can't wait for good.
+	if err := conn.SetDeadline(time.Now().Add(helloGrace)); err != nil {
+		conn.Close()
+		return nil, err
+	}
 	if err := c.Call("hello", nil, &c.Hello); err != nil {
 		conn.Close()
 		if errors.Is(err, ErrStopped) {
 			return nil, fmt.Errorf("%w: %w", ErrNotRunning, err)
 		}
+		return nil, err
+	}
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		conn.Close()
 		return nil, err
 	}
 	if c.Hello.Protocol != Protocol {
