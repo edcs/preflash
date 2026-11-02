@@ -31,7 +31,7 @@ const char kAlphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01
 
 std::atomic<long> g_unsent{0};
 
-// Each survives a stuck thread, because a signal handler reads them.
+// Plain values and atomics only, because a signal handler reads them.
 std::atomic<bool> g_started{false};
 std::atomic<bool> g_handed_back{false};
 std::atomic<bool> g_pump_done{false};

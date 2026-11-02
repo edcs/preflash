@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "esp_timer.h"
 #include "freertos/task.h"
 #include "preflash/audio.h"
 #include "preflash/board.h"
@@ -76,6 +77,8 @@ void control_brightness(const std::vector<std::string>&) {
 }  // namespace
 
 int main() {
+  // Starts the clock, so that uptime counts from here and not from the first caller.
+  esp_timer_get_time();
   // Line by line, so that a line reaches the stream as firmware finishes it.
   setvbuf(stdout, nullptr, _IOLBF, 0);
   // Before SDL starts, so that SDL leaves it in place.
