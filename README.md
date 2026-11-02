@@ -130,7 +130,7 @@ preflash quit
 
 The first run includes the build, so that loop waits for it. Only one app can run per checkout: a second one stops and says which project and pid hold the socket.
 
-Stdout and stderr are one stream, as a USB serial port is, so `preflash run` prints both to stdout. A client that stops reading loses its oldest output and hears how much it lost, and the firmware never waits for it. Lines from stdin and `preflash send` join one queue. A console command that never returns holds up the lines behind it, but `status`, `touch`, `shot` and `quit` still work.
+Stdout and stderr are one stream, as a USB serial port is, so `preflash run` prints both to stdout. A client that stops reading loses its oldest output and hears how much it lost, and the firmware never waits for it. Lines from stdin and `preflash send` join one queue. A console command that never returns holds up the lines behind it, but `status`, `touch`, `shot` and `quit` still work. Quit lets queued lines run first, and stops waiting once a line has gone a second without finishing.
 
 Stdin takes the same console lines. Lines starting `@sim ` go to the simulator, and everything else goes to the firmware:
 

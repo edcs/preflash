@@ -3,7 +3,9 @@
 #include <cstdio>
 #include <iostream>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <map>
 #include <mutex>
@@ -19,6 +21,8 @@ namespace {
 
 constexpr const char* kControlPrefix = "@sim ";
 constexpr const char* kDefaultPrompt = "esp>";
+// How long quit waits for the next queued line to finish before it stops waiting.
+constexpr std::chrono::seconds kQuitPatience{1};
 
 struct Command {
   std::string help;
@@ -41,6 +45,9 @@ struct State {
   const Repl* open_repl = nullptr;
   std::deque<std::string> lines;
   std::condition_variable line_ready;
+  bool line_running = false;
+  uint64_t lines_finished = 0;
+  std::condition_variable line_finished;
 };
 
 State& state() {
@@ -174,9 +181,16 @@ void line_task(void*) {
       });
       line = std::move(s.lines.front());
       s.lines.pop_front();
+      s.line_running = true;
     }
     preflash::dispatch_line(line);
     print_prompt();
+    {
+      std::lock_guard<std::mutex> lock(s.mutex);
+      s.line_running = false;
+      ++s.lines_finished;
+    }
+    s.line_finished.notify_all();
   }
 }
 
@@ -219,8 +233,22 @@ void dispatch_line(const std::string& line) {
   }
 }
 
+void finish_queued_lines() {
+  State& s = state();
+  std::unique_lock<std::mutex> lock(s.mutex);
+  const auto idle = [&] { return s.lines.empty() && !s.line_running; };
+  while (!idle()) {
+    const uint64_t finished = s.lines_finished;
+    const bool moved = s.line_finished.wait_for(lock, kQuitPatience, [&] {
+      return idle() || s.lines_finished != finished;
+    });
+    if (!moved) return;
+  }
+}
+
 void submit_line(const std::string& line) {
   if (is_quit(line)) {
+    finish_queued_lines();
     dispatch_line(line);
     return;
   }

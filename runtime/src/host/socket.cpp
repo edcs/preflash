@@ -191,6 +191,7 @@ void op_shot(Connection& c, const json& request, const json& id) {
 
 void op_quit(Connection& c, const json&, const json& id) {
   reply_ok(c, id);
+  finish_queued_lines();
   quit();
 }
 

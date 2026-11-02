@@ -244,6 +244,20 @@ send "hang"
 wait_for_output "hanging"
 quit_app
 
+# Quit doesn't overtake lines already queued, from stdin or from the socket.
+start_run
+wait_for_output "ready, reset reason"
+send "@sim shot $scratch/queued.bmp"
+send "@sim quit"
+finish_app
+[ -s "$scratch/queued.bmp" ] || fail "quit overtook a line on stdin" "$(cat "$app_log")"
+start_run
+wait_for_output "ready, reset reason"
+pf send --project "$project" ping
+pf quit --project "$project"
+finish_app
+grep -qF pong "$app_log" || fail "quit overtook a line from the socket" "$(cat "$app_log")"
+
 # @sim quit sent over the socket gets its reply before the process goes.
 start_run
 wait_for_output "ready, reset reason"

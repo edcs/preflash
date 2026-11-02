@@ -233,6 +233,28 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
   for (int i = 0; i < 200 && noted() < 5; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
+  // Quit lets lines already queued run first, slow ones included.
+  esp_console_cmd_t slow = {};
+  slow.command = "slow";
+  slow.func = [](int, char**) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::lock_guard<std::mutex> lock(g_order_mutex);
+    g_order.push_back("slow");
+    return 0;
+  };
+  ASSERT_EQ(esp_console_cmd_register(&slow), ESP_OK);
+  static std::atomic<size_t> noted_at_quit{0};
+  preflash::add_control("quit", [](std::vector<std::string>) {
+    noted_at_quit = noted();
+    quit_seen = true;
+  });
+  quit_seen = false;
+  input.feed("slow\n@sim note after-slow\n@sim quit\n");
+  for (int i = 0; i < 500 && !quit_seen; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_EQ(noted_at_quit, 7u);
+
   // A command that never returns holds up the lines behind it and nothing else: quit
   // still gets through, and a line from another source joins the same queue.
   static std::atomic<bool> stuck_entered{false};
@@ -253,9 +275,9 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
   EXPECT_TRUE(stuck_entered);
   EXPECT_TRUE(quit_seen);
   preflash::submit_line("note seventh");
-  EXPECT_EQ(noted(), 5u);
+  EXPECT_EQ(noted(), 7u);
   let_go = true;
-  for (int i = 0; i < 200 && noted() < 7; ++i) {
+  for (int i = 0; i < 200 && noted() < 9; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   input.close();
@@ -268,5 +290,5 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
 
   std::lock_guard<std::mutex> lock(g_order_mutex);
   EXPECT_EQ(g_order, (std::vector<std::string>{"first", "second", "third", "fourth", "fifth",
-                                                "sixth", "seventh"}));
+                                                "slow", "after-slow", "sixth", "seventh"}));
 }

@@ -19,9 +19,13 @@ void dispatch_line(const std::string& line);
 
 // Adds a line to the one queue that stdin and the control socket share. Lines run in
 // order on the console task, and a firmware command waits there until a REPL opens,
-// with every later line behind it. "@sim quit" skips the queue and runs on the calling
-// thread, so a stuck command can't stop it.
+// with every later line behind it. "@sim quit" stays out of the queue and runs on the
+// calling thread, after finish_queued_lines, so a stuck command can't stop it.
 void submit_line(const std::string& line);
+
+// Waits for the queue to run dry, so that quitting doesn't lose lines sent before it. Gives
+// up once a line has run for a second without finishing, or one is waiting for a REPL.
+void finish_queued_lines();
 
 // Starts the console task and the reader that feeds it from stdin until stdin ends. Safe to
 // call more than once, and a failed start can be tried again. False if either couldn't start.
