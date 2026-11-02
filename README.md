@@ -87,6 +87,8 @@ cd my-project
 idf.py reconfigure
 ```
 
+A project that commits `sdkconfig` and `dependencies.lock` skips that step. With no `managed_components/` folder, Preflash downloads what the lock pins and checks each component's hash, into `~/.preflash/components`. [`examples/demo`](examples/demo) works this way, so you can try it from a clean clone.
+
 Then run it:
 
 ```sh
@@ -121,8 +123,9 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 | `preflash hardware [name value] [--json]` | Shows the board's physical state and forced failures, or changes one |
 | `preflash quit` | Stops the app and returns once it has gone |
 | `preflash crash [--json]` | Prints the last crash report, and needs no running app |
+| `preflash bench [--board file]` | Times a clean build, a rebuild, the boot and the socket on a copy of the project |
 
-With no app running, each of these but `preflash crash` says so and exits 1. `preflash run` works as before, with the socket running underneath it, so you can drive a windowed run from a second terminal.
+With no app running, each of these but `preflash crash` and `preflash bench` says so and exits 1. `preflash run` works as before, with the socket running underneath it, so you can drive a windowed run from a second terminal.
 
 ```sh
 preflash run --headless < /dev/null &
@@ -340,6 +343,13 @@ status:
 
 `send` is one line or a list. `ask` prompts for each value first, with the number given as its default, and `{today}` fills in the local date. A status field shows the last value its pattern found in the serial stream: the first capture group, or the whole match with no group. Backlight, rotation, Wi-Fi and the serial port (`port`) are built in. Naming one with no pattern places it in the toolbar, and naming one with a pattern replaces it. An unknown key stops with an error naming the line, for `preflash run` too.
 
+A project that builds differently per board can name an `sdkconfig` for each one, and any board it doesn't list uses the project's `sdkconfig`:
+
+```yaml
+sdkconfig:
+  ESP32-S3-Touch-LCD-3.49-V2: sdkconfig.349
+```
+
 ## How it compares
 
 - **Flashing a real board** is the only test that counts before you ship, and Preflash doesn't replace it. It saves the round trips while you work.
@@ -372,7 +382,11 @@ If your firmware stops on a call Preflash doesn't implement, that call needs a s
 make test
 ```
 
-That runs the Go tests, the runtime suite and the integration scripts. `tests/integration/debug.sh` checks traces and forced failures through a running project. `tests/integration/crash.sh` crashes a project each way, under each sanitizer too, and reads the reports back. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/lcd.sh` runs a project with no BSP from `tests/fixtures/lcd_project`. `tests/integration/snoozel.sh` runs a real project end to end and needs a checkout of it at `../snoozel`, or `SNOOZEL` pointing at one, with a current `sdkconfig`. `tests/integration/nyx.sh` does the same on the 3.49 V2 with `NYX` pointing at a checkout, and skips without it. Both are private projects, so without Snoozel run the steps before that script in the `Makefile`.
+That runs the Go tests, the runtime suite and the integration scripts, and it needs no other project and no ESP-IDF. `tests/integration/demo.sh` is the main end-to-end test: it runs [`examples/demo`](examples/demo) on both stock boards, drives each page, shortcut, forced failure and crash through the socket, and compares the panel with the frames in `tests/integration/golden/demo/`. Its first lines say how to regenerate them. The test holds the internet offline, so it never reaches a public site, though a clean checkout downloads its dependencies once.
+
+`tests/integration/debug.sh` checks traces and forced failures through a running project. `tests/integration/crash.sh` crashes a project each way, under each sanitizer too, and reads the reports back. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/lcd.sh` runs a project with no BSP from `tests/fixtures/lcd_project`. `tests/integration/snoozel.sh` and `tests/integration/nyx.sh` run two private projects end to end, and each skips unless `SNOOZEL` or `NYX` points at a checkout with a current `sdkconfig`.
+
+`make bench` times the demo on a copy of it. `preflash bench --project dir` does the same for a project whose console answers `spew <bytes>` by printing that many bytes and then `spew done`, and prints a table on stderr and JSON on stdout.
 
 ### Layout
 
@@ -385,7 +399,9 @@ internal/crash/   reading crash reports and tying them to source
 internal/project/ finding, building and running a project
 internal/rc/      reading .preflashrc
 internal/tui/     the terminal app's screens
+internal/bench/   timing a project for preflash bench
 boards/           stock boards
+examples/demo/    a reference ESP-IDF project for both stock boards
 runtime/idf/      the CMake layer that stands in for IDF_PATH
 runtime/include/  ESP-IDF headers the firmware compiles against
 runtime/src/      stand-ins, chip models, the window and the host

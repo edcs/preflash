@@ -1,0 +1,29 @@
+menu "Demo"
+
+    choice DEMO_BOARD
+        prompt "Board"
+        default DEMO_BOARD_4B
+
+        config DEMO_BOARD_4B
+            bool "ESP32-S3-Touch-LCD-4B, through Waveshare's board package"
+        config DEMO_BOARD_349
+            bool "ESP32-S3-Touch-LCD-3.49 V2, through esp_lcd directly"
+    endchoice
+
+    config DEMO_WIFI_SSID
+        string "Wi-Fi network to join until the wifi command saves another"
+        default "demo-network"
+
+    config DEMO_WIFI_PASSWORD
+        string "Its password"
+        default ""
+
+    config DEMO_HTTPS_URL
+        string "Page the network check fetches"
+        default "https://example.com/"
+
+    config DEMO_UPDATE_URL
+        string "File holding the newest version number"
+        default "https://raw.githubusercontent.com/edcs/preflash/main/examples/demo/version.txt"
+
+endmenu

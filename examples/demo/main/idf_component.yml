@@ -1,0 +1,5 @@
+dependencies:
+  idf: ">=5.4"
+  lvgl/lvgl: "9.3.0"
+  waveshare/esp32_s3_touch_lcd_4b: "2.0.0"
+  espressif/esp_lcd_axs15231b: "2.1.1"

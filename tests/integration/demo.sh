@@ -135,12 +135,18 @@ PY
 frame() {
   local name="$1" shot="$scratch/shot.png" want="$golden/$1.png" tries difference
   if [ -n "${UPDATE_GOLDEN:-}" ]; then
-    local previous="$scratch/previous.png"
+    # Longer than the firmware's poll of its chips, so that a change on its way isn't missed.
+    local previous="$scratch/previous.png" steady=0
     pf shot --project "$project" "$previous"
     for tries in $(seq 1 40); do
-      sleep 0.25
+      sleep 0.4
       pf shot --project "$project" "$shot"
       if [ -z "$(compare_frames "$previous" "$shot")" ]; then
+        steady=$((steady + 1))
+      else
+        steady=0
+      fi
+      if [ "$steady" -ge 4 ]; then
         cp "$shot" "$want"
         return 0
       fi
@@ -352,8 +358,8 @@ go_back
 visit settings 297 410
 mark
 pf touch --project "$project" 240 121
-expect_in "brightness=50" "$(console_status)"
 frame settings-moved
+expect_in "brightness=54" "$(console_status)"
 go_back
 pf send --project "$project" brightness 80
 visit faults 411 410

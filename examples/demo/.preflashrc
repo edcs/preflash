@@ -1,0 +1,35 @@
+board: sim/demo-4b.yaml
+
+# Each board builds its own sources, chosen by Kconfig, so each has its own sdkconfig.
+sdkconfig:
+  ESP32-S3-Touch-LCD-3.49-V2: sdkconfig.349
+
+console:
+  prompt: "demo>"
+
+shortcuts:
+  - label: Status
+    send: status
+  - label: Beep
+    send: beep
+  - label: Faults
+    send: page faults
+  - label: Morning
+    send:
+      - time {today}T07:30:00Z
+      - page home
+  - label: Brightness
+    send: brightness {percent}
+    ask:
+      percent: 60
+  - label: Hold clock
+    send: freeze {today}T09:41:00Z
+
+status:
+  - name: screen
+    pattern: 'screen=(\w+)'
+  - name: clock
+    pattern: 'clock=(\w+)'
+  - name: backlight
+  - name: rotation
+  - name: wifi

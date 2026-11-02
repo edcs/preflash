@@ -1,0 +1,7 @@
+# A 4B with a small rework: the speaker amplifier's enable moved from EXIO3 to EXIO5.
+# The firmware doesn't change, because bsp_audio_poweramp_enable follows the board.
+name: demo-4b
+extends: ESP32-S3-Touch-LCD-4B
+
+changes:
+  power_amp: exio5
