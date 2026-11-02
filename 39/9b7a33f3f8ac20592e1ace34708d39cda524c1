@@ -1,0 +1,39 @@
+tests/e2e/terminal_test.go
+  s_82b4983a83db4b::t_983525ba2e7545 182,188-205
+  s_82b4983a83db4b::t_ed2f202a5d7d62 19-22,60-61,63-64,66-67,69,212-213
+  s_82b4983a83db4b::t_cd42769f65186d 1-8,10-18,23-25,32-45,47-49,52,55-59,62,70-181,183-187,206-211,218-220,223,225,232
+  s_82b4983a83db4b::t_977fd3a0f8f500 26-29
+  s_82b4983a83db4b::t_749e3c8917a3eb 9,221-222,224,226-231
+  s_82b4983a83db4b::t_c7e9734b2b3049 30-31,46,50-51,53-54,65,68,214-217
+tests/e2e/tui_test.go
+  s_82b4983a83db4b::t_983525ba2e7545 212-213,216-217,224
+  s_82b4983a83db4b::t_749e3c8917a3eb 1-103,105-138,140-170,172-211,214-215,218-223,225-242,244-257,259-264
+  s_82b4983a83db4b::t_ed2f202a5d7d62 104,139,171
+  s_82b4983a83db4b::t_3c4d71a0993f85 258
+  s_82b4983a83db4b::t_04a1e351e93aff 243
+Makefile
+  s_82b4983a83db4b::t_749e3c8917a3eb 11
+tests/integration/tui.sh
+  s_82b4983a83db4b::t_749e3c8917a3eb 1-59
+go.mod
+  s_82b4983a83db4b::t_749e3c8917a3eb 9,11-12
+  s_82b4983a83db4b::t_cd42769f65186d 21
+go.sum
+  s_82b4983a83db4b::t_bd62d943de1500 13-14,19-20,25-26,33-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "399b7a33f3f8ac20592e1ace34708d39cda524c1",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
