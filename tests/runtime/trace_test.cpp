@@ -176,6 +176,27 @@ TEST(Trace, SavingWritesTheRingAsJsonLines) {
   fs::remove(path);
 }
 
+TEST(Trace, SavingLeavesALinkBesideTheTargetAlone) {
+  const fs::path path = fs::temp_directory_path() / ("pflink" + std::to_string(getpid()));
+  const fs::path other = path.string() + ".other";
+  const fs::path link = path.string() + ".tmp";
+  std::ofstream(other) << "precious";
+  fs::create_symlink(other, link);
+  {
+    Heard heard;
+    preflash::trace::note(Stream::Net, "wifi", "linked", "");
+    heard.wait_for(Stream::Net, "linked");
+  }
+  preflash::trace::save(path.string());
+  std::stringstream kept;
+  kept << std::ifstream(other).rdbuf();
+  EXPECT_EQ(kept.str(), "precious");
+  EXPECT_TRUE(fs::is_symlink(link));
+  fs::remove(link);
+  fs::remove(other);
+  fs::remove(path);
+}
+
 TEST(Trace, AFailedSaveLeavesTheFileThatWasThere) {
   const fs::path path = fs::temp_directory_path() / ("pfkeep" + std::to_string(getpid()));
   std::ofstream(path) << "precious";

@@ -10,6 +10,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <mutex>
@@ -233,11 +234,12 @@ size_t save(const std::string& path) {
     });
   }
   // Beside the target and renamed, so a failed save leaves any file already there.
-  const std::string temp = path + ".tmp";
+  // The name is random and created fresh, so a link waiting there can't catch the write.
+  std::string temp = path + ".XXXXXX";
   const auto failed = [&path](int error) {
     return std::runtime_error("couldn't save the trace to " + path + ": " + std::strerror(error));
   };
-  const int fd = open(temp.c_str(), O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC, 0600);
+  const int fd = mkostemp(temp.data(), O_CLOEXEC);
   if (fd < 0) throw failed(errno);
   const char* at = text.data();
   size_t left = text.size();
