@@ -169,7 +169,8 @@ wait_for_output "desert: "
 
 # The update client runs on its timers, and refuses a dev build.
 send "update status"
-wait_for_output "version simulator (dev build)"
+# The version is the project's own, so only the build type is pinned here.
+wait_for_output "(dev build)"
 send "update check"
 wait_for_output "updates aren't available: this is a dev build"
 send "phase"
