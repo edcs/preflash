@@ -1,0 +1,34 @@
+internal/tui/model.go
+  s_82b4983a83db4b::t_67bed99001bf7d 270,306-313,316
+cmd/preflash/tui.go
+  s_82b4983a83db4b::t_67bed99001bf7d 59-61
+internal/tui/model_test.go
+  s_82b4983a83db4b::t_67bed99001bf7d 627-642
+internal/tui/console.go
+  s_82b4983a83db4b::t_67bed99001bf7d 95-98,100-102
+tests/e2e/tui_test.go
+  s_82b4983a83db4b::t_67bed99001bf7d 265-270,277-281
+  s_82b4983a83db4b::t_5371ecbef78c75 271-276
+internal/tui/launch.go
+  s_82b4983a83db4b::t_67bed99001bf7d 41,43,52,54,69,71,73,147,172,239,314-315
+internal/tui/launch_test.go
+  s_82b4983a83db4b::t_67bed99001bf7d 11,206-242
+internal/tui/running.go
+  s_82b4983a83db4b::t_67bed99001bf7d 41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "784d9f7bddafd3022f08784854e43feb0c76c192",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "unknown"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
