@@ -73,11 +73,8 @@ func (p Project) Run(b board.Board, headless bool) error {
 	if err := p.checkSocketPath(); err != nil {
 		return err
 	}
-	// Building now would change what's under the running app, so this comes first. The
-	// app makes the same check when it starts, which settles any race.
-	if c, err := client.Dial(p.SocketPath()); err == nil {
-		defer c.Close()
-		return fmt.Errorf("%s (pid %d) already holds the socket at %s", c.Hello.Project, c.Hello.PID, p.SocketPath())
+	if err := p.checkNoApp(); err != nil {
+		return err
 	}
 	resolved, err := board.Resolve(b)
 	if err != nil {
@@ -104,6 +101,21 @@ func (p Project) Run(b board.Board, headless bool) error {
 		return fmt.Errorf("starting %s: %w", app, err)
 	}
 	return nil
+}
+
+// checkNoApp fails if an app answers on this checkout's socket. Building would change
+// what's under it, so this comes first. The app makes the same check when it starts, which
+// settles any race.
+func (p Project) checkNoApp() error {
+	c, err := client.Dial(p.SocketPath())
+	if errors.Is(err, client.ErrNotRunning) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	return fmt.Errorf("%s (pid %d) already holds the socket at %s", c.Hello.Project, c.Hello.PID, p.SocketPath())
 }
 
 func (p Project) makeDirs() error {

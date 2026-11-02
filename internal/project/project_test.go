@@ -1,6 +1,9 @@
 package project
 
 import (
+	"bufio"
+	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -252,6 +255,38 @@ func TestRunRefusesASocketPathThatCannotFit(t *testing.T) {
 	t.Setenv("TMPDIR", "/tmp/"+strings.Repeat("y", 100))
 
 	assert.ErrorContains(t, Project{Dir: "/x/demo"}.checkSocketPath(), "too long")
+}
+
+func TestRunRefusesAnAppItCannotTalkTo(t *testing.T) {
+	home, err := os.MkdirTemp("/tmp", "pf")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(home) })
+	t.Setenv("HOME", home)
+	p := Project{Dir: "/x/demo"}
+	require.NoError(t, os.MkdirAll(filepath.Dir(p.SocketPath()), 0o755))
+	listener, err := net.Listen("unix", p.SocketPath())
+	require.NoError(t, err)
+	defer listener.Close()
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		bufio.NewReader(conn).ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":99}`)
+	}()
+
+	assert.ErrorContains(t, p.checkNoApp(), "99")
+}
+
+func TestNoAppMeansRunCanGoAhead(t *testing.T) {
+	home, err := os.MkdirTemp("/tmp", "pf")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(home) })
+	t.Setenv("HOME", home)
+
+	assert.NoError(t, Project{Dir: "/x/demo"}.checkNoApp())
 }
 
 func TestRootComesFromTheEnvironment(t *testing.T) {
