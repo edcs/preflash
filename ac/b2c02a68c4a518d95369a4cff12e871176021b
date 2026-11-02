@@ -1,0 +1,60 @@
+runtime/include/freertos/semphr.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 1-25
+runtime/include/freertos/task.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 28-31
+runtime/include/esp_lcd_panel_io.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 3-6,14-59
+runtime/include/esp_check.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 1-58
+runtime/include/freertos/FreeRTOS.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 3,7-8,35-39
+runtime/src/os/tasks.cpp
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 10,59-69
+  s_82b4983a83db4b::t_eb12911807d2d9 70
+runtime/include/esp_lcd_panel_vendor.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 1-25
+runtime/src/bus/spi.cpp
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 1-36
+runtime/src/display/esp_lcd.cpp
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 1-4,7-8,12-13,15-18,34-56,59-97,120-125,130-133
+runtime/include/driver/spi_common.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 1-67
+runtime/src/os/queues.cpp
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 8,55,62-91
+  s_82b4983a83db4b::t_75466907c3daa1 92
+runtime/src/bus/ledc.cpp
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 1-98
+runtime/include/esp_lcd_axs15231b.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 1-61
+runtime/include/esp_attr.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 1-8
+tests/runtime/os_test.cpp
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 10
+  s_82b4983a83db4b::t_b5e3ac03f274df 17,325-409
+tests/runtime/lcd_test.cpp
+  s_82b4983a83db4b::t_b5e3ac03f274df 1-261
+runtime/include/esp_lcd_types.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 10-19
+runtime/include/driver/spi_master.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 1-3
+runtime/include/preflash/bus.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 56-58
+runtime/include/driver/ledc.h
+  s_82b4983a83db4b::t_a6712cfe5e7f3e 1-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "acb2c02a68c4a518d95369a4cff12e871176021b",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
