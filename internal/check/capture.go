@@ -33,7 +33,6 @@ type Capture struct {
 	// so that anything but a real board counts as synthetic.
 	source       string
 	Note         string
-	IDF          string
 	Transactions []Transaction
 }
 
@@ -62,7 +61,6 @@ type line struct {
 	Source string `json:"source"`
 	Board  string `json:"board"`
 	Note   string `json:"note"`
-	IDF    string `json:"idf"`
 
 	Seq     int     `json:"seq"`
 	Chip    string  `json:"chip"`
@@ -145,7 +143,6 @@ func (c *Capture) setHeader(l line) error {
 	c.source = l.Source
 	c.Board = l.Board
 	c.Note = l.Note
-	c.IDF = l.IDF
 	return nil
 }
 

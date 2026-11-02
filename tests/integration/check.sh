@@ -77,6 +77,8 @@ run_capture() {
   rsync -a --delete --exclude /sdkconfig "$root/hardware/capture/" "$project/"
   cat "$project/sdkconfig.defaults" "$project/sdkconfig.defaults.$defaults" > "$project/sdkconfig"
 
+  # The first build can take longer than a test's wait for output.
+  pf run --project "$project" --board "$board" --headless <<< "@sim quit" || fail "the capture firmware didn't build on $board"
   start_app pf run --project "$project" --board "$board" --headless
   wait_for_output "Press Enter"
   send go

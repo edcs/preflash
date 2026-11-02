@@ -47,9 +47,10 @@ echo '{"acked":true,"read":"ff"}'`)
 
 func TestRunToolReportsWhyItStopped(t *testing.T) {
 	tool := fakeTool(t, `echo "the power chip switched the board off" >&2; exit 0`)
-	found, err := runTool(context.Background(), tool, board.Board{Name: "B"}, oneTransaction())
-	require.NoError(t, err)
-	assert.Empty(t, found)
+	_, err := runTool(context.Background(), tool, board.Board{Name: "B"}, oneTransaction())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "#1")
+	assert.Contains(t, err.Error(), "switched the board off")
 
 	tool = fakeTool(t, `echo "board: no model for chip x" >&2; exit 1`)
 	_, err = runTool(context.Background(), tool, board.Board{Name: "B"}, oneTransaction())

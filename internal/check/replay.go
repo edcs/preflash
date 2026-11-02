@@ -111,6 +111,11 @@ func runTool(ctx context.Context, tool string, b board.Board, transactions []Tra
 		}
 		answers = append(answers, answer)
 	}
+	// A model can end the process without an error, as a power chip switching off does.
+	if len(answers) < len(transactions) {
+		next := transactions[len(answers)]
+		return nil, fmt.Errorf("the chip models stopped at transaction #%d, on %s: %s", next.Seq, next.Chip, strings.TrimSpace(failure.String()))
+	}
 	return answers, nil
 }
 
