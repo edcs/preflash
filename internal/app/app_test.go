@@ -529,3 +529,74 @@ func TestLineWriterJoinsPiecesAndKeepsTheLastPartialLine(t *testing.T) {
 
 	assert.Equal(t, []string{"one", "two", "", "three"}, lines)
 }
+
+func TestAFullQueueDoesNotBlockTheCaller(t *testing.T) {
+	f := newTarget(t, "exec sleep 30")
+	s := New(f, true)
+	t.Cleanup(s.Close)
+	returned := make(chan struct{})
+
+	go func() {
+		for range 3 * requestsQueued {
+			s.Send("line")
+		}
+		close(returned)
+	}()
+
+	// Nobody reads Events here, as nobody does while Bubble Tea is in Update.
+	select {
+	case <-returned:
+	case <-time.After(patience):
+		t.Fatal("Send blocked on the event stream")
+	}
+}
+
+func TestALineThatTimesOutIsNotSentAgain(t *testing.T) {
+	f := newTarget(t, "exec sleep 30")
+	callPatience = 100 * time.Millisecond
+	t.Cleanup(func() { callPatience = 2 * time.Second })
+	s := New(f, true)
+	t.Cleanup(s.Close)
+	require.True(t, s.Run(testBoard))
+	begun := next[Started](t, s, nil)
+
+	listener, err := net.Listen("unix", f.SocketPath())
+	require.NoError(t, err)
+	t.Cleanup(func() { listener.Close() })
+	var mu sync.Mutex
+	var sends int
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				lines := bufio.NewScanner(conn)
+				for lines.Scan() {
+					var req map[string]any
+					if json.Unmarshal(lines.Bytes(), &req) != nil {
+						return
+					}
+					switch req["op"] {
+					case "hello":
+						fmt.Fprintf(conn, `{"id":%d,"ok":true,"protocol":1,"pid":%d}`+"\n", int(req["id"].(float64)), begun.PID)
+					case "send": // heard, and never answered, as an app stopped in a debugger does
+						mu.Lock()
+						sends++
+						mu.Unlock()
+					}
+				}
+			}()
+		}
+	}()
+
+	s.Send("restart")
+
+	failed := next[SendFailed](t, s, nil)
+	assert.Equal(t, "restart", failed.Line)
+	time.Sleep(300 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 1, sends)
+}

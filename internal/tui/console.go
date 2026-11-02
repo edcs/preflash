@@ -80,7 +80,8 @@ func (c *console) finish(raw []byte) string {
 func (c *console) push(l line) {
 	c.lines = append(c.lines, l)
 	if len(c.lines) > c.limit {
-		c.lines = append(c.lines[:0:0], c.lines[len(c.lines)-c.limit:]...)
+		// Slicing is free, and append copies what's left only once it runs out of room.
+		c.lines = c.lines[len(c.lines)-c.limit:]
 	}
 }
 

@@ -566,3 +566,20 @@ func TestPickingABoardFromRunningBuildsForIt(t *testing.T) {
 	assert.Equal(t, stock.Name, f.runs[len(f.runs)-1].Name)
 	wantScreen(t, m, "snoozel>")
 }
+
+func TestClickingAnAskingChipKeepsWhatWasTyped(t *testing.T) {
+	f := newFake()
+	m := running(t, f)
+	typed(m, "half a comm")
+	x, y := find(t, m, "3 Timer")
+
+	click(m, x, y)
+	assert.Equal(t, "120", m.input.Value())
+	press(m, "esc")
+	assert.Equal(t, "half a comm", m.input.Value())
+
+	click(m, x, y)
+	press(m, "enter")
+	assert.Equal(t, [][]string{{"timer 120"}}, f.sent)
+	assert.Equal(t, "half a comm", m.input.Value())
+}

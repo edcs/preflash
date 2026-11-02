@@ -112,3 +112,14 @@ func plainWide(rows []row) []string {
 	}
 	return out
 }
+
+func TestAFullConsoleDoesNotCopyItselfForEachLine(t *testing.T) {
+	c := newConsole()
+	c.limit = 1000
+	for range 2000 {
+		c.push(line{text: "x"})
+	}
+	allocations := testing.AllocsPerRun(1000, func() { c.push(line{text: "x"}) })
+	assert.Less(t, allocations, 0.1)
+	assert.Len(t, c.lines, 1000)
+}

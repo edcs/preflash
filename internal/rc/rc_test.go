@@ -149,3 +149,11 @@ func TestLoad(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, "a", c.Board)
 }
+
+func TestAGroupThatMatchedNothingIsAnEmptyValue(t *testing.T) {
+	c, err := Parse("rc", []byte("status:\n  - name: a\n    pattern: 'x=(\\d*)'\n"))
+	require.NoError(t, err)
+	value, ok := c.Status[0].Match("x=")
+	assert.True(t, ok)
+	assert.Empty(t, value)
+}

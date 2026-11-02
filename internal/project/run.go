@@ -96,13 +96,9 @@ func (p Project) Run(b board.Board, headless bool) error {
 
 	env := p.environment(os.Environ(), root, headless)
 	fmt.Fprintf(os.Stderr, "preflash: building %s for %s\n", filepath.Base(p.Dir), b.Name)
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	ctx, cancel := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer cancel()
-	// The build's output stays quiet unless it fails, so the terminal shows only the
-	// firmware's console.
-	var output bytes.Buffer
-	if err := p.Build(ctx, env, &output); err != nil {
-		os.Stderr.Write(output.Bytes())
+	if err := p.buildQuietly(ctx, env, os.Stderr); err != nil {
 		return err
 	}
 	cancel()
@@ -115,6 +111,32 @@ func (p Project) Run(b board.Board, headless bool) error {
 		return fmt.Errorf("starting %s: %w", app, err)
 	}
 	return nil
+}
+
+// stopSignals are what end a build, leaving out any already ignored, as under nohup. Go's
+// signal package would otherwise replace that ignore with a handler.
+func stopSignals() []os.Signal {
+	stops := []os.Signal{os.Interrupt}
+	for _, stop := range []os.Signal{syscall.SIGTERM, syscall.SIGHUP} {
+		if !signal.Ignored(stop) {
+			stops = append(stops, stop)
+		}
+	}
+	return stops
+}
+
+// buildQuietly keeps the build's output back unless it fails, so the terminal shows only
+// the firmware's console. A build someone stopped has failed at nothing.
+func (p Project) buildQuietly(ctx context.Context, env []string, failures io.Writer) error {
+	var output bytes.Buffer
+	err := p.Build(ctx, env, &output)
+	if ctx.Err() != nil {
+		return errors.New("the build was stopped")
+	}
+	if err != nil {
+		failures.Write(output.Bytes())
+	}
+	return err
 }
 
 // CheckNoApp fails if an app answers on this checkout's socket. Building would change

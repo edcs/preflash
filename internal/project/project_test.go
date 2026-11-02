@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -452,4 +454,42 @@ func TestLogPathIsInTheBuildFolder(t *testing.T) {
 	p, err := Find(idfProject(t, t.TempDir()))
 	require.NoError(t, err)
 	assert.Equal(t, p.BuildDir(), filepath.Dir(p.LogPath()))
+}
+
+func TestStopSignalsLeaveAnInheritedIgnoreAlone(t *testing.T) {
+	assert.Contains(t, stopSignals(), os.Signal(syscall.SIGHUP))
+
+	signal.Ignore(syscall.SIGHUP)
+	defer signal.Reset(syscall.SIGHUP)
+
+	assert.NotContains(t, stopSignals(), os.Signal(syscall.SIGHUP))
+	assert.Contains(t, stopSignals(), os.Interrupt)
+}
+
+func TestABuildStoppedOnPurposeStaysQuiet(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Find(idfProject(t, t.TempDir()))
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(p.BuildDir(), 0o755))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var printed strings.Builder
+
+	err = p.buildQuietly(ctx, []string{"PATH=" + os.Getenv("PATH")}, &printed)
+
+	assert.EqualError(t, err, "the build was stopped")
+	assert.Empty(t, printed.String())
+}
+
+func TestAFailedBuildPrintsItsOutput(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Find(idfProject(t, t.TempDir()))
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(p.BuildDir(), 0o755))
+	var printed strings.Builder
+
+	err = p.buildQuietly(context.Background(), []string{"PATH=" + os.Getenv("PATH"), "IDF_PATH=/nowhere"}, &printed)
+
+	assert.ErrorContains(t, err, "the build failed")
+	assert.Contains(t, printed.String(), "/nowhere")
 }

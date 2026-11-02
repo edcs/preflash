@@ -26,9 +26,6 @@ const (
 	// tailLines and tailBytes bound what an app that never connected leaves in the console.
 	tailLines = 20
 	tailBytes = 64 * 1024
-	// callPatience limits one request, so an app that has stopped answering can't hold up
-	// the ones behind it.
-	callPatience = 2 * time.Second
 	// answerPatience is how long a request waits for the app to answer at all, which a
 	// restart can take as long as the firmware's process does to start.
 	answerPatience = 15 * time.Second
@@ -38,8 +35,12 @@ const (
 	watchPause = 50 * time.Millisecond
 )
 
-// How long a stopping app gets, after a quit and then after a signal. Tests shorten them.
+// Tests shorten these.
 var (
+	// callPatience limits one request, so an app that has stopped answering can't hold up
+	// the ones behind it.
+	callPatience = 2 * time.Second
+	// How long a stopping app gets, after a quit and then after a signal.
 	stopPatience = 5 * time.Second
 	killPatience = 2 * time.Second
 )
@@ -412,7 +413,8 @@ func (s *Supervisor) Send(lines ...string) {
 	select {
 	case s.requests <- request{lines: lines}:
 	default:
-		s.emit(SendFailed{Line: strings.Join(lines, "; "), Err: errors.New("too many lines are waiting")})
+		// Not from here: the caller can be Bubble Tea's loop, which is what reads events.
+		go s.emit(SendFailed{Line: strings.Join(lines, "; "), Err: errors.New("too many lines are waiting")})
 	}
 }
 
@@ -440,7 +442,8 @@ func (s *Supervisor) control() {
 		}
 	}()
 	// call runs work on a live connection, trying once more if the app went from under it,
-	// as a restart does.
+	// as a restart does. An app that's merely slow may still have the request and act on it
+	// later, so running out of time isn't worth a second try.
 	call := func(work func(*client.Client) error) error {
 		var err error
 		for range 2 {
@@ -462,6 +465,9 @@ func (s *Supervisor) control() {
 			}
 			conn.Close()
 			conn = nil
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				return err
+			}
 		}
 		return err
 	}

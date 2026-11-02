@@ -379,14 +379,14 @@ func (f Field) Match(line string) (string, bool) {
 	if f.Pattern == nil {
 		return "", false
 	}
-	m := f.Pattern.FindStringSubmatch(line)
+	m := f.Pattern.FindStringSubmatchIndex(line)
 	if m == nil {
 		return "", false
 	}
-	for _, group := range m[1:] {
-		if group != "" {
-			return group, true
+	for i := 2; i < len(m); i += 2 {
+		if m[i] >= 0 {
+			return line[m[i]:m[i+1]], true
 		}
 	}
-	return m[0], true
+	return line[m[0]:m[1]], true
 }

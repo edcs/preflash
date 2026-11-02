@@ -98,6 +98,7 @@ type asking struct {
 	shortcut rc.Shortcut
 	at       int
 	values   map[string]string
+	draft    string // what the input held, which comes back afterwards
 }
 
 type (
@@ -393,7 +394,7 @@ func (m *Model) useShortcut(i int) {
 		m.send(s.Lines(nil, m.now().Format(dateFormat)))
 		return
 	}
-	m.ask = &asking{shortcut: s, values: map[string]string{}}
+	m.ask = &asking{shortcut: s, values: map[string]string{}, draft: m.input.Value()}
 	m.showAsk()
 }
 
@@ -405,8 +406,9 @@ func (m *Model) showAsk() {
 
 func (m *Model) cancelAsk() {
 	if m.ask != nil {
+		m.input.SetValue(m.ask.draft)
+		m.input.CursorEnd()
 		m.ask = nil
-		m.input.Reset()
 		m.sizeInput()
 	}
 }

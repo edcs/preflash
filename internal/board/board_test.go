@@ -153,3 +153,15 @@ func TestTheRuntimeDoesNotSeeTheLineage(t *testing.T) {
 	assert.NotContains(t, string(out), "gpio43")
 	assert.NotContains(t, string(out), "Base")
 }
+
+func TestAChangedListReadsAsReplaced(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "b.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(
+		"extends: ESP32-S3-Touch-LCD-4B\nchanges:\n  i2c:\n    - {chip: gt911, address: 0x5d}\n"), 0o644))
+
+	b, err := Load(path)
+
+	require.NoError(t, err)
+	assert.Equal(t, []Change{{Path: "i2c", Value: "replaced"}}, b.Changes)
+}

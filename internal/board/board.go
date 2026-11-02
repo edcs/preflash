@@ -134,6 +134,10 @@ func (l *lineage) record(prefix string, changes map[string]any) {
 			l.record(prefix+key+".", nested)
 			continue
 		}
+		if _, list := value.([]any); list {
+			l.changes[prefix+key] = "replaced"
+			continue
+		}
 		l.changes[prefix+key] = fmt.Sprint(value)
 	}
 }
