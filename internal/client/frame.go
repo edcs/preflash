@@ -29,7 +29,9 @@ func (f Frame) Save(path string) error {
 	if f.Format != "rgb565le" {
 		return fmt.Errorf("a frame in %q, which this preflash can't read", f.Format)
 	}
-	if len(f.Data) != f.Width*f.Height*2 {
+	// Divides instead of multiplying, which a bad reply could overflow.
+	if f.Width <= 0 || f.Height <= 0 || len(f.Data)%2 != 0 || len(f.Data)/2/f.Width != f.Height ||
+		len(f.Data)/2%f.Width != 0 {
 		return fmt.Errorf("a %dx%d frame of %d bytes", f.Width, f.Height, len(f.Data))
 	}
 	var encoded []byte

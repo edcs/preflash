@@ -69,6 +69,9 @@ func (p Project) Run(b board.Board, headless bool) error {
 	if err != nil {
 		return err
 	}
+	if err := p.checkSocketPath(); err != nil {
+		return err
+	}
 	resolved, err := board.Resolve(b)
 	if err != nil {
 		return err

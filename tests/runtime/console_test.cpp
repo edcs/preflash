@@ -274,8 +274,21 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
   }
   EXPECT_TRUE(stuck_entered);
   EXPECT_TRUE(quit_seen);
-  preflash::submit_line("note seventh");
+  // A quoted name is the same control, so it gets past a stuck command too.
+  quit_seen = false;
+  input.feed("@sim \"quit\"\n");
+  for (int i = 0; i < 500 && !quit_seen; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_TRUE(quit_seen);
+  EXPECT_TRUE(preflash::submit_line("note seventh"));
   EXPECT_EQ(noted(), 7u);
+  // The queue has a limit, and quit doesn't count against it.
+  preflash::add_control("padding", [](std::vector<std::string>) {});
+  const std::string padding = "@sim padding " + std::string(64 * 1024, 'x');
+  int accepted = 0;
+  while (accepted < 1000 && preflash::submit_line(padding)) ++accepted;
+  EXPECT_LT(accepted, 1000);
   let_go = true;
   for (int i = 0; i < 200 && noted() < 9; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));

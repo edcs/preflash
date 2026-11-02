@@ -185,6 +185,54 @@ TEST(SocketClaim, WaitsForAnotherClaimToFinish) {
   fs::remove(lock_path);
 }
 
+// A holder whose answer is malformed still holds the socket, and mustn't stop startup.
+TEST(SocketClaim, ToleratesAHolderAnsweringWithBadTypes) {
+  const std::string path = socket_path("types");
+  const int server = listen_on(path);
+  std::thread live([server] {
+    const int client = accept(server, nullptr, nullptr);
+    char buffer[256];
+    ASSERT_GT(read(client, buffer, sizeof buffer), 0);
+    const std::string reply = R"({"id":1,"ok":true,"project":7,"pid":"seven"})"
+                              "\n";
+    write(client, reply.data(), reply.size());
+    close(client);
+  });
+  setenv("PREFLASH_SOCKET", path.c_str(), 1);
+
+  std::string error;
+  EXPECT_FALSE(preflash::socket::claim(&error));
+  live.join();
+  EXPECT_NE(error.find("another app"), std::string::npos) << error;
+  close(server);
+  fs::remove(path);
+}
+
+TEST(SocketClaim, GivesATricklingHolderOneDeadlineInAll) {
+  const std::string path = socket_path("slow");
+  const int server = listen_on(path);
+  std::atomic<bool> done{false};
+  std::thread live([&] {
+    const int client = accept(server, nullptr, nullptr);
+    while (!done) {
+      if (write(client, "x", 1) != 1) break;
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    close(client);
+  });
+  setenv("PREFLASH_SOCKET", path.c_str(), 1);
+
+  const auto start = std::chrono::steady_clock::now();
+  std::string error;
+  EXPECT_FALSE(preflash::socket::claim(&error));
+  const auto took = std::chrono::steady_clock::now() - start;
+  done = true;
+  live.join();
+  EXPECT_LT(took, std::chrono::seconds(3));
+  close(server);
+  fs::remove(path);
+}
+
 TEST(SocketClaim, LeavesAFileThatIsNotASocket) {
   const std::string path = socket_path("file");
   std::ofstream(path) << "keep me";
@@ -290,6 +338,23 @@ TEST_F(SocketServe, SendReachesTheConsoleQueue) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   EXPECT_EQ(seen, 1);
+}
+
+TEST_F(SocketServe, AFullConsoleQueueIsAnError) {
+  ASSERT_TRUE(preflash::start_console_reader());
+  // Each line takes a while to run, so they arrive faster than they leave.
+  Client client(path());
+  bool refused = false;
+  const std::string padding = "@sim socket_padding " + std::string(200 * 1000, 'x');
+  preflash::add_control("socket_padding", [](std::vector<std::string>) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  });
+  for (int i = 0; i < 100 && !refused; ++i) {
+    const json reply = client.call({{"op", "send"}, {"line", padding}});
+    refused = reply["ok"] == false;
+    if (refused) EXPECT_NE(reply["error"].get<std::string>().find("full"), std::string::npos);
+  }
+  EXPECT_TRUE(refused);
 }
 
 TEST_F(SocketServe, SendNeedsOneLine) {

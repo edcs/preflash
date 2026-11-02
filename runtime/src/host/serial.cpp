@@ -12,6 +12,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <map>
 #include <system_error>
 #include <thread>
@@ -26,6 +27,7 @@ constexpr size_t kReplayChunk = 16 * 1024;
 constexpr int kPumpWaitMs = 1000;
 constexpr int kSendWaitMs = 500;
 constexpr int kFirstFreeFd = STDERR_FILENO + 1;
+constexpr size_t kTerminalQueueBytes = 1024 * 1024;
 
 const char kAlphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -55,8 +57,25 @@ void sleep_ms() {
   nanosleep(&ms, nullptr);
 }
 
-// A real stdout that went away must not take the firmware with it, so the pump carries
-// on for the ring and subscribers.
+// What's on its way to the real stdout. A terminal stopped by ^S or a pipe nobody reads
+// must not stop the pump, or the pipe behind it fills and firmware blocks, so this has its
+// own thread, and past its limit the oldest output goes.
+struct Terminal {
+  std::mutex mutex;
+  std::condition_variable ready;
+  std::deque<std::string> chunks;
+  size_t bytes = 0;
+  size_t dropped = 0;
+  bool gone = false;
+};
+
+Terminal& terminal() {
+  static Terminal* t = new Terminal;  // never destroyed: its thread outlives static destructors
+  return *t;
+}
+
+// A real stdout that went away must not take the firmware with it, so the ring and
+// subscribers carry on without it.
 void write_real(int* fd, const char* data, size_t size) {
   while (*fd >= 0 && size > 0) {
     const ssize_t wrote = write(*fd, data, size);
@@ -72,10 +91,64 @@ void write_real(int* fd, const char* data, size_t size) {
   }
 }
 
+void write_to_terminal() {
+  mask_signals_on_this_thread();
+  Terminal& t = terminal();
+  int out = g_real_stdout;
+  for (;;) {
+    std::string chunk;
+    size_t dropped;
+    {
+      std::unique_lock<std::mutex> lock(t.mutex);
+      t.ready.wait(lock, [&] { return !t.chunks.empty() || t.dropped > 0; });
+      dropped = t.dropped;
+      t.dropped = 0;
+      if (!t.chunks.empty()) {
+        chunk = std::move(t.chunks.front());
+        t.chunks.pop_front();
+        t.bytes -= chunk.size();
+      }
+    }
+    if (dropped > 0) {
+      const std::string notice = "preflash: " + std::to_string(dropped) +
+                                 " bytes of serial dropped because this terminal fell behind\n";
+      write_real(&out, notice.data(), notice.size());
+    }
+    if (!chunk.empty()) {
+      write_real(&out, chunk.data(), chunk.size());
+      --g_unsent;
+    }
+    if (out < 0) {
+      std::lock_guard<std::mutex> lock(t.mutex);
+      t.gone = true;
+      g_unsent -= static_cast<long>(t.chunks.size());
+      t.chunks.clear();
+      return;
+    }
+  }
+}
+
+void queue_for_terminal(const char* data, size_t size) {
+  Terminal& t = terminal();
+  {
+    std::lock_guard<std::mutex> lock(t.mutex);
+    if (t.gone) return;
+    t.chunks.emplace_back(data, size);
+    t.bytes += size;
+    ++g_unsent;
+    while (t.bytes > kTerminalQueueBytes) {
+      t.bytes -= t.chunks.front().size();
+      t.dropped += t.chunks.front().size();
+      t.chunks.pop_front();
+      --g_unsent;
+    }
+  }
+  t.ready.notify_one();
+}
+
 void pump(int from) {
   mask_signals_on_this_thread();
   Pump& p = pump_state();
-  int out = g_real_stdout;
   char buffer[kPumpChunk];
   for (;;) {
     const ssize_t got = read(from, buffer, sizeof buffer);
@@ -89,7 +162,7 @@ void pump(int from) {
       p.ring.append(buffer, static_cast<size_t>(got));
       for (auto& [id, subscriber] : p.subscribers) subscriber(buffer, static_cast<size_t>(got));
     }
-    write_real(&out, buffer, static_cast<size_t>(got));
+    queue_for_terminal(buffer, static_cast<size_t>(got));
   }
   close(from);
   g_pump_done = true;
@@ -160,7 +233,11 @@ std::string Ring::contents() const {
 
 Outbox::Outbox(size_t serial_limit) : serial_limit_(serial_limit) {}
 
-Outbox::~Outbox() { abandon(); }
+Outbox::~Outbox() {
+  abandon();
+  // Nothing is left to call sent() by now.
+  forget(unsent_);
+}
 
 void Outbox::forget(long items) {
   unsent_ -= items;
@@ -173,6 +250,17 @@ void Outbox::push_message(std::string line) {
     if (closed_) return;
     message_bytes_ += line.size();
     items_.push_back({std::move(line), false});
+    forget(-1);
+  }
+  ready_.notify_one();
+}
+
+void Outbox::push_urgent(std::string line) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_) return;
+    message_bytes_ += line.size();
+    items_.push_front({std::move(line), false});
     forget(-1);
   }
   ready_.notify_one();
@@ -206,11 +294,13 @@ bool Outbox::pop(std::string* line) {
     *line = "{\"event\":\"dropped\",\"bytes\":" + std::to_string(dropped_) + "}\n";
     dropped_ = 0;
     forget(-1);
+    in_flight_ = 1;
     return true;
   }
   if (items_.empty()) return false;
   Item item = std::move(items_.front());
   items_.pop_front();
+  in_flight_ = 1;
   if (item.serial) {
     serial_bytes_ -= item.bytes.size();
     lock.unlock();
@@ -226,7 +316,8 @@ bool Outbox::pop(std::string* line) {
 
 void Outbox::sent() {
   std::lock_guard<std::mutex> lock(mutex_);
-  forget(1);
+  forget(in_flight_);
+  in_flight_ = 0;
 }
 
 void Outbox::close() {
@@ -245,7 +336,8 @@ void Outbox::abandon() {
     dropped_ = 0;
     serial_bytes_ = 0;
     message_bytes_ = 0;
-    forget(unsent_);
+    // A line popped but not yet sent stays counted until sent() says it's out.
+    forget(unsent_ - in_flight_);
   }
   ready_.notify_all();
 }
@@ -264,19 +356,37 @@ bool start() {
     return false;
   }
   const int read_end = above_standard_fds(ends[0]);
+  const int read_errno = errno;
   const int write_end = above_standard_fds(ends[1]);
-  if (read_end < 0 || write_end < 0) {
-    std::fprintf(stderr, "preflash: no pipe for the serial stream: %s\n", std::strerror(errno));
-    return false;
+  // Either can be closed already, which hand_back puts back as it found it. Only that
+  // failure counts as closed: anything else would have hand_back close an open fd.
+  bool saved = read_end >= 0 && write_end >= 0;
+  const char* why = std::strerror(read_end < 0 ? read_errno : errno);
+  if (saved) {
+    g_real_stdout = fcntl(STDOUT_FILENO, F_DUPFD_CLOEXEC, kFirstFreeFd);
+    saved = g_real_stdout >= 0 || errno == EBADF;
+    why = std::strerror(errno);
   }
-  // Either can be closed already, which hand_back puts back as it found it.
-  g_real_stdout = fcntl(STDOUT_FILENO, F_DUPFD_CLOEXEC, kFirstFreeFd);
-  g_real_stderr = fcntl(STDERR_FILENO, F_DUPFD_CLOEXEC, kFirstFreeFd);
+  if (saved) {
+    g_real_stderr = fcntl(STDERR_FILENO, F_DUPFD_CLOEXEC, kFirstFreeFd);
+    saved = g_real_stderr >= 0 || errno == EBADF;
+    why = std::strerror(errno);
+  }
+  const auto give_up = [&](const char* reason) {
+    for (const int fd : {read_end, write_end, g_real_stdout, g_real_stderr}) {
+      if (fd >= 0) close(fd);
+    }
+    g_real_stdout = -1;
+    g_real_stderr = -1;
+    std::fprintf(stderr, "preflash: no pipe for the serial stream: %s\n", reason);
+    return false;
+  };
+  if (!saved) return give_up(why);
   try {
+    std::thread(write_to_terminal).detach();
     std::thread(pump, read_end).detach();
   } catch (const std::system_error& e) {
-    std::fprintf(stderr, "preflash: no thread for the serial stream: %s\n", e.what());
-    return false;
+    return give_up(e.what());
   }
   std::fflush(stdout);
   std::fflush(stderr);

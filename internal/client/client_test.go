@@ -9,7 +9,9 @@ import (
 	"image/png"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -326,6 +328,105 @@ func TestFollowComesBackFromAHangUpWithNoWarning(t *testing.T) {
 	assert.Equal(t, "first boot\nsecond boot\n", out.String())
 }
 
+// The event goes ahead of queued serial, so what's left of the old boot arrives after it.
+func TestFollowKeepsReadingAfterTheRestartEvent(t *testing.T) {
+	path := shortPath(t)
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	go func() {
+		conn, err := listener.Accept()
+		require.NoError(t, err)
+		reader := bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		fmt.Fprintln(conn, `{"event":"restarting"}`)
+		fmt.Fprintln(conn, `{"event":"serial","data":"`+base64.StdEncoding.EncodeToString([]byte("last words\n"))+`"}`)
+		conn.Close()
+		listener.Close()
+		next, err := net.Listen("unix", path)
+		require.NoError(t, err)
+		conn, err = next.Accept()
+		require.NoError(t, err)
+		reader = bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		fmt.Fprintln(conn, `{"event":"serial","data":"`+base64.StdEncoding.EncodeToString([]byte("new boot\n"))+`"}`)
+		conn.Close()
+		next.Close()
+	}()
+
+	var out syncBuffer
+	require.NoError(t, Follow(path, &out, func(string) {}))
+	assert.Equal(t, "last words\nnew boot\n", out.String())
+}
+
+// With the process alive, a refused socket is a boot taking its time.
+func TestFollowWaitsForASlowRebootAfterAHangUp(t *testing.T) {
+	path := shortPath(t)
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	listener.(*net.UnixListener).SetUnlinkOnClose(false)
+	go func() {
+		conn, err := listener.Accept()
+		require.NoError(t, err)
+		reader := bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1,"pid":`+strconv.Itoa(os.Getpid())+`}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		conn.Close()
+		listener.Close()
+
+		time.Sleep(time.Second)
+		os.Remove(path)
+		next, err := net.Listen("unix", path)
+		require.NoError(t, err)
+		conn, err = next.Accept()
+		require.NoError(t, err)
+		reader = bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		fmt.Fprintln(conn, `{"event":"serial","data":"`+base64.StdEncoding.EncodeToString([]byte("slow boot\n"))+`"}`)
+		conn.Close()
+		next.Close()
+	}()
+
+	var out syncBuffer
+	require.NoError(t, Follow(path, &out, func(string) {}))
+	assert.Equal(t, "slow boot\n", out.String())
+}
+
+// A dead process is no reboot, however long its socket file stays.
+func TestFollowStopsAtOnceWhenTheProcessHasGone(t *testing.T) {
+	path := shortPath(t)
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	listener.(*net.UnixListener).SetUnlinkOnClose(false)
+	gone := exec.Command("true")
+	require.NoError(t, gone.Run())
+	go func() {
+		conn, err := listener.Accept()
+		require.NoError(t, err)
+		reader := bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1,"pid":`+strconv.Itoa(gone.Process.Pid)+`}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		conn.Close()
+		listener.Close()
+	}()
+
+	start := time.Now()
+	require.NoError(t, Follow(path, &syncBuffer{}, func(string) {}))
+	assert.Less(t, time.Since(start), 2*time.Second)
+}
+
 func TestFollowPassesOnDrops(t *testing.T) {
 	path := shortPath(t)
 	listener, err := net.Listen("unix", path)
@@ -390,6 +491,19 @@ func TestSaveBMPMatchesTheRuntimesLayout(t *testing.T) {
 	// Rows run bottom up, each padded to four bytes, with pixels as blue, green, red.
 	assert.Equal(t, []byte{255, 0, 0, 255, 255, 255, 0, 0}, data[54:62])
 	assert.Equal(t, []byte{0, 0, 255, 0, 255, 0, 0, 0}, data[62:70])
+}
+
+func TestSaveRefusesImpossibleDimensions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shot.bmp")
+	for _, frame := range []Frame{
+		{Width: 0, Height: 0, Format: "rgb565le"},
+		{Width: -1, Height: -2, Format: "rgb565le", Data: make([]byte, 4)},
+		{Width: 1 << 62, Height: 8, Format: "rgb565le"},
+		{Width: 1 << 32, Height: 1 << 31, Format: "rgb565le"},
+	} {
+		assert.Error(t, frame.Save(path), "%+v", frame)
+		assert.NoFileExists(t, path)
+	}
 }
 
 func TestSaveRefusesOtherFormatsAndShortFrames(t *testing.T) {

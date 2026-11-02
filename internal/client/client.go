@@ -23,6 +23,10 @@ const refusedGrace = 500 * time.Millisecond
 // A restart takes as long as the firmware's process does to start, with no build.
 const restartGrace = 15 * time.Second
 
+// A boot replaces a stale socket by removing it and binding anew, so the file can be
+// missing for a moment on the way to coming back.
+const replaceGrace = 100 * time.Millisecond
+
 // Quit lets queued console lines finish, each with a second to show progress, so a long
 // queue can take a while.
 const quitGrace = 30 * time.Second
@@ -88,24 +92,31 @@ type wire struct {
 
 // Dial connects to the app at path. The error is ErrNotRunning if none is there.
 func Dial(path string) (*Client, error) {
-	return dialWithin(path, refusedGrace, false)
+	return dialWithin(path, refusedGrace, 0, 0)
 }
 
-// dialWithin keeps trying for as long as patience lasts. A missing socket counts as
-// gone unless missingIsGap, which is how it looks between two boots.
-func dialWithin(path string, patience time.Duration, missingIsGap bool) (*Client, error) {
-	deadline := time.Now().Add(patience)
+// dialWithin keeps trying for as long as patience lasts, or missingPatience once the
+// socket's file has gone, which usually means the app quit. It stops early if pid, the
+// process expected to come back, dies meanwhile.
+func dialWithin(path string, patience, missingPatience time.Duration, pid int) (*Client, error) {
+	start := time.Now()
 	for {
 		c, err := dialOnce(path)
 		if err == nil || !errors.Is(err, ErrNotRunning) {
 			return c, err
 		}
-		missing := errors.Is(err, fs.ErrNotExist)
-		if (missing && !missingIsGap) || time.Now().After(deadline) {
+		waited := time.Since(start)
+		if waited >= patience || !alive(pid) || (errors.Is(err, fs.ErrNotExist) && waited >= missingPatience) {
 			return nil, ErrNotRunning
 		}
 		time.Sleep(dialPause)
 	}
+}
+
+// alive says whether the process exists. A restart keeps its pid, so this tells one from a
+// crash that left the socket's file behind. An app that gave no pid counts as alive.
+func alive(pid int) bool {
+	return pid <= 0 || !errors.Is(syscall.Kill(pid, 0), syscall.ESRCH)
 }
 
 func dialOnce(path string) (*Client, error) {
@@ -288,35 +299,37 @@ func Follow(path string, out io.Writer, warn func(string)) error {
 	}
 	for {
 		restarting, err := followOne(c, out, warn)
+		pid := c.Hello.PID
 		c.Close()
-		if err != nil {
+		switch {
+		case err != nil:
 			return err
-		}
-		if restarting {
-			if c, err = dialWithin(path, restartGrace, true); err != nil {
+		case restarting:
+			if c, err = dialWithin(path, restartGrace, restartGrace, pid); err != nil {
 				return ErrStopped
 			}
-			continue
-		}
-		// A reader far enough behind loses the restarting event with the rest of its
-		// queue, so a hang-up may still be a restart. A quit removes the socket, which
-		// ends this at once.
-		if c, err = dialWithin(path, refusedGrace, false); err != nil {
-			return nil
+		default:
+			// A writer stuck on this reader can lose the restarting event at the exec, so
+			// a hang-up from a live process may be a restart. A quit removes the socket.
+			if c, err = dialWithin(path, restartGrace, replaceGrace, pid); err != nil {
+				return nil
+			}
 		}
 	}
 }
 
-// followOne covers one boot, saying whether it ended in a restart.
+// followOne covers one boot, saying whether it ended in a restart. The event comes ahead
+// of any serial still queued, so this reads on to the hang-up.
 func followOne(c *Client, out io.Writer, warn func(string)) (bool, error) {
 	// An app that stops here can still have said it's restarting, so the loop looks.
 	if err := c.Subscribe("serial"); err != nil && !errors.Is(err, ErrStopped) {
 		return false, err
 	}
+	restarting := false
 	for {
 		event, err := c.Next()
 		if errors.Is(err, ErrStopped) {
-			return false, nil
+			return restarting, nil
 		}
 		if err != nil {
 			return false, err
@@ -329,7 +342,7 @@ func followOne(c *Client, out io.Writer, warn func(string)) (bool, error) {
 		case "dropped":
 			warn(fmt.Sprintf("%d bytes of serial were dropped because this reader fell behind", event.Bytes))
 		case "restarting":
-			return true, nil
+			restarting = true
 		}
 	}
 }

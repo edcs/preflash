@@ -88,13 +88,12 @@ pf run --project "$project" --headless <<< "@sim quit" || fail "the project didn
 [ ! -e "$socket" ] || fail "quitting left the socket behind"
 
 # No app is running.
-for words in "status" "send ping" "serial" "touch 1 1" "quit" "shot $scratch/none.png"; do
-  # shellcheck disable=SC2086
-  set -- $words
-  command="$1"
-  shift
-  expect_failure "no app is running" pf "$command" --project "$project" "$@"
-done
+expect_failure "no app is running" pf status --project "$project"
+expect_failure "no app is running" pf send --project "$project" ping
+expect_failure "no app is running" pf serial --project "$project"
+expect_failure "no app is running" pf touch 1 1 --project "$project"
+expect_failure "no app is running" pf quit --project "$project"
+expect_failure "no app is running" pf shot "$scratch/none.png" --project "$project"
 
 start_run
 wait_for_output "ready, reset reason 1"
@@ -273,8 +272,8 @@ wait_in_file "ready, reset reason" "$follow_log"
 pf send --project "$project" unsupported
 wait_in_file "esp_console_repl_del is not supported in the simulator" "$follow_log"
 wait_for_output "esp_console_repl_del is not supported in the simulator"
-follower_ended
 finish_app
+follower_ended
 [ "$app_status" -ne 0 ] || fail "an unsupported call exited cleanly"
 
 # That left the socket behind. It answers no one, and the next app takes it.

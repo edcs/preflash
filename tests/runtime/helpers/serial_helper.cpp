@@ -3,6 +3,7 @@
 // a path that doesn't drain it loses the last thing written.
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -32,6 +33,52 @@ ino_t inode(int fd) {
 
 void on_interrupt(int) { preflash::socket::leave(0); }
 
+// Leaves too few descriptors for the pump to save both stdout and stderr.
+int run_out_of_fds() {
+  rlimit limit;
+  getrlimit(RLIMIT_NOFILE, &limit);
+  limit.rlim_cur = 64;
+  setrlimit(RLIMIT_NOFILE, &limit);
+  int last = -1;
+  for (int fd; (fd = open("/dev/null", O_RDONLY)) >= 0;) last = fd;
+  // Room for the pipe, one spare while each end moves, and stdout's copy.
+  for (int i = 0; i < 3; ++i) close(last - i);
+  if (preflash::serial::start()) return 6;
+  dprintf(STDOUT_FILENO, "start refused\n");
+  if (fcntl(STDERR_FILENO, F_GETFD) != -1) dprintf(STDERR_FILENO, "stderr still open\n");
+  return 0;
+}
+
+// A pipe nobody reads, as with a terminal stopped by ^S.
+int flood_a_stuck_stdout() {
+  int ends[2];
+  if (pipe(ends) != 0) return 7;
+  const int report = dup(STDOUT_FILENO);
+  alarm(20);  // a pump that blocks would hold the flood here
+  dup2(ends[1], STDOUT_FILENO);
+  if (!preflash::serial::start()) return 8;
+  flood();
+  flood();
+  flood();
+  dprintf(report, "flood finished\n");
+  // Reading lets the writer through, and it says what it dropped.
+  std::string tail;
+  bool noticed = false;
+  char buffer[65536];
+  fcntl(ends[0], F_SETFL, O_NONBLOCK);
+  for (int i = 0; i < 2000 && !noticed; ++i) {
+    const ssize_t got = read(ends[0], buffer, sizeof buffer);
+    if (got > 0) {
+      tail.append(buffer, static_cast<size_t>(got));
+      noticed = tail.find("dropped") != std::string::npos;
+      tail.erase(0, tail.size() > 16 ? tail.size() - 16 : 0);
+    }
+    usleep(1000);
+  }
+  if (noticed) dprintf(report, "notice seen\n");
+  _exit(0);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -53,6 +100,8 @@ int main(int argc, char** argv) {
     setenv("HELPER_ERR", std::to_string(inode(2)).c_str(), 1);
   }
   if (mode == "interrupt") signal(SIGINT, on_interrupt);
+  if (mode == "no_fds") return run_out_of_fds();
+  if (mode == "stalled") return flood_a_stuck_stdout();
   if (!preflash::serial::start()) return 3;
 
   if (mode == "subscribe") {

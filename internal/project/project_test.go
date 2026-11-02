@@ -237,6 +237,23 @@ func TestSocketPathFitsAUnixSocket(t *testing.T) {
 	assert.NotEqual(t, path, Project{Dir: "/elsewhere"}.SocketPath())
 }
 
+func TestSocketPathFallsBackWhenHomeIsLong(t *testing.T) {
+	t.Setenv("HOME", "/Users/"+strings.Repeat("x", 100))
+	t.Setenv("TMPDIR", "/tmp/short")
+
+	path := Project{Dir: "/x/demo"}.SocketPath()
+	assert.Less(t, len(path), socketPathLimit)
+	assert.True(t, strings.HasPrefix(path, "/tmp/short/"), path)
+	assert.Regexp(t, `[0-9a-f]{12}\.sock$`, path)
+}
+
+func TestRunRefusesASocketPathThatCannotFit(t *testing.T) {
+	t.Setenv("HOME", "/Users/"+strings.Repeat("x", 100))
+	t.Setenv("TMPDIR", "/tmp/"+strings.Repeat("y", 100))
+
+	assert.ErrorContains(t, Project{Dir: "/x/demo"}.checkSocketPath(), "too long")
+}
+
 func TestRootComesFromTheEnvironment(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "runtime", "idf", "tools", "cmake", "project.cmake"), "")

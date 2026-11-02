@@ -9,8 +9,9 @@
 #include <vector>
 
 // USB serial is one stream, as on the device. Once started, stdout and stderr both
-// write to a pipe, and a pump thread passes what comes out to the real stdout, a ring
-// of recent output and each subscriber.
+// write to a pipe, and a pump thread passes what comes out to a ring of recent output,
+// each subscriber and the real stdout. Neither a subscriber nor the real stdout can hold
+// the pump up: each has a bounded queue and a thread of its own.
 namespace preflash::serial {
 
 std::string base64(const void* data, size_t size);
@@ -28,9 +29,10 @@ class Ring {
   bool full_ = false;
 };
 
-// What's waiting to go to one socket client, as lines of the wire format. One thread
-// fills it and one writes it out, so a client that stops reading costs firmware nothing:
-// past the limit, the oldest serial goes, and the client hears how much it missed.
+// What's waiting to go to one socket client, as lines of the wire format. Several threads
+// fill it (replies, the pump, restart) and the mutex keeps them apart, while one thread
+// writes it out, so a client that stops reading costs firmware nothing: past the limit,
+// the oldest serial goes, and the client hears how much it missed.
 class Outbox {
  public:
   explicit Outbox(size_t serial_limit);
@@ -39,6 +41,9 @@ class Outbox {
   // A reply or an event, without its newline. These are never dropped.
   void push_message(std::string line);
   void push_serial(const char* data, size_t size);
+  // A message that goes ahead of everything queued, for news that can't wait behind a
+  // slow client's backlog.
+  void push_urgent(std::string line);
 
   // Waits for the next line. False once closed with nothing left. Call sent() after
   // writing the line.
@@ -68,10 +73,12 @@ class Outbox {
   size_t message_bytes_ = 0;
   size_t dropped_ = 0;
   long unsent_ = 0;
+  long in_flight_ = 0;  // popped, and sent() not yet called
   bool closed_ = false;
 };
 
-// Lines waiting in every Outbox, which leaving the process gives a moment to clear.
+// Lines waiting in every Outbox and chunks waiting for the real stdout, which leaving the
+// process gives a moment to clear.
 long unsent();
 
 // Swaps fds 1 and 2 for the pipe and starts the pump. False if it couldn't, with the

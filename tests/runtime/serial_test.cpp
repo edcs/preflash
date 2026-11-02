@@ -106,6 +106,36 @@ TEST(Outbox, CountsWhatIsWaitingToBeSent) {
   EXPECT_EQ(serial::unsent(), before);
 }
 
+TEST(Outbox, ALineBeingWrittenIsCountedOnceWhenAbandoned) {
+  const long before = serial::unsent();
+  {
+    serial::Outbox box(1024);
+    box.push_message("one");
+    box.push_message("two");
+    std::string line;
+    ASSERT_TRUE(box.pop(&line));
+    box.abandon();
+    EXPECT_EQ(serial::unsent(), before + 1);  // still on its way out
+    box.sent();
+    EXPECT_EQ(serial::unsent(), before);
+  }
+  EXPECT_EQ(serial::unsent(), before);
+}
+
+TEST(Outbox, UrgentMessagesGoAheadOfWhatIsQueued) {
+  serial::Outbox box(1024);
+  box.push_serial("aa", 2);
+  box.push_message("late");
+  box.push_urgent("first");
+  std::string line;
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "first\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"serial\",\"data\":\"YWE=\"}\n");
+  box.sent();
+}
+
 TEST(Outbox, WakesAWaitingReaderOnClose) {
   serial::Outbox box(1024);
   std::thread closer([&] {
@@ -120,11 +150,25 @@ TEST(Outbox, WakesAWaitingReaderOnClose) {
 namespace {
 
 // The pump swaps the process's own stdout, so it gets a process of its own.
+// Quoted for the shell, because a checkout's path can hold anything.
+std::string quoted(const std::string& text) {
+  std::string out = "'";
+  for (const char c : text) {
+    if (c == '\'') {
+      out += "'\\''";
+    } else {
+      out += c;
+    }
+  }
+  return out + "'";
+}
+
 std::string run_helper(const std::string& mode, int* status) {
   const fs::path state = fs::temp_directory_path() / ("preflash_serial_" + std::to_string(getpid()) + mode);
   fs::remove_all(state);
   fs::create_directories(state);
-  const std::string command = "PREFLASH_STATE='" + state.string() + "' '" SERIAL_HELPER "' " + mode + " 2>&1";
+  const std::string command =
+      "PREFLASH_STATE=" + quoted(state.string()) + " " + quoted(SERIAL_HELPER) + " " + mode + " 2>&1";
   FILE* pipe = popen(command.c_str(), "r");
   if (!pipe) {
     *status = -1;
@@ -195,6 +239,24 @@ TEST(SerialPump, StdoutAndStderrAreOneStreamWithReplay) {
   EXPECT_EQ(status, 0) << output;
   EXPECT_NE(output.find("subscriber saw: before\nafter out\nafter err\n;"), std::string::npos)
       << output;
+}
+
+// Nothing reads the helper's stdout, so a pump that waited for it would stop the firmware.
+TEST(SerialPump, AStuckTerminalLosesOutputAndFirmwareCarriesOn) {
+  int status = -1;
+  const std::string output = run_helper("stalled", &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("flood finished"), std::string::npos) << output;
+  EXPECT_NE(output.find("notice seen"), std::string::npos) << output;
+}
+
+// fd 2 was open, so a failure to save it must not end up closing it.
+TEST(SerialPump, OutOfDescriptorsLeavesStdoutAndStderrAlone) {
+  int status = -1;
+  const std::string output = run_helper("no_fds", &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("start refused"), std::string::npos) << output;
+  EXPECT_NE(output.find("stderr still open"), std::string::npos) << output;
 }
 
 TEST(SerialPump, BinaryOutputArrivesWhole) {

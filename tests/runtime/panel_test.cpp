@@ -375,7 +375,7 @@ TEST(Panel, CopyGivesTheWholePanelAtAnyTime) {
   const uint16_t pixel = kRed;
   panel::draw(0, 0, 1, 1, &pixel);
   std::vector<uint8_t> frame = panel::copy_frame();
-  EXPECT_EQ(frame.size(), static_cast<size_t>(kWidth * kHeight * 2));
+  ASSERT_EQ(frame.size(), static_cast<size_t>(kWidth * kHeight * 2));
   uint16_t first;
   std::memcpy(&first, frame.data(), sizeof first);
   EXPECT_EQ(first, kRed);
@@ -391,6 +391,21 @@ TEST(Touch, PressGoesDownThenUp) {
   ASSERT_TRUE(down && up);
   EXPECT_TRUE(down->down);
   EXPECT_FALSE(up->down);
+}
+
+// Two clients at once mustn't let one's release end the other's hold.
+TEST(Touch, PressesFromTwoThreadsStayWhole) {
+  while (touch::pop()) {
+  }
+  std::thread first([] { EXPECT_TRUE(touch::press(1, 1, 100)); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  std::thread second([] { EXPECT_TRUE(touch::press(2, 2, 0)); });
+  first.join();
+  second.join();
+  std::vector<std::pair<int, bool>> order;
+  while (const auto event = touch::pop()) order.emplace_back(event->x, event->down);
+  const std::vector<std::pair<int, bool>> whole = {{1, true}, {1, false}, {2, true}, {2, false}};
+  EXPECT_EQ(order, whole);
 }
 
 TEST(Touch, PressRefusesAPointOffThePanel) {

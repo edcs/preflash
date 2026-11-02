@@ -9,7 +9,6 @@
 #include <deque>
 #include <map>
 #include <mutex>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -23,6 +22,7 @@ constexpr const char* kControlPrefix = "@sim ";
 constexpr const char* kDefaultPrompt = "esp>";
 // How long quit waits for the next queued line to finish before it stops waiting.
 constexpr std::chrono::seconds kQuitPatience{1};
+constexpr size_t kQueuedLineBytes = 1024 * 1024;
 
 struct Command {
   std::string help;
@@ -44,6 +44,7 @@ struct State {
   // Set once firmware's REPL takes commands.
   const Repl* open_repl = nullptr;
   std::deque<std::string> lines;
+  size_t queued_bytes = 0;
   std::condition_variable line_ready;
   bool line_running = false;
   uint64_t lines_finished = 0;
@@ -148,10 +149,13 @@ bool is_control(const std::string& line) { return line.rfind(kControlPrefix, 0) 
 // waiting for one can't hold it back.
 bool is_quit(const std::string& line) {
   if (!is_control(line)) return false;
-  std::istringstream words(line.substr(std::string(kControlPrefix).size()));
-  std::string name;
-  return (words >> name) && name == "quit";
+  const std::vector<std::string> words =
+      split_words(line.substr(std::char_traits<char>::length(kControlPrefix)));
+  return !words.empty() && words[0] == "quit";
 }
+
+// Counts the newline, so that empty lines can't fill memory for free.
+size_t queued_size(const std::string& line) { return line.size() + 1; }
 
 void print_prompt() {
   if (!isatty(STDIN_FILENO)) return;
@@ -181,6 +185,7 @@ void line_task(void*) {
       });
       line = std::move(s.lines.front());
       s.lines.pop_front();
+      s.queued_bytes -= queued_size(line);
       s.line_running = true;
     }
     preflash::dispatch_line(line);
@@ -197,7 +202,12 @@ void line_task(void*) {
 void reader_task(void*) {
   std::string line;
   // End of input stops the reading and nothing else: the firmware keeps running.
-  while (std::getline(std::cin, line)) preflash::submit_line(line);
+  while (std::getline(std::cin, line)) {
+    if (!preflash::submit_line(line)) {
+      std::printf("preflash: the console queue is full, so a line was dropped\n");
+      std::fflush(stdout);
+    }
+  }
   g_reader_done = true;
 }
 
@@ -248,17 +258,20 @@ void finish_queued_lines() {
   }
 }
 
-void submit_line(const std::string& line) {
+bool submit_line(const std::string& line) {
   if (is_quit(line)) {
     finish_queued_lines();
     dispatch_line(line);
-    return;
+    return true;
   }
   {
     std::lock_guard<std::mutex> lock(state().mutex);
+    if (state().queued_bytes + queued_size(line) > kQueuedLineBytes) return false;
+    state().queued_bytes += queued_size(line);
     state().lines.push_back(line);
   }
   state().line_ready.notify_one();
+  return true;
 }
 
 bool console_reader_done() { return g_reader_done; }

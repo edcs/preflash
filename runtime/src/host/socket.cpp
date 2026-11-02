@@ -1,6 +1,7 @@
 #include "preflash/socket.h"
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -9,6 +10,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -45,7 +47,8 @@ constexpr int kDeepestRequest = 32;
 constexpr size_t kSerialQueueBytes = 1024 * 1024;
 // A client asking for frames and reading none is cut off here: a reply is never dropped.
 constexpr size_t kLongestReplyQueue = 64 * 1024 * 1024;
-constexpr int kHolderAnswerSeconds = 1;
+constexpr int kHolderAnswerMs = 1000;
+constexpr size_t kLongestHolderAnswer = 64 * 1024;
 
 char g_path[sizeof(sockaddr_un::sun_path)] = "";
 int g_listener = -1;
@@ -132,14 +135,16 @@ void op_send(Connection& c, const json& request, const json& id) {
   } else if (line->find_first_of("\r\n") != std::string::npos) {
     reply_error(c, id, "send takes one line, with no newline in it");
   } else {
-    // Queued before the reply, so that a quit sent after the reply finds the line there.
-    if (!is_quit_line(*line)) {
-      submit_line(*line);
+    // "@sim quit" doesn't come back, so it gets its reply first. Anything else is queued
+    // first, so that a quit sent after the reply finds the line there.
+    if (is_quit_line(*line)) {
       reply_ok(c, id);
-      return;
+      submit_line(*line);
+    } else if (submit_line(*line)) {
+      reply_ok(c, id);
+    } else {
+      reply_error(c, id, "the console queue is full");
     }
-    reply_ok(c, id);
-    submit_line(*line);
   }
 }
 
@@ -293,6 +298,7 @@ void write_lines(std::shared_ptr<Connection> c) {
       const ssize_t wrote = write(c->fd, at, left);
       if (wrote < 0) {
         if (errno == EINTR) continue;
+        c->out.sent();
         c->out.abandon();
         shutdown(c->fd, SHUT_RDWR);
         return;
@@ -348,6 +354,25 @@ sockaddr_un address_of(const char* path) {
   return addr;
 }
 
+// One line from fd, or what came of it by the deadline, which covers the whole answer: a
+// holder that trickles bytes can't keep startup waiting, or fill memory.
+std::string answer_line(int fd) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(kHolderAnswerMs);
+  std::string reply;
+  char chunk[1024];
+  while (reply.find('\n') == std::string::npos && reply.size() < kLongestHolderAnswer) {
+    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+        deadline - std::chrono::steady_clock::now());
+    pollfd ready = {fd, POLLIN, 0};
+    if (left.count() <= 0 || poll(&ready, 1, static_cast<int>(left.count())) <= 0) break;
+    const ssize_t got = read(fd, chunk, sizeof chunk);
+    if (got <= 0) break;
+    reply.append(chunk, static_cast<size_t>(got));
+  }
+  return reply.substr(0, reply.find('\n'));
+}
+
 // Who answers on the socket, if anyone. Whatever doesn't reply in time still holds it.
 std::optional<std::string> holder(const char* path) {
   const int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
@@ -358,25 +383,21 @@ std::optional<std::string> holder(const char* path) {
     return std::nullopt;
   }
   ignore_hang_ups(fd);
-  std::string name = "another app";
-  timeval wait = {kHolderAnswerSeconds, 0};
-  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &wait, sizeof wait);
+  timeval wait = {0, kHolderAnswerMs * 1000};
   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &wait, sizeof wait);
   const std::string request = encode({{"id", 1}, {"op", "hello"}}) + "\n";
   std::string reply;
-  char chunk[1024];
   if (write(fd, request.data(), request.size()) == static_cast<ssize_t>(request.size())) {
-    ssize_t got;
-    while (reply.find('\n') == std::string::npos && (got = read(fd, chunk, sizeof chunk)) > 0) {
-      reply.append(chunk, static_cast<size_t>(got));
-    }
+    reply = answer_line(fd);
   }
   close(fd);
-  const json answer = json::parse(reply.substr(0, reply.find('\n')), nullptr, false);
-  if (answer.is_object() && answer.contains("project")) {
-    name = answer.value("project", name) + " (pid " + std::to_string(answer.value("pid", 0)) + ")";
+  const json answer = json::parse(reply, nullptr, false);
+  if (answer.is_object() && answer.contains("project") && answer["project"].is_string() &&
+      answer.contains("pid") && answer["pid"].is_number_integer()) {
+    return answer["project"].get<std::string>() + " (pid " +
+           std::to_string(answer["pid"].get<int64_t>()) + ")";
   }
-  return name;
+  return "another app";
 }
 
 bool claim_locked(const char* path, const std::string& shown, std::string* error);
@@ -462,7 +483,7 @@ bool serve() {
 void announce_restart() {
   std::lock_guard<std::mutex> lock(clients().mutex);
   clients().restarting = true;
-  for (const auto& c : clients().connections) c->out.push_message(encode({{"event", "restarting"}}));
+  for (const auto& c : clients().connections) c->out.push_urgent(encode({{"event", "restarting"}}));
 }
 
 void leave(int code) {

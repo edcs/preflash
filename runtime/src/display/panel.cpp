@@ -56,8 +56,9 @@ void put_le(std::vector<char>* out, size_t at, uint32_t value, int bytes) {
 void draw(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame) {
   Pixels& p = pixels();
   if (last_of_frame) {
-    const auto now = std::chrono::steady_clock::now();
+    // Read under the lock, so that the times in the list stay in order.
     std::lock_guard<std::mutex> lock(p.mutex);
+    const auto now = std::chrono::steady_clock::now();
     ++p.frames;
     forget_old_frames(p, now);
     p.recent.push_back(now);
@@ -225,6 +226,8 @@ std::optional<Event> pop() {
 
 bool press(int x, int y, int ms) {
   if (ms < 0 || x < 0 || y < 0 || x >= board().width || y >= board().height) return false;
+  static std::mutex gesture;
+  std::lock_guard<std::mutex> one_at_a_time(gesture);
   push({x, y, true});
   std::this_thread::sleep_for(std::chrono::milliseconds(ms));
   push({x, y, false});

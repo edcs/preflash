@@ -19,6 +19,9 @@ import (
 // defaultBoard runs a project that hasn't named one.
 const defaultBoard = "ESP32-S3-Touch-LCD-4B"
 
+// socketPathLimit is the size of a Unix socket's path on macOS, with its final NUL.
+const socketPathLimit = 104
+
 // Project is one checkout of an ESP-IDF project.
 type Project struct {
 	Dir string
@@ -126,12 +129,26 @@ func (p Project) StateDir() string { return filepath.Join(preflashHome(), "state
 func (p Project) BuildDir() string { return filepath.Join(preflashHome(), "build", p.id) }
 
 // SocketPath is where this checkout's running app listens. It's named by a short hash
-// and sits under the cache folder, because macOS allows a socket's path 104 bytes.
+// and sits under the cache folder, or the temporary folder if a long HOME leaves no room
+// there. Nothing checks that it fits: checkSocketPath does that.
 func (p Project) SocketPath() string {
 	// Only fails with no HOME, and then a relative folder still works.
 	home, _ := os.UserHomeDir()
 	sum := sha256.Sum256([]byte(p.Dir))
-	return filepath.Join(home, "Library", "Caches", "preflash", hex.EncodeToString(sum[:6])+".sock")
+	name := hex.EncodeToString(sum[:6]) + ".sock"
+	path := filepath.Join(home, "Library", "Caches", "preflash", name)
+	if len(path) < socketPathLimit {
+		return path
+	}
+	return filepath.Join(os.TempDir(), name)
+}
+
+// checkSocketPath fails if neither of SocketPath's folders leaves room for the socket.
+func (p Project) checkSocketPath() error {
+	if path := p.SocketPath(); len(path) >= socketPathLimit {
+		return fmt.Errorf("the socket's path is too long for macOS: %s: use a shorter HOME or TMPDIR", path)
+	}
+	return nil
 }
 
 func preflashHome() string {

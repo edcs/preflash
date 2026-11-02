@@ -10,7 +10,7 @@
 [[noreturn]] void preflash_unsupported(const char* call, const char* why) {
   std::fprintf(stderr, "preflash: %s is not supported in the simulator: %s\n", call, why);
   preflash::serial::flush_stdio();
-  preflash::serial::release();
+  // The handler for SIGABRT drains the stream.
   std::abort();
 }
 

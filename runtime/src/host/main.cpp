@@ -103,7 +103,7 @@ int main() {
   if (!headless) preflash::window::open();
 
   // After the window, whose failures print straight to the terminal.
-  if (!preflash::serial::start()) return 1;
+  if (!preflash::serial::start()) preflash::socket::leave(1);
 
   preflash::add_control("touch", control_touch);
   preflash::add_control("audio", control_audio);
