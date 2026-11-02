@@ -100,7 +100,7 @@ func replacedComponents(root string) ([]*regexp.Regexp, error) {
 }
 
 // componentStore holds fetched components, shared by every checkout that pins the same ones.
-func (p Project) componentStore() string { return filepath.Join(preflashHome(), "components") }
+func (p Project) componentStore() string { return filepath.Join(Home(), "components") }
 
 // fetchComponents gets what the project's lock pins and has no stand-in for, so that a clean
 // clone runs with no ESP-IDF installed, and says where they are. The project's own folder

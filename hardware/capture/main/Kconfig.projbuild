@@ -1,0 +1,13 @@
+menu "Capture"
+
+    choice CAPTURE_BOARD
+        prompt "Board"
+        default CAPTURE_BOARD_4B
+
+        config CAPTURE_BOARD_4B
+            bool "ESP32-S3-Touch-LCD-4B"
+        config CAPTURE_BOARD_349
+            bool "ESP32-S3-Touch-LCD-3.49 V2"
+    endchoice
+
+endmenu

@@ -38,6 +38,8 @@ const usage = `usage: preflash [command] [--project dir]
   hardware [name value] [--json]    show or change the board's hardware and forced failures
   crash [--json]                    print the last crash report
   bench [--board file]              time a build and a run on a copy of the project
+  check <capture.jsonl> --board name
+                                    compare a capture from a real board with the chip models
   quit                              stop the running app
 `
 
@@ -57,6 +59,7 @@ func main() {
 		"hardware": hardware,
 		"crash":    crashReport,
 		"bench":    benchmark,
+		"check":    checkCapture,
 	}
 	command, args := chooseCommand(os.Args[1:], interactive())
 	if commands[command] == nil {

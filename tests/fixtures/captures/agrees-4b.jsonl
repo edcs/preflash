@@ -1,0 +1,11 @@
+{"type":"capture","format":1,"source":"synthetic","board":"ESP32-S3-Touch-LCD-4B","note":"Written by hand for the replay tests. No chip was involved."}
+{"type":"tx","seq":1,"chip":"tca9554","bus":0,"addr":32,"write":"03","read_len":1,"read":"ff","err":"ESP_OK"}
+{"type":"tx","seq":2,"chip":"tca9554","bus":0,"addr":32,"write":"02aa","read_len":0,"read":"","err":"ESP_OK"}
+{"type":"tx","seq":3,"chip":"tca9554","bus":0,"addr":32,"write":"02","read_len":1,"read":"aa","err":"ESP_OK"}
+{"type":"tx","seq":4,"chip":"es8311","bus":0,"addr":24,"write":"17","read_len":1,"read":"00","err":"ESP_OK"}
+{"type":"tx","seq":5,"chip":"es7210","bus":0,"addr":64,"write":"43","read_len":1,"read":"00","err":"ESP_OK"}
+{"type":"tx","seq":6,"chip":"gt911","bus":0,"addr":93,"write":"8140","read_len":1,"read":"00","err":"ESP_OK"}
+{"type":"tx","seq":7,"chip":"axp2101","bus":0,"addr":52,"write":"03","read_len":1,"read":"4a","err":"ESP_OK"}
+{"type":"tx","seq":8,"chip":"pcf85063","bus":0,"addr":81,"write":"0b","read_len":2,"read":"8080","err":"ESP_OK"}
+{"type":"tx","seq":9,"chip":"qmi8658","bus":0,"addr":107,"write":"00","read_len":1,"read":"05","err":"ESP_OK"}
+{"type":"end","transactions":9}

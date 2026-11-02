@@ -168,14 +168,14 @@ func bracketEnd(s string) int {
 }
 
 // StateDir is where this checkout's saved state lives, outside the project.
-func (p Project) StateDir() string { return filepath.Join(preflashHome(), "state", p.id) }
+func (p Project) StateDir() string { return filepath.Join(Home(), "state", p.id) }
 
 // BuildDir is where this checkout is built, outside the project.
 func (p Project) BuildDir() string {
 	if p.sanitize != "" {
-		return filepath.Join(preflashHome(), "build", p.id+"-"+p.sanitize)
+		return filepath.Join(Home(), "build", p.id+"-"+p.sanitize)
 	}
-	return filepath.Join(preflashHome(), "build", p.id)
+	return filepath.Join(Home(), "build", p.id)
 }
 
 // CrashPath is where a crash of this build leaves its report.
@@ -226,7 +226,8 @@ func (p Project) checkSocketPath() error {
 	return nil
 }
 
-func preflashHome() string {
+// Home is the folder that holds what Preflash keeps between runs.
+func Home() string {
 	// Only fails with no HOME, and then a relative folder still works.
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".preflash")
@@ -274,6 +275,9 @@ func (p Project) Board(flag string) (board.Board, error) {
 	}
 	return loadNamed(named, path)
 }
+
+// LoadBoard reads a stock board by name, or else a board file.
+func LoadBoard(name string) (board.Board, error) { return loadNamed(name, name) }
 
 func loadNamed(name, path string) (board.Board, error) {
 	b, err := board.LoadStock(name)
