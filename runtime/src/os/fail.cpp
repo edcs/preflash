@@ -5,10 +5,12 @@
 
 #include "esp_err.h"
 #include "nvs.h"
+#include "preflash/serial.h"
 
 [[noreturn]] void preflash_unsupported(const char* call, const char* why) {
   std::fprintf(stderr, "preflash: %s is not supported in the simulator: %s\n", call, why);
-  std::fflush(stderr);
+  preflash::serial::flush_stdio();
+  preflash::serial::release();
   std::abort();
 }
 

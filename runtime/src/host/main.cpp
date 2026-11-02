@@ -18,6 +18,8 @@
 #include "preflash/chips.h"
 #include "preflash/control.h"
 #include "preflash/panel.h"
+#include "preflash/serial.h"
+#include "preflash/socket.h"
 #include "preflash/touch.h"
 #include "window.h"
 
@@ -31,8 +33,7 @@ constexpr int kDefaultPressMs = 80;
 constexpr uint32_t kMainTaskStack = 3584;
 constexpr UBaseType_t kMainTaskPriority = 1;
 
-// Not exit(): firmware threads may be holding locks that destructors would need.
-void quit(int) { _exit(0); }
+void on_interrupt(int) { preflash::socket::leave(0); }
 
 void main_task(void*) { app_main(); }
 
@@ -84,10 +85,10 @@ void control_brightness(const std::vector<std::string>&) {
 }  // namespace
 
 int main() {
-  // A piped stdout must keep up, because the process leaves through _exit.
+  // Line by line, so that a line reaches the stream as firmware finishes it.
   setvbuf(stdout, nullptr, _IOLBF, 0);
   // Before SDL starts, so that SDL leaves it in place.
-  signal(SIGINT, quit);
+  signal(SIGINT, on_interrupt);
 
   try {
     preflash::attach_chips(preflash::board());
@@ -100,11 +101,14 @@ int main() {
   const bool headless = headless_env && std::strcmp(headless_env, "1") == 0;
   if (!headless) preflash::window::open();
 
+  // After the window, whose failures print straight to the terminal.
+  if (!preflash::serial::start()) return 1;
+
   preflash::add_control("touch", control_touch);
   preflash::add_control("audio", control_audio);
   preflash::add_control("brightness", control_brightness);
   preflash::add_control("shot", control_shot);
-  preflash::add_control("quit", [](std::vector<std::string>) { quit(0); });
+  preflash::add_control("quit", [](std::vector<std::string>) { preflash::socket::quit(); });
   if (!preflash::start_console_reader()) {
     std::fprintf(stderr, "preflash: couldn't start the console task\n");
     return 1;

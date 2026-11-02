@@ -49,10 +49,15 @@ target_link_libraries(runtime_objs PUBLIC nlohmann_json::nlohmann_json lvgl CURL
 add_executable(restart_helper helpers/restart_helper.cpp)
 target_link_libraries(restart_helper PRIVATE runtime_objs)
 
+# The serial pump swaps the process's own fds, so its tests run it in another process.
+add_executable(serial_helper helpers/serial_helper.cpp)
+target_link_libraries(serial_helper PRIVATE runtime_objs)
+
 add_executable(runtime_tests ${TEST_SOURCES})
 target_link_libraries(runtime_tests PRIVATE runtime_objs GTest::gtest_main)
-target_compile_definitions(runtime_tests PRIVATE RESTART_HELPER="$<TARGET_FILE:restart_helper>")
-add_dependencies(runtime_tests restart_helper)
+target_compile_definitions(runtime_tests PRIVATE RESTART_HELPER="$<TARGET_FILE:restart_helper>"
+                           SERIAL_HELPER="$<TARGET_FILE:serial_helper>")
+add_dependencies(runtime_tests restart_helper serial_helper)
 
 enable_testing()
 include(GoogleTest)

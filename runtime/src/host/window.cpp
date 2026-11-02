@@ -1,7 +1,6 @@
 #include "window.h"
 
 #include <SDL2/SDL.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
@@ -14,6 +13,7 @@
 #include "preflash/audio.h"
 #include "preflash/board.h"
 #include "preflash/panel.h"
+#include "preflash/socket.h"
 #include "preflash/touch.h"
 
 namespace preflash::window {
@@ -50,8 +50,7 @@ void handle_events() {
         if (e.window.event != SDL_WINDOWEVENT_CLOSE) break;
         [[fallthrough]];
       case SDL_QUIT:
-        // Not exit(): firmware threads may be holding locks that destructors would need.
-        _exit(0);
+        socket::quit();
       case SDL_MOUSEBUTTONDOWN:
       case SDL_MOUSEBUTTONUP:
         if (e.button.button == SDL_BUTTON_LEFT) {

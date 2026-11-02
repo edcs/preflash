@@ -19,6 +19,8 @@
 #include "esp_timer.h"
 #include "preflash/chips.h"
 #include "preflash/fail.h"
+#include "preflash/serial.h"
+#include "preflash/socket.h"
 
 namespace {
 
@@ -120,6 +122,10 @@ void esp_restart(void) {
   }
   setenv(kRestartedEnv, "1", 1);
   preflash::carry_chips_across_restart();
+  // The stream's pipe ends with this process, and the next run needs the real fds.
+  preflash::serial::hand_back();
+  preflash::socket::announce_restart();
+  preflash::serial::wait_sent();
   exec_clean(path, *_NSGetArgv());
   preflash_unsupported("esp_restart", "re-running the executable failed");
 }
