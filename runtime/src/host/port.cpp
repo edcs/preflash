@@ -115,6 +115,12 @@ void take_line(const std::string& line) {
   if (!submit_line(line)) serial::notice("preflash: the console queue is full, so a line was dropped\n");
 }
 
+void take_bytes(const char* data, size_t size) {
+  if (!submit_bytes(data, size)) {
+    serial::notice("preflash: the console queue is full, so serial input was dropped\n");
+  }
+}
+
 void read_input() {
   serial::mask_signals_on_this_thread();
   LineSplitter lines(kLongestLine);
@@ -125,7 +131,11 @@ void read_input() {
     if (g_holding) return;
     if (woke < 0) continue;
     const ssize_t got = read(g_master, buffer, sizeof buffer);
-    if (got > 0) {
+    if (got > 0 && firmware_reads_serial()) {
+      const std::string partial = lines.take_partial();
+      if (!partial.empty()) take_bytes(partial.data(), partial.size());
+      take_bytes(buffer, static_cast<size_t>(got));
+    } else if (got > 0) {
       if (lines.feed(buffer, static_cast<size_t>(got), take_line) > 0) {
         serial::notice("preflash: a line on the serial port was too long, so it was dropped\n");
       }
@@ -252,6 +262,12 @@ bool make_link(const char* link, int slot) {
 }  // namespace
 
 LineSplitter::LineSplitter(size_t longest) : longest_(longest) {}
+
+std::string LineSplitter::take_partial() {
+  std::string partial;
+  partial.swap(line_);
+  return partial;
+}
 
 size_t LineSplitter::feed(const char* data, size_t size, const Emit& emit) {
   size_t dropped = 0;

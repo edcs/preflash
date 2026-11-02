@@ -9,6 +9,23 @@ extern "C" {
 #endif
 
 typedef struct {
+  size_t max_cmdline_length;
+  size_t max_cmdline_args;
+  uint32_t heap_alloc_caps;
+  int hint_color;
+  int hint_bold;
+} esp_console_config_t;
+
+#define ESP_CONSOLE_CONFIG_DEFAULT()           \
+  {                                            \
+      .max_cmdline_length = 256,               \
+      .max_cmdline_args = 32,                  \
+      .heap_alloc_caps = 0,                    \
+      .hint_color = 39,                        \
+      .hint_bold = 0,                          \
+  }
+
+typedef struct {
   uint32_t max_history_len;
   const char* history_save_path;
   uint32_t task_stack_size;
@@ -54,11 +71,17 @@ struct esp_console_repl_s {
   esp_err_t (*del)(esp_console_repl_t* repl);
 };
 
+// The limits in the config aren't kept: a line is as long as the host's memory.
+esp_err_t esp_console_init(const esp_console_config_t* config);
 esp_err_t esp_console_cmd_register(const esp_console_cmd_t* cmd);
+esp_err_t esp_console_register_help_command(void);
+// Runs a line on the caller's task, for firmware that reads its own serial input.
+esp_err_t esp_console_run(const char* cmdline, int* cmd_ret);
 
 // Only the USB serial/JTAG flavour exists here; the host's stdin and stdout
 // stand in for it. The UART and CDC flavours are left out so firmware that
-// needs them fails to build.
+// needs them fails to build. As on the device, it and usb_serial_jtag_driver_install
+// can't both have the port.
 esp_err_t esp_console_new_repl_usb_serial_jtag(const esp_console_dev_usb_serial_jtag_config_t* dev_config,
                                                const esp_console_repl_config_t* repl_config,
                                                esp_console_repl_t** ret_repl);

@@ -14,7 +14,8 @@ void add_control(const char* name, std::function<void(std::vector<std::string>)>
 
 // Runs one console line. "@sim " lines go to the control named by the first word
 // after it; anything else goes to the console command of that name. A name
-// nobody registered prints a message saying so.
+// nobody registered prints a message saying so. The queue doesn't use this for a line
+// that belongs to firmware's USB serial driver.
 void dispatch_line(const std::string& line);
 
 // Adds a line to the one queue that stdin and the control socket share. Lines run in
@@ -23,6 +24,15 @@ void dispatch_line(const std::string& line);
 // calling thread, after finish_queued_lines, so a stuck command can't stop it. False, with
 // the line dropped, if the queue is full, as a device's UART buffer would overflow.
 bool submit_line(const std::string& line);
+
+// Adds bytes for firmware's USB serial driver to the same queue, in order behind any lines.
+// Nothing in them means anything to the simulator, so "@sim " isn't looked for. Use it
+// once firmware_reads_serial is true. False, with the bytes dropped, if the queue is full.
+bool submit_bytes(const char* data, size_t size);
+
+// True once firmware has installed the USB serial driver. From then on its lines go to
+// usb_serial_jtag_read_bytes, in place of a REPL, with a newline after each.
+bool firmware_reads_serial();
 
 // True for a line that submit_line runs as "@sim quit", which doesn't come back.
 bool is_quit_line(const std::string& line);
