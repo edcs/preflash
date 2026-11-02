@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"net"
+	"os"
 	"syscall"
 	"time"
 )
@@ -273,16 +274,21 @@ func (c *Client) TouchDefault(x, y int) error {
 }
 
 // Quit stops the app and returns once it has gone. A quit that lands just as a restart
-// execs is lost, and quitting removes the socket, so one that still answers gets asked again.
+// execs is lost, with or without its reply, so a hang-up isn't proof: the new boot gets as
+// long as a restart can take to answer, and is asked again. Quitting removes the socket,
+// and a dead process can't come back, so neither of those waits.
 func (c *Client) Quit() error {
 	for try := 0; ; try++ {
-		if err := c.Call("quit", nil, nil); err != nil {
+		err := c.Call("quit", nil, nil)
+		if err != nil && !errors.Is(err, ErrStopped) {
 			return err
 		}
-		if err := c.WaitForExit(quitGrace); err != nil {
-			return err
+		if err == nil {
+			if err := c.WaitForExit(quitGrace); err != nil {
+				return err
+			}
 		}
-		next, err := Dial(c.path)
+		next, err := dialWithin(c.path, restartGrace, replaceGrace, c.Hello.PID)
 		if errors.Is(err, ErrNotRunning) {
 			return nil
 		}
@@ -328,6 +334,10 @@ func Follow(path string, out io.Writer, warn func(string)) error {
 			return err
 		case restarting:
 			if c, err = dialWithin(path, restartGrace, restartGrace, pid); errors.Is(err, ErrNotRunning) {
+				// A quit can overtake the restart, and it removes the socket. A crash doesn't.
+				if _, missing := os.Stat(path); errors.Is(missing, fs.ErrNotExist) {
+					return nil
+				}
 				return ErrStopped
 			}
 			if err != nil {

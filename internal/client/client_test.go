@@ -524,6 +524,73 @@ func TestQuitAsksAgainIfTheAppCameBack(t *testing.T) {
 	}
 }
 
+// The exec can close the connection before the reply, and the new boot can take a while.
+func TestQuitOutlastsASlowRestartThatSwallowedIt(t *testing.T) {
+	path := shortPath(t)
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	listener.(*net.UnixListener).SetUnlinkOnClose(false)
+	stopped := make(chan struct{})
+	go func() {
+		conn, err := listener.Accept()
+		require.NoError(t, err)
+		reader := bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1,"pid":`+strconv.Itoa(os.Getpid())+`}`)
+		reader.ReadBytes('\n')
+		conn.Close()
+		listener.Close()
+
+		time.Sleep(time.Second)
+		os.Remove(path)
+		next, err := net.Listen("unix", path)
+		require.NoError(t, err)
+		conn, err = next.Accept()
+		require.NoError(t, err)
+		reader = bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		next.Close()
+		conn.Close()
+		close(stopped)
+	}()
+
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+	require.NoError(t, c.Quit())
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the second boot never heard a quit")
+	}
+}
+
+// A quit can overtake a restart that was already announced, which is still a clean stop.
+func TestFollowEndsCleanlyWhenARestartBecomesAQuit(t *testing.T) {
+	path := shortPath(t)
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	gone := exec.Command("true")
+	require.NoError(t, gone.Run())
+	go func() {
+		conn, err := listener.Accept()
+		require.NoError(t, err)
+		reader := bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1,"pid":`+strconv.Itoa(gone.Process.Pid)+`}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		fmt.Fprintln(conn, `{"event":"restarting"}`)
+		listener.Close() // removes the socket, as a real quit does
+		conn.Close()
+	}()
+
+	assert.NoError(t, Follow(path, &syncBuffer{}, func(string) {}))
+}
+
 func TestFollowSaysWhenNoAppIsRunning(t *testing.T) {
 	assert.ErrorIs(t, Follow(shortPath(t), &syncBuffer{}, func(string) {}), ErrNotRunning)
 }
