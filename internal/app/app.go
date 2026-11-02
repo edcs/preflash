@@ -611,7 +611,9 @@ func (s *Supervisor) followTrace(stop <-chan struct{}) {
 	for {
 		err := client.Watch(s.target.SocketPath(), watcher)
 		if err != nil && !errors.Is(err, client.ErrNotRunning) && !errors.Is(err, client.ErrStopped) {
+			// Anything else, such as a protocol this build doesn't speak, won't get better.
 			s.emit(SendFailed{Err: err})
+			return
 		}
 		select {
 		case <-stop:

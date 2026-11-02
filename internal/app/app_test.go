@@ -723,3 +723,30 @@ func TestDebugRequestsAnswerAsEvents(t *testing.T) {
 	assert.Equal(t, "/saved", saved.Path)
 	assert.Equal(t, 3, saved.Records)
 }
+
+func TestAnAppTheTraceCantTalkToIsReportedOnce(t *testing.T) {
+	target := newTarget(t, "sleep 30")
+	listener, err := net.Listen("unix", target.SocketPath())
+	require.NoError(t, err)
+	t.Cleanup(func() { listener.Close() })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				lines := bufio.NewScanner(conn)
+				for lines.Scan() {
+					fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":99,"project":"demo","board":"B","pid":1}`)
+				}
+			}()
+		}
+	}()
+	s := New(target, true)
+	defer s.Close()
+	s.Trace(true)
+	assert.ErrorContains(t, next[SendFailed](t, s, nil).Err, "protocol")
+	quiet(t, s, 500*time.Millisecond)
+}

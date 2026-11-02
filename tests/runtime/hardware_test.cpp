@@ -2,6 +2,7 @@
 
 #include <unistd.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -267,6 +268,21 @@ TEST_F(Hardware, WithNoStateFolderOnlyLiveChangesWork) {
   EXPECT_EQ(hardware::set("rotation", "90"), "");
   EXPECT_NE(hardware::set("rtc", "flat"), "");
   hardware::set("rotation", "0");
+}
+
+TEST_F(Hardware, ChangingSomethingElseNeverLetsAForcedChipAnswer) {
+  hardware::set("i2c", "pcf85063");
+  std::atomic<bool> finished{false};
+  std::atomic<int> answered{0};
+  std::thread bus([&] {
+    while (!finished) {
+      if (!hardware::i2c_nacks(0, kRtc)) ++answered;
+    }
+  });
+  for (int i = 0; i < 2000; ++i) hardware::set("rotation", i % 2 ? "90" : "0");
+  finished = true;
+  bus.join();
+  EXPECT_EQ(answered, 0);
 }
 
 TEST_F(Hardware, AChangeThatCantBeSavedChangesNothing) {

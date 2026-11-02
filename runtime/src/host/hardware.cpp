@@ -182,12 +182,15 @@ void apply() {
 
   const std::string nacked = now_value("i2c");
   const bool motion_gone = now_value("motion") == "gone";
-  for (auto& port : g_nacks) {
-    for (auto& address : port) address = false;
-  }
+  // Worked out first, because transfers read the table with no lock, and one landing part way
+  // through mustn't find a forced chip answering.
+  std::array<std::array<bool, kAddresses>, kI2cPorts> wanted{};
   for (const ChipEntry& entry : g_board.i2c) {
     const bool forced = nacked == kAllChips || nacked == entry.chip;
-    if (forced || (motion_gone && entry.chip == "qmi8658")) g_nacks[entry.bus][entry.address] = true;
+    if (forced || (motion_gone && entry.chip == "qmi8658")) wanted[entry.bus][entry.address] = true;
+  }
+  for (int port = 0; port < kI2cPorts; ++port) {
+    for (int address = 0; address < kAddresses; ++address) g_nacks[port][address] = wanted[port][address];
   }
 }
 

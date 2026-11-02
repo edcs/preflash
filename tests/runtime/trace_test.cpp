@@ -243,6 +243,24 @@ TEST(Trace, TasksShowCreateAndDelete) {
   EXPECT_STREQ(heard.wait_for(Stream::Task, "delete").subject, "brief");
 }
 
+TEST(Trace, ATaskIsCreatedBeforeItCanDoAnything) {
+  Heard heard;
+  for (int i = 0; i < 200; ++i) {
+    ASSERT_EQ(xTaskCreate([](void*) { vTaskDelete(nullptr); }, "quick", 2048, nullptr, 1, nullptr),
+              pdPASS);
+  }
+  preflash::trace::note(Stream::Net, "wifi", "tasks done", "");
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  preflash::trace::note(Stream::Net, "wifi", "tasks seen", "");
+  heard.wait_for(Stream::Net, "tasks seen");
+  int alive = 0;
+  for (const Record& r : heard.rows()) {
+    if (r.stream != Stream::Task || std::string(r.subject) != "quick") continue;
+    alive += std::string(r.op) == "create" ? 1 : -1;
+    ASSERT_GE(alive, 0) << "a delete came before its create";
+  }
+}
+
 TEST(Trace, NvsShowsSetsAndCommitsWithoutTheValues) {
   const fs::path dir = fs::temp_directory_path() / ("pfnvs" + std::to_string(getpid()));
   setenv("PREFLASH_STATE", dir.c_str(), 1);

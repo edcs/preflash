@@ -99,6 +99,11 @@ BaseType_t xTaskCreatePinnedToCore(TaskFunction_t task, const char* name, uint32
     std::lock_guard<std::mutex> lock(r.mutex);
     r.tasks.push_back(block);
   }
+  // Before the thread starts, which could otherwise be deleted before this row is written.
+  if (preflash::trace::on()) {
+    preflash::trace::note(preflash::trace::Stream::Task, block->name.c_str(), "create",
+                          "stack " + std::to_string(stack));
+  }
   try {
     std::thread([task, parameter, block] {
       t_self = block;
@@ -110,10 +115,6 @@ BaseType_t xTaskCreatePinnedToCore(TaskFunction_t task, const char* name, uint32
     forget_task(block);
     delete block;
     return pdFAIL;
-  }
-  if (preflash::trace::on()) {
-    preflash::trace::note(preflash::trace::Stream::Task, block->name.c_str(), "create",
-                          "stack " + std::to_string(stack));
   }
   return pdPASS;
 }
