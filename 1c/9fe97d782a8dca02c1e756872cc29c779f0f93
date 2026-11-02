@@ -1,0 +1,34 @@
+tests/e2e/tui_test.go
+  s_82b4983a83db4b::t_7f4d08e0f5d780 28-30,117-137
+  s_82b4983a83db4b::t_b4e14b3fc7c0e7 138
+tests/fixtures/lvgl_project/main/main.cpp
+  s_82b4983a83db4b::t_7f4d08e0f5d780 5-6,8,13-14,98-183,201-207
+tests/runtime/net_test.cpp
+  s_82b4983a83db4b::t_7f4d08e0f5d780 9-10,32,211-241
+  s_82b4983a83db4b::t_e623889e41ec99 242-243
+Makefile
+  s_82b4983a83db4b::t_7f4d08e0f5d780 13
+tests/runtime/socket_test.cpp
+  s_82b4983a83db4b::t_7f4d08e0f5d780 528-538
+tests/integration/debug.sh
+  s_82b4983a83db4b::t_7f4d08e0f5d780 1-213
+  s_82b4983a83db4b::t_df5003e04d11a6 214
+tests/integration/snoozel.sh
+  s_82b4983a83db4b::t_72170e62d65f73 272-290
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c9fe97d782a8dca02c1e756872cc29c779f0f93",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
