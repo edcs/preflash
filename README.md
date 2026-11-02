@@ -52,8 +52,9 @@ Use it for quick development and debugging, then test on real hardware before yo
 | Firmware | FreeRTOS tasks, queues and notifications on host threads, `esp_timer`, the task watchdog, restart |
 | Storage | NVS, saved per checkout |
 | Console | The firmware's own serial console or its own USB serial driver, in your terminal, and a virtual serial port for a companion app |
-| Terminal app | A status bar over the serial console, shortcut buttons per project, a board picker and rebuilds that keep the old app on failure |
-| Scripting | A control socket and command line for console lines, status, the serial stream, screenshots and touch |
+| Terminal app | A status bar over the serial console, shortcut buttons per project, a board picker, rebuilds that keep the old app on failure, debug views and a hardware panel |
+| Debugging | Live I2C, GPIO, task, NVS and network traces you can filter and save, plus forced hardware failures |
+| Scripting | A control socket and command line for console lines, status, the serial stream, traces, hardware changes, screenshots and touch |
 | Chips | PCF85063 RTC, QMI8658 motion sensor, AXP2101 power chip, TCA9554 expander and AXS15231B touch at register level. ES8311, ES7210 and GT911 answer on the bus without a behaviour model |
 | Network | Simulated Wi-Fi, SNTP, and real HTTP and HTTPS through `esp_http_client` |
 | Audio | The speaker path through `esp_codec_dev`, played on your Mac |
@@ -61,7 +62,7 @@ Use it for quick development and debugging, then test on real hardware before yo
 
 ### Coming soon
 
-- **Debug views.** Live I2C, GPIO, task, NVS and network traces, forced hardware failures, and sanitizer builds.
+- **Sanitizer builds.** Memory and thread sanitizers on your firmware.
 - **Hardware checks.** Chip models compared against captures from real boards.
 
 ## Install
@@ -116,6 +117,9 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 | `preflash port` | Prints the virtual serial port's path |
 | `preflash shot <file.png\|file.bmp>` | Saves what the panel shows |
 | `preflash touch x y [ms]` | Presses the panel, in the panel's own coordinates, and returns after the release |
+| `preflash trace [--stream x] [--json]` | Prints what firmware does to the hardware, starting with what the app has kept, and follows it through restarts. `x` is `i2c`, `gpio`, `task`, `nvs` or `net` |
+| `preflash trace --save file` | Saves what the app has kept as JSON lines |
+| `preflash hardware [name value] [--json]` | Shows the board's physical state and forced failures, or changes one |
 | `preflash quit` | Stops the app and returns once it has gone |
 
 With no app running, each of these says so and exits 1. `preflash run` works as before, with the socket running underneath it, so you can drive a windowed run from a second terminal.
@@ -151,6 +155,33 @@ Stdin takes the same console lines. Lines starting `@sim ` go to the simulator, 
 `--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked Mac. A headless run ends on `@sim quit` or `preflash quit`, not at the end of stdin.
 
 To boot firmware at a chosen moment, set `PREFLASH_RTC_START=2026-11-01T22:00:00Z`. The simulated RTC starts there and runs on, and it keeps the firmware's time across a restart.
+
+### Trace what firmware does
+
+Tracing starts when a client asks for it and stops when the last client leaves, so it costs a running app one relaxed load until then. The app keeps the newest 8192 records in a ring. A client that stops reading loses its oldest records, and firmware never waits for it. `preflash trace` warns of the gap.
+
+NVS rows show keys and sizes and leave the values out, because a value can be a Wi-Fi password. Network rows show whole URLs, query strings included, so check a saved trace before you share it.
+
+### Break the hardware
+
+`preflash hardware` lists each name, its current setting and its choices. `preflash hardware rotation 90` turns the board a quarter clockwise, and your driver reads it from the motion sensor. `preflash hardware i2c pcf85063` makes that chip stop answering, and `preflash hardware i2c all` does the same for the whole bus.
+
+| Name | Choices | Applies |
+| --- | --- | --- |
+| `rotation` | `0`, `90`, `180`, `270`, as gravity on the QMI8658 | Now |
+| `usb` | `plugged`, `unplugged`, through the AXP2101 | Now |
+| `battery` | `none`, `100`, `50`, `15`, `0`, through the AXP2101 | Now |
+| `internet` | `real`, `offline` | Now |
+| `i2c` | `healthy`, `all`, or a chip on the board | Now |
+| `wifi_join` | `succeeds`, `fails` | Now |
+| `rtc` | `healthy`, `flat`, which sets the PCF85063's OS bit and loses the time | Next boot |
+| `motion` | `healthy`, `gone` | Next boot |
+
+A board shows only the rows its chips can act on, so the 3.49 V2 has no `usb` or `battery`. Preflash refuses to leave the board with no USB and no battery.
+
+Everything you set stays in `faults.json` in the state folder, across restarts, rebuilds and new runs, until you set it back. A boot with anything forced prints what it forced. A flat cell comes back on every boot, including after `esp_restart`, which a real cell wouldn't do.
+
+Firmware that writes the AXP2101's soft power-off bit stops the app, and the next run has USB plugged back in. Forced NACKs happen on the I2C bus, so `esp_io_expander` calls still reach the expander.
 
 ### Connect a companion app
 
@@ -223,9 +254,15 @@ The running screen has a toolbar, the serial console, your shortcuts and an inpu
 | Key | What it does |
 | --- | --- |
 | `^R` | Rebuilds and restarts, with the build's output in the console. If the build fails, the old app keeps running |
+| `^D` | Opens the debug views |
+| `^H` | Opens the hardware panel |
 | `^B` | Picks another board |
 | `^L` | Clears the console |
 | `^C` | Quits and stops the app |
+
+The debug views have a tab each for the console, I2C, GPIO, tasks, NVS and network. Tab moves between them, `/` filters, space pauses, `s` saves the trace to the state folder and esc returns to the console. Tasks and NVS also show a table of what's there now, and a task's stack is the size firmware declared, not what it uses. Rows a forced failure caused show in amber, such as `NACK (injected)`.
+
+The hardware panel changes what `preflash hardware` changes, with up and down to choose and left and right to change. It says whether a change applied now or waits for the next boot, and `^R` restarts from the panel.
 
 The app runs as a child with its stdin closed and its stdout and stderr in `app.log` in the build folder. The screen reads the serial stream over the control socket, so every `preflash` command still works from a second terminal. If the app stops or crashes, the toolbar says how and the console keeps its last output. The screen takes the mouse, so selecting text in the console needs your terminal's selection modifier.
 
@@ -293,7 +330,7 @@ If your firmware stops on a call Preflash doesn't implement, that call needs a s
 make test
 ```
 
-That runs the Go tests, the runtime suite and the integration scripts. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/lcd.sh` runs a project with no BSP from `tests/fixtures/lcd_project`. `tests/integration/snoozel.sh` runs a real project end to end and needs a checkout of it at `../snoozel`, or `SNOOZEL` pointing at one, with a current `sdkconfig`. `tests/integration/nyx.sh` does the same on the 3.49 V2 with `NYX` pointing at a checkout, and skips without it. Both are private projects, so without Snoozel run the steps before that script in the `Makefile`.
+That runs the Go tests, the runtime suite and the integration scripts. `tests/integration/debug.sh` checks traces and forced failures through a running project. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/lcd.sh` runs a project with no BSP from `tests/fixtures/lcd_project`. `tests/integration/snoozel.sh` runs a real project end to end and needs a checkout of it at `../snoozel`, or `SNOOZEL` pointing at one, with a current `sdkconfig`. `tests/integration/nyx.sh` does the same on the 3.49 V2 with `NYX` pointing at a checkout, and skips without it. Both are private projects, so without Snoozel run the steps before that script in the `Makefile`.
 
 ### Layout
 
