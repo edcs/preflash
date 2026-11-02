@@ -324,3 +324,16 @@ func TestStateDirIsPrivate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm())
 }
+
+func TestBoardStopsOnAnUnknownKeyInTheConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "CMakeLists.txt"), "include($ENV{IDF_PATH}/tools/cmake/project.cmake)\n")
+	writeFile(t, filepath.Join(dir, ".preflashrc"), "board: a\nboarf: b\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+
+	_, err = p.Board("")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), ".preflashrc:2")
+}
