@@ -2,6 +2,7 @@
 // it. The argument picks a check, and what the check found goes to stdout.
 #include <fcntl.h>
 #include <poll.h>
+#include <pthread.h>
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
@@ -173,8 +174,22 @@ int links() {
   return 0;
 }
 
+// Starts threads until the system refuses, which macOS does per process.
+void use_up_threads() {
+  pthread_attr_t small;
+  pthread_attr_init(&small);
+  pthread_attr_setstacksize(&small, PTHREAD_STACK_MIN);
+  pthread_t thread;
+  const auto wait = [](void*) -> void* {
+    pause();
+    return nullptr;
+  };
+  while (pthread_create(&thread, &small, wait, nullptr) == 0) {
+  }
+}
+
 int off() {
-  if (port::path().empty() && port::master_fd() < 0) std::printf("no port\n");
+  if (port::path().empty()) std::printf("no port\n");
   return 0;
 }
 
@@ -184,6 +199,11 @@ int main(int argc, char** argv) {
   if (argc != 2) return 2;
   const std::string mode = argv[1];
   setvbuf(stdout, nullptr, _IOLBF, 0);
+  if (mode == "nothreads") {
+    use_up_threads();
+    port::start();
+    return off();
+  }
   port::start();
   if (mode == "off") return off();
   if (mode == "settings") return settings();

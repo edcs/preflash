@@ -189,6 +189,15 @@ TEST(Port, MakesTheExtraLinkAndLeavesOthersFilesAlone) {
   EXPECT_TRUE(fs::is_regular_file(link));
 }
 
+TEST(Port, OffersNoPortItCantServe) {
+  TempFolder folder;
+  int status = -1;
+  const std::string output = run_helper("nothreads", with_port(folder), &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("no port"), std::string::npos) << output;
+  EXPECT_FALSE(fs::is_symlink(folder.path + "/port.tty")) << output;
+}
+
 TEST(Port, FallsBackToTheDeviceWhenTheLinkFails) {
   TempFolder folder;
   int status = -1;

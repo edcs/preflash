@@ -286,10 +286,13 @@ void start() {
   if (const char* extra = std::getenv(kExtraLinkEnv); extra && *extra) make_link(extra, 1);
   try {
     std::thread(write_queue).detach();
-    g_writing = true;
     std::thread(read_input).detach();
+    g_writing = true;
   } catch (const std::system_error& e) {
-    std::fprintf(stderr, "preflash: the serial port is missing a thread: %s\n", e.what());
+    // Half a port would look fine and pass nothing, so nobody gets offered one.
+    std::fprintf(stderr, "preflash: no serial port: %s\n", e.what());
+    remove_links();
+    g_path.clear();
   }
 }
 
