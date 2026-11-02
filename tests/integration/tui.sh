@@ -17,6 +17,8 @@ mkdir -p "$project/managed_components" "$project/sim"
 rsync -a "$root/tests/fixtures/lvgl_project/" "$project/"
 rsync -a --exclude /demos --exclude /docs --exclude /examples --exclude /tests \
   "$lvgl/" "$project/managed_components/lvgl__lvgl/"
+# The tests edit this file, and rsync puts back its old time, which a build would believe.
+touch "$project/main/main.cpp"
 cp "$root/tests/fixtures/snoozel-4b.yaml" "$project/sim/"
 sed -i '' 's/^name: .*/name: mod/' "$project/sim/snoozel-4b.yaml"
 cat > "$project/.preflashrc" <<'RC'
