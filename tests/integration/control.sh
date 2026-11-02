@@ -117,6 +117,7 @@ assert s["backlight"] == 100, s
 assert s["frames"] > 0, s
 assert s["fps"] >= 0, s
 assert s["wifi"] == "off", s
+assert s["rotation"] == 0, s
 ' "$app_pid" || fail "status --json is wrong"
 
 # The socket and stdin feed one console, and the terminal still shows everything.

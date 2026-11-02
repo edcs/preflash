@@ -2,15 +2,20 @@ package project
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/edcs/preflash/internal/board"
 )
 
 const idfCMake = "cmake_minimum_required(VERSION 3.16)\ninclude($ENV{IDF_PATH}/tools/cmake/project.cmake)\nproject(demo)\n"
@@ -277,7 +282,7 @@ func TestRunRefusesAnAppItCannotTalkTo(t *testing.T) {
 		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":99}`)
 	}()
 
-	assert.ErrorContains(t, p.checkNoApp(), "99")
+	assert.ErrorContains(t, p.CheckNoApp(), "99")
 }
 
 func TestNoAppMeansRunCanGoAhead(t *testing.T) {
@@ -286,7 +291,7 @@ func TestNoAppMeansRunCanGoAhead(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(home) })
 	t.Setenv("HOME", home)
 
-	assert.NoError(t, Project{Dir: "/x/demo"}.checkNoApp())
+	assert.NoError(t, Project{Dir: "/x/demo"}.CheckNoApp())
 }
 
 func TestRootComesFromTheEnvironment(t *testing.T) {
@@ -323,4 +328,213 @@ func TestStateDirIsPrivate(t *testing.T) {
 	info, err := os.Stat(p.StateDir())
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+}
+
+func TestBoardStopsOnAnUnknownKeyInTheConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "CMakeLists.txt"), "include($ENV{IDF_PATH}/tools/cmake/project.cmake)\n")
+	writeFile(t, filepath.Join(dir, ".preflashrc"), "board: a\nboarf: b\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+
+	_, err = p.Board("")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), ".preflashrc:2")
+}
+
+func TestBoardsListProjectFilesAndStock(t *testing.T) {
+	dir := idfProject(t, t.TempDir())
+	writeFile(t, filepath.Join(dir, "sim", "mod.yaml"), "name: mod\nextends: ESP32-S3-Touch-LCD-4B\nchanges:\n  backlight: {enable: gpio43}\n")
+	writeFile(t, filepath.Join(dir, "sim", "broken.yml"), "name: broken\nextends: nothing-like-this\n")
+	writeFile(t, filepath.Join(dir, "sim", "notes.yaml"), "title: not a board\n")
+	writeFile(t, filepath.Join(dir, "elsewhere.yaml"), "name: stray\nextends: ESP32-S3-Touch-LCD-4B\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+
+	choices := p.Boards()
+
+	var names []string
+	for _, c := range choices {
+		names = append(names, c.Board.Name+"/"+c.File)
+	}
+	assert.Equal(t, []string{"stray/elsewhere.yaml", "/sim/broken.yml", "mod/sim/mod.yaml", "ESP32-S3-Touch-LCD-4B/"}, names)
+	assert.Error(t, choices[1].Err, "a board file that won't load stays on the list")
+	assert.True(t, choices[0].FromProject)
+	assert.False(t, choices[3].FromProject)
+}
+
+func TestBoardsPutTheConfiguredFileFirst(t *testing.T) {
+	dir := idfProject(t, t.TempDir())
+	writeFile(t, filepath.Join(dir, "hw", "custom.yaml"), "name: custom\nextends: ESP32-S3-Touch-LCD-4B\n")
+	writeFile(t, filepath.Join(dir, "sim", "mod.yaml"), "name: mod\nextends: ESP32-S3-Touch-LCD-4B\n")
+	writeFile(t, filepath.Join(dir, ".preflashrc"), "board: hw/custom.yaml\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+
+	choices := p.Boards()
+
+	require.Len(t, choices, 3)
+	assert.Equal(t, "custom", choices[0].Board.Name)
+	assert.Equal(t, "mod", choices[1].Board.Name)
+}
+
+func TestBoardsLeaveNonBoardYamlOut(t *testing.T) {
+	dir := idfProject(t, t.TempDir())
+	writeFile(t, filepath.Join(dir, "broken.yaml"), "name: [\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+	assert.Len(t, p.Boards(), len(board.Stock()))
+}
+
+func TestLVGLVersionComesFromTheManagedComponent(t *testing.T) {
+	dir := idfProject(t, t.TempDir())
+	p, err := Find(dir)
+	require.NoError(t, err)
+	assert.Empty(t, p.LVGLVersion())
+
+	writeFile(t, filepath.Join(dir, "managed_components", "lvgl__lvgl", "lv_version.h"),
+		"#define LVGL_VERSION_MAJOR 9\n#define LVGL_VERSION_MINOR 3\n#define LVGL_VERSION_PATCH 0\n")
+	assert.Equal(t, "9.3.0", p.LVGLVersion())
+}
+
+func TestInstallCopiesTheAppSoABuildCantTouchWhatRuns(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := idfProject(t, t.TempDir())
+	p, err := Find(dir)
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(p.BuildDir(), 0o755))
+	writeFile(t, filepath.Join(p.BuildDir(), "app"), "first")
+	b, err := board.LoadStock("ESP32-S3-Touch-LCD-4B")
+	require.NoError(t, err)
+	env := []string{"PREFLASH_BOARD=old", "PATH=/bin"}
+
+	path, runEnv, err := p.Install(b, env)
+
+	require.NoError(t, err)
+	writeFile(t, filepath.Join(p.BuildDir(), "app"), "second")
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "first", string(got))
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode()&0o100, "the copy must run")
+
+	assert.Contains(t, runEnv, "PATH=/bin")
+	assert.NotContains(t, runEnv, "PREFLASH_BOARD=old")
+	var boardFile string
+	for _, entry := range runEnv {
+		if value, ok := strings.CutPrefix(entry, "PREFLASH_BOARD="); ok {
+			boardFile = value
+		}
+	}
+	data, err := os.ReadFile(boardFile)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), b.Name)
+}
+
+func TestBuildWritesToTheGivenOutputAndStopsOnFailure(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := idfProject(t, t.TempDir())
+	p, err := Find(dir)
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(p.BuildDir(), 0o755))
+	var output strings.Builder
+
+	// cmake refuses this project, because IDF_PATH leads nowhere.
+	err = p.Build(context.Background(), []string{"PATH=" + os.Getenv("PATH"), "IDF_PATH=/nowhere"}, &output)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the build failed")
+	assert.Contains(t, output.String(), "/nowhere")
+}
+
+func TestLogPathIsInTheBuildFolder(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Find(idfProject(t, t.TempDir()))
+	require.NoError(t, err)
+	assert.Equal(t, p.BuildDir(), filepath.Dir(p.LogPath()))
+}
+
+func TestStopSignalsLeaveAnInheritedIgnoreAlone(t *testing.T) {
+	assert.Contains(t, stopSignals(), os.Signal(syscall.SIGHUP))
+
+	signal.Ignore(syscall.SIGHUP)
+	defer signal.Reset(syscall.SIGHUP)
+
+	assert.NotContains(t, stopSignals(), os.Signal(syscall.SIGHUP))
+	assert.Contains(t, stopSignals(), os.Interrupt)
+}
+
+func TestABuildStoppedOnPurposeStaysQuiet(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Find(idfProject(t, t.TempDir()))
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(p.BuildDir(), 0o755))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var printed strings.Builder
+
+	err = p.buildQuietly(ctx, []string{"PATH=" + os.Getenv("PATH")}, &printed)
+
+	assert.EqualError(t, err, "the build was stopped")
+	assert.Empty(t, printed.String())
+}
+
+func TestAFailedBuildPrintsItsOutput(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Find(idfProject(t, t.TempDir()))
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(p.BuildDir(), 0o755))
+	var printed strings.Builder
+
+	err = p.buildQuietly(context.Background(), []string{"PATH=" + os.Getenv("PATH"), "IDF_PATH=/nowhere"}, &printed)
+
+	assert.ErrorContains(t, err, "the build failed")
+	assert.Contains(t, printed.String(), "/nowhere")
+}
+
+func TestABoardFileWithASyntaxErrorStaysOnTheList(t *testing.T) {
+	dir := idfProject(t, t.TempDir())
+	writeFile(t, filepath.Join(dir, "sim", "mod.yaml"), "name: mod\nextends: ESP32-S3-Touch-LCD-4B\nchanges: [\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+
+	choices := p.Boards()
+
+	require.Len(t, choices, len(board.Stock())+1)
+	assert.Equal(t, filepath.Join("sim", "mod.yaml"), choices[0].File)
+	assert.Error(t, choices[0].Err)
+}
+
+func TestAFailedInstallLeavesTheRunningBoardFileAlone(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Find(idfProject(t, t.TempDir()))
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(p.BuildDir(), 0o755))
+	boardFile := filepath.Join(p.BuildDir(), "board.running.json")
+	writeFile(t, boardFile, "the old board")
+	b, err := board.LoadStock("ESP32-S3-Touch-LCD-4B")
+	require.NoError(t, err)
+
+	_, _, err = p.Install(b, nil)
+
+	require.ErrorContains(t, err, "the build made no app")
+	got, err := os.ReadFile(boardFile)
+	require.NoError(t, err)
+	assert.Equal(t, "the old board", string(got))
+}
+
+func TestBoardsAreFoundUnderAPathWithGlobCharacters(t *testing.T) {
+	dir := idfProject(t, filepath.Join(t.TempDir(), "app [old]"))
+	writeFile(t, filepath.Join(dir, "sim", "mod.yaml"), "name: mod\nextends: ESP32-S3-Touch-LCD-4B\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "mod", p.Boards()[0].Board.Name)
+}
+
+func TestStopSignalsLeaveAnIgnoredInterruptAlone(t *testing.T) {
+	signal.Ignore(os.Interrupt)
+	defer signal.Reset(os.Interrupt)
+	assert.NotContains(t, stopSignals(), os.Interrupt)
 }

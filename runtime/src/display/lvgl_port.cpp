@@ -23,6 +23,8 @@ constexpr uint32_t kLongestSleepMs = 5;
 std::recursive_timed_mutex g_lock;
 bool g_started = false;
 
+constexpr int kDegreesPerRotation = 90;
+
 uint32_t tick_ms() { return static_cast<uint32_t>(esp_timer_get_time() / 1000); }
 
 // LVGL draws what a rotated firmware sees, and the panel never turns, so the
@@ -38,6 +40,7 @@ void flush(lv_display_t* disp, const lv_area_t* area, uint8_t* px) {
 
   std::vector<uint8_t> packed(panel_stride * lv_area_get_height(&physical));
   const lv_display_rotation_t rotation = lv_display_get_rotation(disp);
+  preflash::panel::set_rotation(static_cast<int>(rotation) * kDegreesPerRotation);
   if (rotation == LV_DISPLAY_ROTATION_0) {
     for (int y = 0; y < h; ++y) {
       std::memcpy(packed.data() + y * panel_stride, px + y * source_stride, panel_stride);

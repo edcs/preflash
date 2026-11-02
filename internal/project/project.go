@@ -11,9 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/edcs/preflash/internal/board"
+	"github.com/edcs/preflash/internal/rc"
 )
 
 // defaultBoard runs a project that hasn't named one.
@@ -164,10 +163,11 @@ func (p Project) Board(flag string) (board.Board, error) {
 	if flag != "" {
 		return loadNamed(flag, flag)
 	}
-	named, err := p.rcBoard()
+	config, _, err := rc.Load(p.Dir)
 	if err != nil {
 		return board.Board{}, err
 	}
+	named := config.Board
 	if named == "" {
 		return board.LoadStock(defaultBoard)
 	}
@@ -176,24 +176,6 @@ func (p Project) Board(flag string) (board.Board, error) {
 		path = filepath.Join(p.Dir, path)
 	}
 	return loadNamed(named, path)
-}
-
-func (p Project) rcBoard() (string, error) {
-	path := filepath.Join(p.Dir, ".preflashrc")
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", nil
-	}
-	if err != nil {
-		return "", err
-	}
-	var rc struct {
-		Board string `yaml:"board"`
-	}
-	if err := yaml.Unmarshal(data, &rc); err != nil {
-		return "", fmt.Errorf("%s: %w", path, err)
-	}
-	return rc.Board, nil
 }
 
 func loadNamed(name, path string) (board.Board, error) {

@@ -144,7 +144,7 @@ func TestDialGivesUpOnAListenerThatNeverAnswers(t *testing.T) {
 func TestStatusReadsEveryField(t *testing.T) {
 	path := shortPath(t)
 	startFake(t, path, func(req map[string]any, reply func(string)) {
-		reply(fmt.Sprintf(`{"id":%d,"ok":true,"project":"demo","board":"B","width":480,"height":320,"pid":7,"uptime_ms":1500,"backlight":40,"frames":12,"fps":3,"wifi":"connected"}`, int(req["id"].(float64))))
+		reply(fmt.Sprintf(`{"id":%d,"ok":true,"project":"demo","board":"B","width":480,"height":320,"pid":7,"uptime_ms":1500,"backlight":40,"rotation":90,"frames":12,"fps":3,"wifi":"connected"}`, int(req["id"].(float64))))
 	})
 	c, err := Dial(path)
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func TestStatusReadsEveryField(t *testing.T) {
 
 	got, err := c.Status()
 	require.NoError(t, err)
-	assert.Equal(t, Status{Project: "demo", Board: "B", Width: 480, Height: 320, PID: 7, UptimeMs: 1500, Backlight: 40, Frames: 12, FPS: 3, WiFi: "connected"}, got)
+	assert.Equal(t, Status{Project: "demo", Board: "B", Width: 480, Height: 320, PID: 7, UptimeMs: 1500, Backlight: 40, Rotation: 90, Frames: 12, FPS: 3, WiFi: "connected"}, got)
 }
 
 func TestAnErrorReplyBecomesAnError(t *testing.T) {
@@ -678,4 +678,76 @@ func (b *syncBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.String()
+}
+
+func TestWatchReportsEachBootAndWhatHappensInIt(t *testing.T) {
+	path := shortPath(t)
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	serve := func(l net.Listener, lines ...string) {
+		conn, err := l.Accept()
+		require.NoError(t, err)
+		reader := bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1,"project":"demo"}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		for _, line := range lines {
+			fmt.Fprintln(conn, line)
+		}
+		conn.Close()
+		l.Close()
+	}
+	go func() {
+		serve(listener, `{"event":"serial","data":"b25l"}`, `{"event":"dropped","bytes":9}`, `{"event":"restarting"}`)
+		next, err := net.Listen("unix", path)
+		require.NoError(t, err)
+		serve(next, `{"event":"serial","data":"dHdv"}`)
+	}()
+
+	var log []string
+	err = Watch(path, Watcher{
+		Connected:  func(h Hello) { log = append(log, "connected "+h.Project) },
+		Serial:     func(b []byte) error { log = append(log, "serial "+string(b)); return nil },
+		Dropped:    func(n int) { log = append(log, fmt.Sprintf("dropped %d", n)) },
+		Restarting: func() { log = append(log, "restarting") },
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"connected demo", "serial one", "dropped 9", "restarting", "connected demo", "serial two"}, log)
+}
+
+func TestSetDeadlineStopsACallToAnAppThatHasGoneQuiet(t *testing.T) {
+	path := shortPath(t)
+	startFake(t, path, func(req map[string]any, reply func(string)) {})
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+
+	require.NoError(t, c.SetDeadline(time.Now().Add(50*time.Millisecond)))
+	_, err = c.Status()
+
+	assert.ErrorIs(t, err, ErrStopped)
+}
+
+func TestAwaitWaitsForASocketToAppear(t *testing.T) {
+	path := shortPath(t)
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		startFake(t, path, func(req map[string]any, reply func(string)) { reply(ok(req)) })
+	}()
+	c, err := Await(path, 5*time.Second, os.Getpid())
+	require.NoError(t, err)
+	c.Close()
+}
+
+func TestAwaitStopsWhenTheProcessDies(t *testing.T) {
+	cmd := exec.Command("true")
+	require.NoError(t, cmd.Run())
+	start := time.Now()
+
+	_, err := Await(shortPath(t), time.Minute, cmd.Process.Pid)
+
+	assert.ErrorIs(t, err, ErrNotRunning)
+	assert.Less(t, time.Since(start), time.Second)
 }

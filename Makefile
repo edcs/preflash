@@ -8,4 +8,5 @@ test:
 	tests/integration/build_fixture.sh
 	tests/integration/display.sh
 	tests/integration/control.sh
+	tests/integration/tui.sh
 	tests/integration/snoozel.sh
