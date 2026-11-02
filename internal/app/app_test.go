@@ -483,6 +483,7 @@ func TestAReportForAnAppAlreadyReplacedStaysUnsaid(t *testing.T) {
 
 	require.True(t, s.Run(testBoard))
 	next[Started](t, s, nil)
+	next[Connected](t, s, nil)
 	close(release)
 
 	quiet(t, s, 2*crashPoll)
