@@ -1,0 +1,68 @@
+tests/runtime/console_test.cpp
+  s_82b4983a83db4b::t_acf170bcef83a2 277-284,286-291
+tests/runtime/serial_test.cpp
+  s_82b4983a83db4b::t_acf170bcef83a2 109-138,153-165,170-171,244-260
+  s_82b4983a83db4b::t_82c6908eb94d78 261
+internal/client/frame.go
+  s_82b4983a83db4b::t_d53a5b362dcf00 32-34
+internal/project/run.go
+  s_82b4983a83db4b::t_d53a5b362dcf00 72-74
+README.md
+  s_82b4983a83db4b::t_d53a5b362dcf00 125-129,137
+runtime/src/display/panel.cpp
+  s_82b4983a83db4b::t_d53a5b362dcf00 59,61,229-230
+runtime/src/host/socket.cpp
+  s_82b4983a83db4b::t_d53a5b362dcf00 4,13,50-51,138-141,143,145-146,301,357-375,386,391,394-398,400,486
+runtime/include/preflash/touch.h
+  s_82b4983a83db4b::t_d53a5b362dcf00 20-21
+runtime/src/console/console.cpp
+  s_82b4983a83db4b::t_d53a5b362dcf00 25,47,152-154,157-159,188,205-210,261,265,269-270,274
+tests/integration/control.sh
+  s_82b4983a83db4b::t_acf170bcef83a2 91-96,276
+internal/client/client_test.go
+  s_82b4983a83db4b::t_acf170bcef83a2 12,14,331-429,496-507
+  s_82b4983a83db4b::t_cab437346f6e82 508
+runtime/src/host/main.cpp
+  s_82b4983a83db4b::t_d53a5b362dcf00 106
+internal/project/project_test.go
+  s_82b4983a83db4b::t_acf170bcef83a2 240-256
+tests/runtime/panel_test.cpp
+  s_82b4983a83db4b::t_acf170bcef83a2 378,396-408
+  s_82b4983a83db4b::t_f2901359182bd7 409-410
+runtime/include/preflash/serial.h
+  s_82b4983a83db4b::t_d53a5b362dcf00 12-14,32-35,44-46,76,80-81
+runtime/src/host/serial.cpp
+  s_82b4983a83db4b::t_d53a5b362dcf00 15,30,60-78,94-148,165,236-240,258-268,297,303,319-320,339-340,359,361-368,370-384,386,389
+runtime/src/os/fail.cpp
+  s_82b4983a83db4b::t_d53a5b362dcf00 13
+runtime/include/preflash/control.h
+  s_82b4983a83db4b::t_d53a5b362dcf00 23-25
+tests/runtime/helpers/serial_helper.cpp
+  s_82b4983a83db4b::t_acf170bcef83a2 6,36-79
+  s_82b4983a83db4b::t_a08a74e165d92d 80-81,103-104
+tests/runtime/socket_test.cpp
+  s_82b4983a83db4b::t_acf170bcef83a2 188-235,343-358
+  s_82b4983a83db4b::t_07d93725259942 359
+runtime/include/preflash/socket.h
+  s_82b4983a83db4b::t_d53a5b362dcf00 17-18,21-23,26-27
+internal/project/project.go
+  s_82b4983a83db4b::t_d53a5b362dcf00 22-24,132-133,138-151
+internal/client/client.go
+  s_82b4983a83db4b::t_d53a5b362dcf00 26-29,95,98-101,107-108,115-120,301,303-304,306-307,310,312-317,322-323,329,333,346
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e163f8ff04610d316fe198950d8227da0190ea1e",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
