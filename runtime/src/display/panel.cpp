@@ -123,9 +123,16 @@ int shown(std::optional<bool> enable_high) {
 }
 
 std::optional<bool> enable_level() {
-  const std::optional<int> enable = board().backlight.enable_pin;
-  if (!enable) return std::nullopt;
-  return gpio_read(*enable);
+  const Backlight& bl = board().backlight;
+  if (bl.enable_expander_bit) return expander_level(*bl.enable_expander_bit);
+  if (bl.enable_pin) return gpio_read(*bl.enable_pin);
+  return std::nullopt;
+}
+
+std::string enable_name() {
+  const Backlight& bl = board().backlight;
+  return bl.enable_expander_bit ? "exio" + std::to_string(*bl.enable_expander_bit)
+                                : "gpio" + std::to_string(*bl.enable_pin);
 }
 
 }  // namespace
@@ -140,10 +147,7 @@ std::string backlight_status() {
   const std::optional<bool> level = enable_level();
   std::string status =
       "brightness: " + std::to_string(shown(level)) + " (pwm " + std::to_string(g_brightness);
-  if (level) {
-    status += ", enable gpio" + std::to_string(*board().backlight.enable_pin) +
-              (*level ? " high" : " low");
-  }
+  if (level) status += ", enable " + enable_name() + (*level ? " high" : " low");
   return status + ")";
 }
 

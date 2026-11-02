@@ -35,7 +35,8 @@ class TestBoard : public testing::Environment {
   void SetUp() override {
     path_ = fs::temp_directory_path() / ("preflash_panel_" + std::to_string(getpid()) + ".json");
     std::ofstream(path_) << R"({"name": "Test", "display": {"width": 16, "height": 8}, "i2c": [],
-                               "backlight": {"pin": 4, "active_low": true}, "audio_codec": "none"})";
+                               "backlight": {"pin": 4, "active_low": true}, "audio_codec": "none",
+                               "power_amp_bit": 3})";
     setenv("PREFLASH_BOARD", path_.c_str(), 1);
   }
   void TearDown() override { fs::remove(path_); }

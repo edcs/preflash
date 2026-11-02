@@ -21,9 +21,11 @@ std::map<std::string, ChipFactory>& factories() {
       {"pcf85063", [] { return std::make_unique<Pcf85063>(); }},
       {"qmi8658", [] { return std::make_unique<Qmi8658>(); }},
       {"axp2101", [] { return std::make_unique<Axp2101>(); }},
+      {"tca9554", [] { return std::make_unique<Tca9554>(); }},
+      {"axs15231b",
+       [] { return std::make_unique<Axs15231bTouch>(board().width, board().height); }},
       // These only need to answer. The audio chips are modelled at the API
       // level, and touches come from the mouse rather than the GT911.
-      {"tca9554", plain_chip("tca9554")},
       {"es8311", plain_chip("es8311")},
       {"es7210", plain_chip("es7210")},
       {"gt911", plain_chip("gt911")},
@@ -40,17 +42,19 @@ void register_chip(const std::string& name, ChipFactory factory) {
 void attach_chips(const Board& board) {
   // Everything is checked and built before the bus is touched, so a bad board
   // leaves the bus as it was.
-  std::set<uint8_t> taken;
-  std::vector<std::pair<uint8_t, std::unique_ptr<I2cDevice>>> staged;
+  std::set<std::pair<int, uint8_t>> taken;
+  std::vector<std::pair<const ChipEntry*, std::unique_ptr<I2cDevice>>> staged;
   for (const ChipEntry& entry : board.i2c) {
     const auto factory = factories().find(entry.chip);
     if (factory == factories().end())
       throw std::runtime_error("board: no model for chip " + entry.chip);
-    if (!taken.insert(entry.address).second)
+    if (entry.bus < 0 || entry.bus >= kI2cPorts)
+      throw std::runtime_error("board: chip " + entry.chip + " is on a bus the chip doesn't have");
+    if (!taken.insert({entry.bus, entry.address}).second)
       throw std::runtime_error("board: chip " + entry.chip + " shares an address with another");
-    staged.emplace_back(entry.address, factory->second());
+    staged.emplace_back(&entry, factory->second());
   }
-  for (auto& [address, device] : staged) i2c_bus().add(address, std::move(device));
+  for (auto& [entry, device] : staged) i2c_bus(entry->bus).add(entry->address, std::move(device));
 }
 
 }  // namespace preflash

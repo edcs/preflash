@@ -59,14 +59,24 @@ i2c_master_bus_handle_t new_bus() {
   return bus;
 }
 
-i2c_master_dev_handle_t new_device(uint16_t address) {
+i2c_master_dev_handle_t add_device(i2c_master_bus_handle_t bus, uint16_t address) {
   i2c_device_config_t config = {};
   config.dev_addr_length = I2C_ADDR_BIT_LEN_7;
   config.device_address = address;
   config.scl_speed_hz = 100000;
   i2c_master_dev_handle_t device = nullptr;
-  EXPECT_EQ(i2c_master_bus_add_device(new_bus(), &config, &device), ESP_OK);
+  EXPECT_EQ(i2c_master_bus_add_device(bus, &config, &device), ESP_OK);
   return device;
+}
+
+i2c_master_dev_handle_t new_device(uint16_t address) { return add_device(new_bus(), address); }
+
+i2c_master_dev_handle_t device_on(int port, uint16_t address) {
+  i2c_master_bus_config_t config = {};
+  config.i2c_port = port;
+  i2c_master_bus_handle_t bus = nullptr;
+  EXPECT_EQ(i2c_new_master_bus(&config, &bus), ESP_OK);
+  return add_device(bus, address);
 }
 
 }  // namespace
@@ -169,6 +179,45 @@ TEST(I2c, RejectsBadArguments) {
             ESP_ERR_INVALID_ARG);
 }
 
+TEST(I2c, ADeviceOnlyAnswersOnItsOwnBus) {
+  std::vector<uint8_t> log;
+  i2c_bus(1).add(0x22, std::make_unique<FakeDevice>(&log));
+  i2c_master_dev_handle_t right = device_on(1, 0x22);
+  i2c_master_dev_handle_t wrong = device_on(0, 0x22);
+  const uint8_t byte = 0x01;
+  EXPECT_EQ(i2c_master_transmit(right, &byte, 1, kTimeoutMs), ESP_OK);
+  EXPECT_EQ(i2c_master_transmit(wrong, &byte, 1, kTimeoutMs), ESP_ERR_INVALID_STATE);
+  EXPECT_EQ(log.size(), 1u);
+  i2c_bus(1).take(0x22);
+}
+
+TEST(I2c, TheSameAddressCanSitOnBothBuses) {
+  std::vector<uint8_t> first, second;
+  Attached on_zero(0x23, &first);
+  i2c_bus(1).add(0x23, std::make_unique<FakeDevice>(&second));
+  const uint8_t byte = 0x02;
+  EXPECT_EQ(i2c_master_transmit(device_on(1, 0x23), &byte, 1, kTimeoutMs), ESP_OK);
+  EXPECT_TRUE(first.empty());
+  EXPECT_EQ(second.size(), 1u);
+  i2c_bus(1).take(0x23);
+}
+
+TEST(I2c, APortTheChipLacksIsAnError) {
+  i2c_master_bus_config_t config = {};
+  config.i2c_port = 2;
+  i2c_master_bus_handle_t bus = nullptr;
+  EXPECT_EQ(i2c_new_master_bus(&config, &bus), ESP_ERR_INVALID_ARG);
+}
+
+TEST(I2c, AnAutomaticPortRunsOutOfBuses) {
+  i2c_master_bus_config_t config = {};
+  config.i2c_port = -1;
+  i2c_master_bus_handle_t bus = nullptr;
+  EXPECT_EQ(i2c_new_master_bus(&config, &bus), ESP_OK);
+  EXPECT_EQ(i2c_new_master_bus(&config, &bus), ESP_OK);
+  EXPECT_EQ(i2c_new_master_bus(&config, &bus), ESP_ERR_NOT_FOUND);
+}
+
 TEST(Gpio, OutputPinFollowsSetLevel) {
   EXPECT_EQ(gpio_reset_pin(GPIO_NUM_10), ESP_OK);
   EXPECT_EQ(gpio_set_direction(GPIO_NUM_10, GPIO_MODE_OUTPUT), ESP_OK);
@@ -229,6 +278,73 @@ TEST(Gpio, OpenDrainHighLetsGoOfTheLine) {
   EXPECT_TRUE(gpio_read(16));
   gpio_set_level(GPIO_NUM_16, 0);
   EXPECT_FALSE(gpio_read(16));
+}
+
+TEST(Gpio, AnUndrivenPinReadsLowWithoutAPull) {
+  ASSERT_EQ(gpio_set_direction(GPIO_NUM_5, GPIO_MODE_INPUT), ESP_OK);
+  EXPECT_EQ(gpio_get_level(GPIO_NUM_5), 0);
+}
+
+TEST(Gpio, APullUpHoldsAnIdleInputHigh) {
+  gpio_config_t config = {};
+  config.pin_bit_mask = 1ULL << GPIO_NUM_6;
+  config.mode = GPIO_MODE_INPUT;
+  config.pull_up_en = GPIO_PULLUP_ENABLE;
+  ASSERT_EQ(gpio_config(&config), ESP_OK);
+  EXPECT_EQ(gpio_get_level(GPIO_NUM_6), 1);
+}
+
+TEST(Gpio, SomethingOutsideBeatsAPullUp) {
+  ASSERT_EQ(gpio_set_direction(GPIO_NUM_7, GPIO_MODE_INPUT), ESP_OK);
+  ASSERT_EQ(gpio_set_pull_mode(GPIO_NUM_7, GPIO_PULLUP_ONLY), ESP_OK);
+  EXPECT_EQ(gpio_get_level(GPIO_NUM_7), 1);
+  gpio_write(GPIO_NUM_7, false);
+  EXPECT_EQ(gpio_get_level(GPIO_NUM_7), 0);
+}
+
+TEST(Gpio, APullDownBeatsNothingButReadsLow) {
+  ASSERT_EQ(gpio_set_direction(GPIO_NUM_8, GPIO_MODE_INPUT), ESP_OK);
+  ASSERT_EQ(gpio_pullup_en(GPIO_NUM_8), ESP_OK);
+  ASSERT_EQ(gpio_pullup_dis(GPIO_NUM_8), ESP_OK);
+  ASSERT_EQ(gpio_pulldown_en(GPIO_NUM_8), ESP_OK);
+  EXPECT_EQ(gpio_get_level(GPIO_NUM_8), 0);
+  ASSERT_EQ(gpio_pulldown_dis(GPIO_NUM_8), ESP_OK);
+  ASSERT_EQ(gpio_pullup_en(GPIO_NUM_8), ESP_OK);
+  EXPECT_EQ(gpio_get_level(GPIO_NUM_8), 1);
+}
+
+TEST(Gpio, AnOutputOnlyPinReadsZero) {
+  ASSERT_EQ(gpio_set_direction(GPIO_NUM_9, GPIO_MODE_OUTPUT), ESP_OK);
+  ASSERT_EQ(gpio_set_level(GPIO_NUM_9, 1), ESP_OK);
+  EXPECT_EQ(gpio_get_level(GPIO_NUM_9), 0);
+  ASSERT_EQ(gpio_set_direction(GPIO_NUM_9, GPIO_MODE_INPUT_OUTPUT), ESP_OK);
+  EXPECT_EQ(gpio_get_level(GPIO_NUM_9), 1);
+}
+
+TEST(Gpio, ConfigSetsEveryPinInTheMask) {
+  gpio_config_t config = {};
+  config.pin_bit_mask = 1ULL << GPIO_NUM_10 | 1ULL << GPIO_NUM_11;
+  config.mode = GPIO_MODE_OUTPUT;
+  ASSERT_EQ(gpio_config(&config), ESP_OK);
+  EXPECT_TRUE(preflash::gpio_is_output(GPIO_NUM_10));
+  EXPECT_TRUE(preflash::gpio_is_output(GPIO_NUM_11));
+}
+
+TEST(Gpio, ConfigRejectsAnEmptyMaskAndMissingPins) {
+  gpio_config_t config = {};
+  config.mode = GPIO_MODE_INPUT;
+  EXPECT_EQ(gpio_config(&config), ESP_ERR_INVALID_ARG);
+  config.pin_bit_mask = 1ULL << 22;  // the ESP32-S3 has no GPIO 22
+  EXPECT_EQ(gpio_config(&config), ESP_ERR_INVALID_ARG);
+  EXPECT_EQ(gpio_config(nullptr), ESP_ERR_INVALID_ARG);
+}
+
+TEST(GpioDeathTest, ConfigNamesInterruptsItCantRaise) {
+  gpio_config_t config = {};
+  config.pin_bit_mask = 1ULL << GPIO_NUM_12;
+  config.mode = GPIO_MODE_INPUT;
+  config.intr_type = GPIO_INTR_NEGEDGE;
+  EXPECT_DEATH(gpio_config(&config), "gpio_config");
 }
 
 TEST(Gpio, RejectsPinsTheChipDoesntHave) {

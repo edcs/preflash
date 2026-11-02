@@ -100,6 +100,38 @@ class Axp2101 : public RegisterChip {
   void store(uint8_t reg, uint8_t value) override;
 };
 
+// TI TCA9554, datasheet rev. H. Each register stays selected until the next write
+// chooses another: the chip has no auto-increment.
+class Tca9554 : public RegisterChip {
+ public:
+  Tca9554();
+
+ protected:
+  uint8_t load(uint8_t reg) override;
+  void store(uint8_t reg, uint8_t value) override;
+  uint8_t next(uint8_t reg) override { return reg; }
+};
+
+// The touch half of an AXS15231B, which answers one 11-byte read command with the
+// layout in Waveshare's examples: the number of points at byte 1, then the position
+// as two 12-bit values, the first along the long side from the far end. Touches come
+// from the touch queue, one per read, so a quick tap still shows as a press.
+class Axs15231bTouch : public I2cDevice {
+ public:
+  Axs15231bTouch(int width, int height);
+
+  bool write(std::span<const uint8_t> data) override;
+  bool read(std::span<uint8_t> out) override;
+
+ private:
+  int width_;
+  int height_;
+  bool asked_ = false;
+  bool down_ = false;
+  int x_ = 0;
+  int y_ = 0;
+};
+
 // Called by esp_restart just before it re-runs the process, so that chips which
 // keep their state through a restart can hand it on.
 void carry_chips_across_restart();
