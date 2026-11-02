@@ -56,6 +56,9 @@ func terminalApp(args []string) error {
 	}()
 
 	_, err = program.Run()
+	// Stopping the app can take seconds, and with Bubble Tea's handler gone a signal now
+	// would end this process and leave the app running, with nothing to stop it.
+	signal.Ignore(os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	if errors.Is(err, tea.ErrInterrupted) || errors.Is(err, tea.ErrProgramKilled) {
 		return nil
 	}

@@ -624,3 +624,19 @@ func TestRebuildReadsTheBoardFileAgain(t *testing.T) {
 	assert.Len(t, f.runs, 2, "a broken file builds nothing")
 	wantScreen(t, m, "nothing-at-all")
 }
+
+func TestAnUnfinishedLineStillCountsForStatusFields(t *testing.T) {
+	m := running(t, newFake())
+	parsed, err := rc.Parse("rc", []byte("status:\n  - name: a\n    pattern: 'a=(\\w+)'\n"))
+	require.NoError(t, err)
+	m.opts.Config.Status = parsed.Status
+
+	serial(m, "a=first")
+	typed(m, "x")
+	press(m, "enter")
+	wantScreen(t, m, "a first")
+
+	serial(m, "a=last")
+	feed(m, app.Exited{Reason: "The app exited."})
+	assert.Equal(t, "last", m.captures["a"])
+}

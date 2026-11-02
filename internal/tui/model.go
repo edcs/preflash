@@ -267,7 +267,7 @@ func (m *Model) event(e app.Event) {
 }
 
 func (m *Model) exited(e app.Exited) {
-	m.console.flush()
+	m.endLine()
 	for _, text := range e.Tail {
 		m.say(text, lineText)
 	}
@@ -303,8 +303,17 @@ func (m *Model) capture(text string) {
 	}
 }
 
+// endLine finishes a serial line that has no newline yet, as something else is about to
+// follow it.
+func (m *Model) endLine() {
+	if text, ok := m.console.flush(); ok {
+		m.capture(text)
+	}
+}
+
 // say adds preflash's own line to the console.
 func (m *Model) say(text string, kind lineKind) {
+	m.endLine()
 	m.console.add(text, kind)
 	if m.scroll > 0 {
 		m.scroll += rowCount(text, m.consoleWidth())

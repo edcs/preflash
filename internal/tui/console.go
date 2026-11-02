@@ -92,12 +92,14 @@ func (c *console) add(text string, kind lineKind) {
 	c.push(line{text: strings.ToValidUTF8(cleanText(text), "�"), kind: kind})
 }
 
-// flush ends a line that never got its newline.
-func (c *console) flush() {
-	if len(c.partial) > 0 {
-		c.finish(c.partial)
-		c.partial = nil
+// flush ends a line that never got its newline, and gives it back if there was one.
+func (c *console) flush() (string, bool) {
+	if len(c.partial) == 0 {
+		return "", false
 	}
+	text := c.finish(c.partial)
+	c.partial = nil
+	return text, true
 }
 
 func (c *console) clear() {

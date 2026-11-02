@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/edcs/preflash/internal/app"
+	"github.com/edcs/preflash/internal/board"
 	"github.com/edcs/preflash/internal/project"
 )
 
@@ -201,4 +202,41 @@ func TestOpeningThePickerRereadsTheBoardsAndKeepsTheChoice(t *testing.T) {
 
 	assert.Len(t, m.opts.Choices, 3)
 	wantScreen(t, m, "› ESP32-S3-Touch-LCD-4B")
+}
+
+func TestClickingAChosenBrokenBoardSurvivesTheListShrinking(t *testing.T) {
+	f := newFake()
+	opts := options()
+	broken := project.Choice{File: "sim/z.yaml", FromProject: true, Err: errors.New("no")}
+	opts.Choices = []project.Choice{opts.Choices[0], opts.Choices[1], broken}
+	shorter := []project.Choice{opts.Choices[1]}
+	opts.Boards = func() []project.Choice { return shorter }
+	m := New(f, opts)
+	resize(m, 100, 30)
+	press(m, "down")
+	press(m, "down")
+	x, y := find(t, m, "› sim/z.yaml")
+
+	click(m, x, y)
+
+	assert.Zero(t, m.chosen)
+	screen(m) // an index past the end would panic here
+}
+
+func TestBoardTextCantBreakTheLayout(t *testing.T) {
+	odd := modded
+	odd.Name = "two\nlines"
+	odd.Base = "base\x1b[31m\nname"
+	odd.Changes = []board.Change{{Path: "a", Value: "b\nc"}}
+	opts := options()
+	opts.Choices[0].Board = odd
+	m := New(newFake(), opts)
+	resize(m, 100, 30)
+	fills(t, m, 100, 30)
+
+	opts = options()
+	opts.Board = &odd
+	m = New(newFake(), opts)
+	resize(m, 100, 30)
+	fills(t, m, 100, 30)
 }

@@ -38,7 +38,7 @@ func (m *Model) runningView() string {
 func (m *Model) toolbarTop() string {
 	left := []seg{
 		{styleKey, "preflash"}, {styleDim, "  "},
-		{styleStrong, m.opts.Name}, {styleDim, "  "},
+		{styleStrong, cleanText(m.opts.Name)}, {styleDim, "  "},
 		{styleDim, boardSummary(m.board)},
 	}
 	right := []seg{m.stateMark()}

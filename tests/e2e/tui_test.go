@@ -262,3 +262,20 @@ func TestABrokenConfigStopsBeforeTheScreen(t *testing.T) {
 		t.Fatal("that should have failed")
 	}
 }
+
+func TestQuittingStopsAFrozenApp(t *testing.T) {
+	binary, project := setup(t)
+	term := open(t, 80, 24, binary, "--project", project, "--headless", "--board", "ESP32-S3-Touch-LCD-4B")
+	term.waitLong(buildPatience, "● running", "fps")
+	app := pid(t, binary, project)
+	// Frozen, it can't take the quit, so only the terminal app's escalation can end it.
+	if err := syscall.Kill(app, syscall.SIGSTOP); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { syscall.Kill(app, syscall.SIGKILL) })
+
+	term.key(ctrlC)
+
+	waitDead(t, app)
+	term.exited()
+}

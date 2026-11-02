@@ -38,8 +38,9 @@ var chipRoles = []struct{ label, chips string }{
 // boardSummary is a board as the toolbar names it.
 func boardSummary(b board.Board) string {
 	if b.Base == "" {
-		return b.Name
+		return cleanText(b.Name)
 	}
+	base := cleanText(b.Base)
 	var parts []string
 	for _, change := range b.Changes {
 		part, _, _ := strings.Cut(change.Path, ".")
@@ -48,9 +49,9 @@ func boardSummary(b board.Board) string {
 		}
 	}
 	if len(parts) == 0 {
-		return b.Base
+		return base
 	}
-	return b.Base + " + " + strings.Join(parts, ", ") + " mod"
+	return base + " + " + cleanText(strings.Join(parts, ", ")) + " mod"
 }
 
 func describeChange(change board.Change) string {
@@ -65,11 +66,11 @@ func (m *Model) choiceLabel(i int) string {
 	choice := m.opts.Choices[i]
 	switch {
 	case choice.Err != nil:
-		return choice.File
+		return cleanText(choice.File)
 	case choice.Board.Base == "":
-		return choice.Board.Name
+		return cleanText(choice.Board.Name)
 	}
-	return choice.Board.Name + ", " + strings.TrimPrefix(boardSummary(choice.Board), stockFamily)
+	return cleanText(choice.Board.Name) + ", " + strings.TrimPrefix(boardSummary(choice.Board), stockFamily)
 }
 
 // listRow is a row of the board list. Heading rows have no choice.
@@ -143,7 +144,7 @@ func (m *Model) listView(height int) []string {
 }
 
 func detail(label, value string, width int) string {
-	return fit(styleDim.Render(fit(label, detailLabelWidth))+styleText.Render(value), width)
+	return fit(styleDim.Render(fit(label, detailLabelWidth))+styleText.Render(cleanText(value)), width)
 }
 
 func upper(chips []string) string {
@@ -168,7 +169,7 @@ func (m *Model) detailsView() []string {
 		}
 	} else {
 		b := choice.Board
-		out = append(out, styleStrong.Render(fit(b.Name, width)))
+		out = append(out, styleStrong.Render(fit(cleanText(b.Name), width)))
 		if gap {
 			out = append(out, "")
 		}
@@ -235,7 +236,7 @@ func (m *Model) checks(width int) []string {
 }
 
 func (m *Model) launchView() string {
-	left := []seg{{styleKey, "preflash"}, {styleDim, "  "}, {styleDim, m.opts.Path}}
+	left := []seg{{styleKey, "preflash"}, {styleDim, "  "}, {styleDim, cleanText(m.opts.Path)}}
 	rows := []string{bar(left, []seg{m.stateMark()}, m.width)}
 	for range m.bodyTop() - 1 {
 		rows = append(rows, "")
@@ -310,8 +311,9 @@ func (m *Model) boardZones() []zone {
 			act: func() tea.Cmd {
 				if m.chosen == r.choice {
 					m.launchEnter()
+				} else {
+					m.chosen = r.choice
 				}
-				m.chosen = r.choice
 				return nil
 			},
 		})
