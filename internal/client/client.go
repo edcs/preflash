@@ -23,6 +23,10 @@ const refusedGrace = 500 * time.Millisecond
 // A restart takes as long as the firmware's process does to start, with no build.
 const restartGrace = 15 * time.Second
 
+// Quit lets queued console lines finish, each with a second to show progress, so a long
+// queue can take a while.
+const quitGrace = 30 * time.Second
+
 const dialPause = 20 * time.Millisecond
 
 var (
@@ -247,7 +251,7 @@ func (c *Client) Quit() error {
 	if err := c.Call("quit", nil, nil); err != nil {
 		return err
 	}
-	return c.WaitForExit(5 * time.Second)
+	return c.WaitForExit(quitGrace)
 }
 
 // WaitForExit returns when the app hangs up, or with an error if it hasn't in time.

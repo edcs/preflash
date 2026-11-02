@@ -1,5 +1,7 @@
 #include "preflash/socket.h"
 
+#include <fcntl.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -38,6 +40,7 @@ constexpr int kProtocolVersion = 1;
 constexpr int kBacklog = 16;
 constexpr size_t kReadChunk = 64 * 1024;
 constexpr size_t kLongestRequest = 1024 * 1024;
+constexpr int kDeepestRequest = 32;
 // Room for the ring's replay and then some, past which a stuck client loses serial.
 constexpr size_t kSerialQueueBytes = 1024 * 1024;
 // A client asking for frames and reading none is cut off here: a reply is never dropped.
@@ -203,7 +206,17 @@ const std::map<std::string, Op> kOps = {
 };
 
 void handle_line(Connection& c, const std::string& line) {
-  const json request = json::parse(line, nullptr, false);
+  // Copying JSON recurses, and this thread's stack is small, so depth has a limit.
+  bool too_deep = false;
+  const json::parser_callback_t shallow = [&too_deep](int depth, json::parse_event_t, json&) {
+    too_deep = too_deep || depth > kDeepestRequest;
+    return !too_deep;
+  };
+  const json request = json::parse(line, shallow, false);
+  if (too_deep) {
+    reply_error(c, nullptr, "that request is nested too deeply");
+    return;
+  }
   if (!request.is_object()) {
     reply_error(c, nullptr, "a request is one JSON object per line");
     return;
@@ -361,6 +374,8 @@ std::optional<std::string> holder(const char* path) {
   return name;
 }
 
+bool claim_locked(const char* path, const std::string& shown, std::string* error);
+
 }  // namespace
 
 bool claim(std::string* error) {
@@ -377,6 +392,22 @@ bool claim(std::string* error) {
     return false;
   }
 
+  // Held from the check to the listen, so two apps starting together can't both find the
+  // socket stale. The lock goes with this function, or with the process if it dies here.
+  const int lock = open((shown + ".lock").c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+  if (lock < 0) {
+    *error = "couldn't lock " + shown + ": " + std::strerror(errno);
+    return false;
+  }
+  flock(lock, LOCK_EX);
+  const bool claimed = claim_locked(path, shown, error);
+  close(lock);
+  return claimed;
+}
+
+namespace {
+
+bool claim_locked(const char* path, const std::string& shown, std::string* error) {
   struct stat info {};
   if (lstat(path, &info) == 0) {
     if (!S_ISSOCK(info.st_mode)) {
@@ -410,6 +441,8 @@ bool claim(std::string* error) {
   std::strncpy(g_path, path, sizeof g_path - 1);
   return true;
 }
+
+}  // namespace
 
 bool serve() {
   if (g_listener < 0) return true;

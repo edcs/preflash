@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
+#include <fcntl.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -157,6 +160,31 @@ TEST(SocketClaim, RefusesASocketALiveAppAnswersOn) {
   fs::remove(path);
 }
 
+// Two apps starting together must not both find the socket stale, so one waits its turn.
+TEST(SocketClaim, WaitsForAnotherClaimToFinish) {
+  const std::string path = socket_path("turn");
+  const std::string lock_path = path + ".lock";
+  const int lock = open(lock_path.c_str(), O_CREAT | O_RDWR, 0600);
+  ASSERT_GE(lock, 0);
+  ASSERT_EQ(flock(lock, LOCK_EX), 0);
+  setenv("PREFLASH_SOCKET", path.c_str(), 1);
+
+  std::atomic<bool> claimed{false};
+  std::thread claimer([&] {
+    std::string error;
+    EXPECT_TRUE(preflash::socket::claim(&error)) << error;
+    claimed = true;
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  EXPECT_FALSE(claimed);
+  flock(lock, LOCK_UN);
+  claimer.join();
+  EXPECT_TRUE(claimed);
+  close(lock);
+  fs::remove(path);
+  fs::remove(lock_path);
+}
+
 TEST(SocketClaim, LeavesAFileThatIsNotASocket) {
   const std::string path = socket_path("file");
   std::ofstream(path) << "keep me";
@@ -302,6 +330,18 @@ TEST_F(SocketServe, AClientThatHangsUpMidReplyLeavesTheAppRunning) {
   }
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   Client client(path());
+  EXPECT_EQ(client.call({{"op", "hello"}})["ok"], true);
+}
+
+// Copying JSON recurses, on a thread with a small stack.
+TEST_F(SocketServe, ARequestNestedTooDeepIsRefused) {
+  Client client(path());
+  client.send_raw("{\"op\":\"hello\",\"id\":" + std::string(900 * 1000, '[') + "\n");
+  EXPECT_EQ(client.read_line()["ok"], false);
+  const std::string closed =
+      "{\"op\":\"hello\",\"id\":" + std::string(5000, '[') + std::string(5000, ']') + "}\n";
+  client.send_raw(closed);
+  EXPECT_EQ(client.read_line()["ok"], false);
   EXPECT_EQ(client.call({{"op", "hello"}})["ok"], true);
 }
 
