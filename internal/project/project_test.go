@@ -2,6 +2,7 @@ package project
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/edcs/preflash/internal/board"
 )
 
 const idfCMake = "cmake_minimum_required(VERSION 3.16)\ninclude($ENV{IDF_PATH}/tools/cmake/project.cmake)\nproject(demo)\n"
@@ -277,7 +280,7 @@ func TestRunRefusesAnAppItCannotTalkTo(t *testing.T) {
 		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":99}`)
 	}()
 
-	assert.ErrorContains(t, p.checkNoApp(), "99")
+	assert.ErrorContains(t, p.CheckNoApp(), "99")
 }
 
 func TestNoAppMeansRunCanGoAhead(t *testing.T) {
@@ -286,7 +289,7 @@ func TestNoAppMeansRunCanGoAhead(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(home) })
 	t.Setenv("HOME", home)
 
-	assert.NoError(t, Project{Dir: "/x/demo"}.checkNoApp())
+	assert.NoError(t, Project{Dir: "/x/demo"}.CheckNoApp())
 }
 
 func TestRootComesFromTheEnvironment(t *testing.T) {
@@ -336,4 +339,117 @@ func TestBoardStopsOnAnUnknownKeyInTheConfig(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), ".preflashrc:2")
+}
+
+func TestBoardsListProjectFilesAndStock(t *testing.T) {
+	dir := idfProject(t, t.TempDir())
+	writeFile(t, filepath.Join(dir, "sim", "mod.yaml"), "name: mod\nextends: ESP32-S3-Touch-LCD-4B\nchanges:\n  backlight: {enable: gpio43}\n")
+	writeFile(t, filepath.Join(dir, "sim", "broken.yml"), "name: broken\nextends: nothing-like-this\n")
+	writeFile(t, filepath.Join(dir, "sim", "notes.yaml"), "title: not a board\n")
+	writeFile(t, filepath.Join(dir, "elsewhere.yaml"), "name: stray\nextends: ESP32-S3-Touch-LCD-4B\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+
+	choices := p.Boards()
+
+	var names []string
+	for _, c := range choices {
+		names = append(names, c.Board.Name+"/"+c.File)
+	}
+	assert.Equal(t, []string{"stray/elsewhere.yaml", "/sim/broken.yml", "mod/sim/mod.yaml", "ESP32-S3-Touch-LCD-4B/"}, names)
+	assert.Error(t, choices[1].Err, "a board file that won't load stays on the list")
+	assert.True(t, choices[0].FromProject)
+	assert.False(t, choices[3].FromProject)
+}
+
+func TestBoardsPutTheConfiguredFileFirst(t *testing.T) {
+	dir := idfProject(t, t.TempDir())
+	writeFile(t, filepath.Join(dir, "hw", "custom.yaml"), "name: custom\nextends: ESP32-S3-Touch-LCD-4B\n")
+	writeFile(t, filepath.Join(dir, "sim", "mod.yaml"), "name: mod\nextends: ESP32-S3-Touch-LCD-4B\n")
+	writeFile(t, filepath.Join(dir, ".preflashrc"), "board: hw/custom.yaml\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+
+	choices := p.Boards()
+
+	require.Len(t, choices, 3)
+	assert.Equal(t, "custom", choices[0].Board.Name)
+	assert.Equal(t, "mod", choices[1].Board.Name)
+}
+
+func TestBoardsLeaveNonBoardYamlOut(t *testing.T) {
+	dir := idfProject(t, t.TempDir())
+	writeFile(t, filepath.Join(dir, "broken.yaml"), "name: [\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+	assert.Len(t, p.Boards(), len(board.Stock()))
+}
+
+func TestLVGLVersionComesFromTheManagedComponent(t *testing.T) {
+	dir := idfProject(t, t.TempDir())
+	p, err := Find(dir)
+	require.NoError(t, err)
+	assert.Empty(t, p.LVGLVersion())
+
+	writeFile(t, filepath.Join(dir, "managed_components", "lvgl__lvgl", "lv_version.h"),
+		"#define LVGL_VERSION_MAJOR 9\n#define LVGL_VERSION_MINOR 3\n#define LVGL_VERSION_PATCH 0\n")
+	assert.Equal(t, "9.3.0", p.LVGLVersion())
+}
+
+func TestInstallCopiesTheAppSoABuildCantTouchWhatRuns(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := idfProject(t, t.TempDir())
+	p, err := Find(dir)
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(p.BuildDir(), 0o755))
+	writeFile(t, filepath.Join(p.BuildDir(), "app"), "first")
+	b, err := board.LoadStock("ESP32-S3-Touch-LCD-4B")
+	require.NoError(t, err)
+	env := []string{"PREFLASH_BOARD=old", "PATH=/bin"}
+
+	path, runEnv, err := p.Install(b, env)
+
+	require.NoError(t, err)
+	writeFile(t, filepath.Join(p.BuildDir(), "app"), "second")
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "first", string(got))
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode()&0o100, "the copy must run")
+
+	assert.Contains(t, runEnv, "PATH=/bin")
+	assert.NotContains(t, runEnv, "PREFLASH_BOARD=old")
+	var boardFile string
+	for _, entry := range runEnv {
+		if value, ok := strings.CutPrefix(entry, "PREFLASH_BOARD="); ok {
+			boardFile = value
+		}
+	}
+	data, err := os.ReadFile(boardFile)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), b.Name)
+}
+
+func TestBuildWritesToTheGivenOutputAndStopsOnFailure(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := idfProject(t, t.TempDir())
+	p, err := Find(dir)
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(p.BuildDir(), 0o755))
+	var output strings.Builder
+
+	// cmake refuses this project, because IDF_PATH leads nowhere.
+	err = p.Build(context.Background(), []string{"PATH=" + os.Getenv("PATH"), "IDF_PATH=/nowhere"}, &output)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the build failed")
+	assert.Contains(t, output.String(), "/nowhere")
+}
+
+func TestLogPathIsInTheBuildFolder(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Find(idfProject(t, t.TempDir()))
+	require.NoError(t, err)
+	assert.Equal(t, p.BuildDir(), filepath.Dir(p.LogPath()))
 }

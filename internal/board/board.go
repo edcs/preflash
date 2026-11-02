@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -41,6 +43,17 @@ type Board struct {
 	I2C        []Chip    `yaml:"i2c" json:"i2c"`
 	Backlight  Backlight `yaml:"backlight" json:"backlight"`
 	AudioCodec string    `yaml:"audio_codec" json:"audio_codec"`
+
+	// Base is the board at the root of the extends chain, if there is one, and Changes
+	// what the chain changed from it, in path order. Neither reaches the runtime.
+	Base    string   `yaml:"-" json:"-"`
+	Changes []Change `yaml:"-" json:"-"`
+}
+
+// Change is one value a board file sets over the board it extends.
+type Change struct {
+	Path  string // such as backlight.enable
+	Value string
 }
 
 var pinPattern = regexp.MustCompile(`^gpio(\d+)$`)
@@ -75,7 +88,8 @@ func Stock() []string {
 }
 
 func load(src source, path string) (Board, error) {
-	merged, err := loadMap(src, map[string]bool{})
+	var history lineage
+	merged, err := loadMap(src, map[string]bool{}, &history)
 	if err != nil {
 		return Board{}, err
 	}
@@ -98,7 +112,39 @@ func load(src source, path string) (Board, error) {
 	if b.Display.Width <= 0 || b.Display.Height <= 0 {
 		return Board{}, fmt.Errorf("%s: display.width and display.height must be positive", path)
 	}
+	if history.extended {
+		b.Base, b.Changes = history.root, history.list()
+	}
 	return b, nil
+}
+
+// lineage collects what an extends chain did, from its root down.
+type lineage struct {
+	root     string
+	extended bool
+	changes  map[string]string
+}
+
+func (l *lineage) record(prefix string, changes map[string]any) {
+	if l.changes == nil {
+		l.changes = map[string]string{}
+	}
+	for key, value := range changes {
+		if nested, ok := value.(map[string]any); ok {
+			l.record(prefix+key+".", nested)
+			continue
+		}
+		l.changes[prefix+key] = fmt.Sprint(value)
+	}
+}
+
+func (l *lineage) list() []Change {
+	var out []Change
+	for path, value := range l.changes {
+		out = append(out, Change{Path: path, Value: value})
+	}
+	slices.SortFunc(out, func(a, b Change) int { return strings.Compare(a.Path, b.Path) })
+	return out
 }
 
 // requireBacklightKeys stops a board that leaves out the backlight pin or
@@ -138,7 +184,7 @@ func (s source) read() ([]byte, error) {
 	return os.ReadFile(s.path)
 }
 
-func loadMap(src source, seen map[string]bool) (map[string]any, error) {
+func loadMap(src source, seen map[string]bool, history *lineage) (map[string]any, error) {
 	if seen[src.id()] {
 		return nil, fmt.Errorf("board %s extends itself through a loop", src.path)
 	}
@@ -156,9 +202,13 @@ func loadMap(src source, seen map[string]bool) (map[string]any, error) {
 		return nil, fmt.Errorf("%s: empty board file", src.path)
 	}
 	ext, hasExt := doc["extends"]
+	history.extended = history.extended || hasExt
 	if !hasExt {
 		if _, ok := doc["changes"]; ok {
 			return nil, fmt.Errorf("%s: changes needs an extends", src.path)
+		}
+		if name, ok := doc["name"].(string); ok {
+			history.root = name
 		}
 		return doc, nil
 	}
@@ -175,7 +225,7 @@ func loadMap(src source, seen map[string]bool) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	parent, err := loadMap(parentSrc, seen)
+	parent, err := loadMap(parentSrc, seen, history)
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +234,7 @@ func loadMap(src source, seen map[string]bool) (map[string]any, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s: changes must be a map", src.path)
 		}
+		history.record("", cm)
 		deepMerge(parent, cm)
 	}
 	if name, ok := doc["name"]; ok {

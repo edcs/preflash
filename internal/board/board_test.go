@@ -116,3 +116,40 @@ func TestErrorsNameTheAbsolutePath(t *testing.T) {
 		assert.True(t, strings.Contains(err.Error(), abs) || strings.Contains(err.Error(), filepath.Join(resolved, name)), err.Error())
 	}
 }
+
+func TestABoardKnowsWhatItWasBasedOn(t *testing.T) {
+	b, err := Load("../../tests/fixtures/snoozel-4b.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, "ESP32-S3-Touch-LCD-4B", b.Base)
+	assert.Equal(t, []Change{{Path: "backlight.enable", Value: "gpio43"}}, b.Changes)
+}
+
+func TestAChainKeepsItsRootAndEveryChange(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "one.yaml"), []byte(
+		"extends: ESP32-S3-Touch-LCD-4B\nname: one\nchanges:\n  backlight: {enable: gpio1}\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "two.yaml"), []byte(
+		"extends: one.yaml\nname: two\nchanges:\n  audio_codec: es7210\n  backlight: {enable: gpio2}\n"), 0o644))
+
+	b, err := Load(filepath.Join(dir, "two.yaml"))
+
+	require.NoError(t, err)
+	assert.Equal(t, "ESP32-S3-Touch-LCD-4B", b.Base)
+	assert.Equal(t, []Change{{Path: "audio_codec", Value: "es7210"}, {Path: "backlight.enable", Value: "gpio2"}}, b.Changes)
+}
+
+func TestAStockBoardHasNoBase(t *testing.T) {
+	b, err := LoadStock("ESP32-S3-Touch-LCD-4B")
+	require.NoError(t, err)
+	assert.Empty(t, b.Base)
+	assert.Empty(t, b.Changes)
+}
+
+func TestTheRuntimeDoesNotSeeTheLineage(t *testing.T) {
+	b, err := Load("../../tests/fixtures/snoozel-4b.yaml")
+	require.NoError(t, err)
+	out, err := Resolve(b)
+	require.NoError(t, err)
+	assert.NotContains(t, string(out), "gpio43")
+	assert.NotContains(t, string(out), "Base")
+}

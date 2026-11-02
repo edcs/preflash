@@ -19,6 +19,11 @@ uint64_t frames_drawn();
 // Frames finished in the last second.
 int fps();
 
+// How far firmware has turned its picture on the panel, in degrees. LVGL's rotation counts,
+// and firmware that draws through esp_lcd reads 0.
+void set_rotation(int degrees);
+int rotation();
+
 // A percentage, clamped to 0-100.
 void set_brightness(int pct);
 int brightness();        // what the screen shows, after any backlight enable pin

@@ -73,6 +73,7 @@ type Status struct {
 	PID       int    `json:"pid"`
 	UptimeMs  int64  `json:"uptime_ms"`
 	Backlight int    `json:"backlight"`
+	Rotation  int    `json:"rotation"`
 	Frames    uint64 `json:"frames"`
 	FPS       int    `json:"fps"`
 	WiFi      string `json:"wifi"`

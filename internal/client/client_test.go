@@ -144,7 +144,7 @@ func TestDialGivesUpOnAListenerThatNeverAnswers(t *testing.T) {
 func TestStatusReadsEveryField(t *testing.T) {
 	path := shortPath(t)
 	startFake(t, path, func(req map[string]any, reply func(string)) {
-		reply(fmt.Sprintf(`{"id":%d,"ok":true,"project":"demo","board":"B","width":480,"height":320,"pid":7,"uptime_ms":1500,"backlight":40,"frames":12,"fps":3,"wifi":"connected"}`, int(req["id"].(float64))))
+		reply(fmt.Sprintf(`{"id":%d,"ok":true,"project":"demo","board":"B","width":480,"height":320,"pid":7,"uptime_ms":1500,"backlight":40,"rotation":90,"frames":12,"fps":3,"wifi":"connected"}`, int(req["id"].(float64))))
 	})
 	c, err := Dial(path)
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func TestStatusReadsEveryField(t *testing.T) {
 
 	got, err := c.Status()
 	require.NoError(t, err)
-	assert.Equal(t, Status{Project: "demo", Board: "B", Width: 480, Height: 320, PID: 7, UptimeMs: 1500, Backlight: 40, Frames: 12, FPS: 3, WiFi: "connected"}, got)
+	assert.Equal(t, Status{Project: "demo", Board: "B", Width: 480, Height: 320, PID: 7, UptimeMs: 1500, Backlight: 40, Rotation: 90, Frames: 12, FPS: 3, WiFi: "connected"}, got)
 }
 
 func TestAnErrorReplyBecomesAnError(t *testing.T) {

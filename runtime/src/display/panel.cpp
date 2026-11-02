@@ -24,6 +24,7 @@ constexpr int kBmpHeaderSize = 54;
 constexpr int kBmpBytesPerPixel = 3;
 
 std::atomic<int> g_brightness{100};
+std::atomic<int> g_rotation{0};
 
 struct Pixels {
   std::mutex mutex;
@@ -91,6 +92,10 @@ int fps() {
   forget_old_frames(p, std::chrono::steady_clock::now());
   return static_cast<int>(p.recent.size());
 }
+
+void set_rotation(int degrees) { g_rotation = degrees; }
+
+int rotation() { return g_rotation; }
 
 // Once firmware sets a level, the PWM peripheral owns the backlight pin, so a plain
 // output level no longer matters. Setting the pin up as a GPIO again takes it back, which

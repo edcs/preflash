@@ -125,6 +125,7 @@ void op_status(Connection& c, const json&, const json& id) {
             {"pid", getpid()},
             {"uptime_ms", esp_timer_get_time() / 1000},
             {"backlight", panel::brightness()},
+            {"rotation", panel::rotation()},
             {"frames", panel::frames_drawn()},
             {"fps", panel::fps()},
             {"wifi", wifi_state()}});

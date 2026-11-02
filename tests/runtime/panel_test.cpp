@@ -197,6 +197,7 @@ TEST(Panel, RotatedFlushKeepsPhysicalOrientation) {
   };
   for (const Case& c : cases) {
     bsp_display_rotate(disp, c.rotation);
+    int degrees = static_cast<int>(c.rotation) * 90;
     lv_refr_now(disp);
     const auto frame = current_frame();
     int red = 0;
@@ -204,6 +205,7 @@ TEST(Panel, RotatedFlushKeepsPhysicalOrientation) {
       for (int x = 0; x < kWidth; ++x) red += pixel(frame, x, y) == kRed;
     }
     EXPECT_EQ(red, 6) << "rotation " << c.rotation;
+    EXPECT_EQ(preflash::panel::rotation(), degrees);
     EXPECT_EQ(pixel(frame, c.first_x, c.first_y), kRed) << "rotation " << c.rotation;
     EXPECT_EQ(pixel(frame, c.last_x, c.last_y), kRed) << "rotation " << c.rotation;
   }

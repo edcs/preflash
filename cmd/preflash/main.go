@@ -104,6 +104,7 @@ func status(args []string) error {
 		fmt.Printf("pid        %d\n", s.PID)
 		fmt.Printf("uptime     %s\n", uptime.Round(time.Second/10))
 		fmt.Printf("backlight  %d%%\n", s.Backlight)
+		fmt.Printf("rotation   %d°\n", s.Rotation)
 		fmt.Printf("frames     %d (%d fps)\n", s.Frames, s.FPS)
 		fmt.Printf("wifi       %s\n", s.WiFi)
 		return nil
