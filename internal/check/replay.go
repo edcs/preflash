@@ -116,6 +116,9 @@ func runTool(ctx context.Context, tool string, b board.Board, transactions []Tra
 		next := transactions[len(answers)]
 		return nil, fmt.Errorf("the chip models stopped at transaction #%d, on %s: %s", next.Seq, next.Chip, strings.TrimSpace(failure.String()))
 	}
+	if len(answers) > len(transactions) {
+		return nil, fmt.Errorf("the chip models gave %d answers to %d transactions", len(answers), len(transactions))
+	}
 	return answers, nil
 }
 

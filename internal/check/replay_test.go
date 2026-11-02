@@ -57,3 +57,9 @@ func TestRunToolReportsWhyItStopped(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no model for chip x")
 }
+
+func TestRunToolRefusesMoreAnswersThanTransactions(t *testing.T) {
+	tool := fakeTool(t, `echo '{"acked":true,"read":"ff"}'; echo '{"acked":true,"read":"ff"}'`)
+	_, err := runTool(context.Background(), tool, board.Board{Name: "B"}, oneTransaction())
+	assert.ErrorContains(t, err, "2 answers to 1 transactions")
+}
