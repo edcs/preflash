@@ -127,12 +127,14 @@ until preflash status > /dev/null 2>&1; do
   kill -0 "$app" 2> /dev/null || exit 1  # the build failed
   sleep 0.2
 done
+sleep 2  # status answers before the firmware has booted
 preflash touch 240 300
+sleep 0.5  # touch returns before the firmware has redrawn
 preflash shot after-tap.png
 preflash quit
 ```
 
-The first run includes the build, so that loop waits for it. Only one app can run per checkout: a second one stops and says which project and pid hold the socket.
+The first run includes the build, so that loop waits for it. For a boot you can see, use a line your firmware prints in `preflash serial` in place of the `sleep`s. Only one app can run per checkout: a second one stops and says which project and pid hold the socket.
 
 Stdout and stderr are one stream, as a USB serial port is, so `preflash run` prints both to stdout. A client or terminal that stops reading loses its oldest output and hears how much it lost, and the firmware never waits for it. Lines from stdin and `preflash send` join one queue. A console command that never returns holds up the lines behind it, but `status`, `touch`, `shot` and `quit` still work. Quit lets queued lines run first, and stops waiting once a line has gone a second without finishing. The queue holds 1 MiB: past that, `preflash send` fails and a line from stdin is dropped with a message.
 

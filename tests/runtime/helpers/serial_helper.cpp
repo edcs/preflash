@@ -125,6 +125,16 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  if (mode == "restart_during_quit") {
+    if (access(marker.c_str(), F_OK) == 0) {
+      std::printf("second run\n");
+      preflash::socket::quit();
+    }
+    if (FILE* made = std::fopen(marker.c_str(), "w")) std::fclose(made);
+    preflash::socket::note_quitting();
+    esp_restart();
+  }
+
   if (mode == "binary") {
     const char bytes[] = {'\xff', '\0', '\xfe', '\n'};
     write(STDOUT_FILENO, bytes, sizeof bytes);

@@ -255,6 +255,31 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
   }
   EXPECT_EQ(noted_at_quit, 7u);
 
+  // Quit waits for lines sent before it, not for ones that keep arriving behind it.
+  esp_console_cmd_t tick = {};
+  tick.command = "tick";
+  tick.func = [](int, char**) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    return 0;
+  };
+  ASSERT_EQ(esp_console_cmd_register(&tick), ESP_OK);
+  static std::atomic<bool> ticking{true};
+  std::thread ticker([] {
+    while (ticking) {
+      preflash::submit_line("tick");
+      std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    }
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  quit_seen = false;
+  input.feed("@sim quit\n");
+  for (int i = 0; i < 300 && !quit_seen; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_TRUE(quit_seen);
+  ticking = false;
+  ticker.join();
+
   // A command that never returns holds up the lines behind it and nothing else: quit
   // still gets through, and a line from another source joins the same queue.
   static std::atomic<bool> stuck_entered{false};

@@ -156,6 +156,7 @@ expect_failure "numbers" pf touch one two --project "$project"
 output="$(pf run --project "$project" --headless < /dev/null 2>&1)" \
   && fail "a second app ran" "$output"
 case "$output" in
+  *building*) fail "a second app rebuilt the first one's folder" "$output" ;;
   *"control_fixture (pid $app_pid) already holds the socket"*) ;;
   *) fail "the second app didn't name the holder" "$output" ;;
 esac
@@ -257,6 +258,15 @@ pf quit --project "$project"
 finish_app
 grep -qF pong "$app_log" || fail "quit overtook a line from the socket" "$(cat "$app_log")"
 
+# A queued restart doesn't cancel the quit behind it.
+start_run
+wait_for_output "ready, reset reason"
+pf send --project "$project" restart
+pf quit --project "$project"
+if ! wait_for_exit 50; then fail "quit lost to a queued restart" "$(cat "$app_log")"; fi
+finish_app
+[ "$app_status" -eq 0 ] || fail "that quit exited with status $app_status"
+
 # @sim quit sent over the socket gets its reply before the process goes.
 start_run
 wait_for_output "ready, reset reason"
@@ -295,5 +305,13 @@ for signal in TERM HUP; do
   [ "$app_status" -eq 0 ] || fail "SIG$signal exited with status $app_status" "$(cat "$app_log")"
   [ ! -e "$socket" ] || fail "SIG$signal left the socket behind"
 done
+
+# A run started under nohup keeps its inherited ignore.
+start_app bash -c 'trap "" HUP; exec "$@"' bash "$scratch/preflash" run --project "$project" --headless
+wait_for_output "ready, reset reason"
+kill -HUP "$app_pid"
+sleep 0.3
+pf status --project "$project" > /dev/null || fail "SIGHUP stopped a run that ignores it"
+quit_app
 
 echo "PASS: control"

@@ -111,6 +111,7 @@ esp_reset_reason_t esp_reset_reason(void) {
 }
 
 void esp_restart(void) {
+  if (preflash::socket::quitting()) preflash::socket::quit();
   // Not fflush(nullptr): that also waits on stdin, which the console task keeps
   // locked for as long as it sits in a read.
   std::fflush(stdout);

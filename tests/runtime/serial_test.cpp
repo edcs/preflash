@@ -233,6 +233,14 @@ TEST(SerialPump, RestartGivesTheNextRunTheRealDescriptors) {
       << output.substr(output.size() > 200 ? output.size() - 200 : 0);
 }
 
+// A queued restart runs while quit waits for the queue, and must not cancel it.
+TEST(SerialPump, ARestartDuringQuitStops) {
+  int status = -1;
+  const std::string output = run_helper("restart_during_quit", &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_EQ(output.find("second run"), std::string::npos) << output;
+}
+
 TEST(SerialPump, StdoutAndStderrAreOneStreamWithReplay) {
   int status = -1;
   const std::string output = run_helper("subscribe", &status);

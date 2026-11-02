@@ -18,6 +18,11 @@ bool serve();
 // restart and to reconnect. New connections are turned away from here on.
 void announce_restart();
 
+// Marks the process as on its way out, so that a restart from here on stops instead:
+// quit lets queued lines run, and one of them may be a restart.
+void note_quitting();
+bool quitting();
+
 // Ends the process, with the socket removed. The stream gets a bounded wait to drain, so
 // output can still be lost to a stuck client or terminal. Goes out by _exit, because
 // firmware threads may hold locks that destructors would need. Async-signal-safe.

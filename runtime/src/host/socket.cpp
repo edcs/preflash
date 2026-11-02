@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cstdlib>
@@ -52,6 +53,7 @@ constexpr size_t kLongestHolderAnswer = 64 * 1024;
 
 char g_path[sizeof(sockaddr_un::sun_path)] = "";
 int g_listener = -1;
+std::atomic<bool> g_quitting{false};
 
 struct Connection {
   explicit Connection(int socket_fd) : fd(socket_fd), out(kSerialQueueBytes) {}
@@ -204,6 +206,7 @@ void op_shot(Connection& c, const json& request, const json& id) {
 
 void op_quit(Connection& c, const json&, const json& id) {
   reply_ok(c, id);
+  note_quitting();
   finish_queued_lines();
   quit();
 }
@@ -479,6 +482,10 @@ bool serve() {
   }
   return true;
 }
+
+void note_quitting() { g_quitting = true; }
+
+bool quitting() { return g_quitting; }
 
 void announce_restart() {
   std::lock_guard<std::mutex> lock(clients().mutex);

@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/edcs/preflash/internal/board"
+	"github.com/edcs/preflash/internal/client"
 )
 
 // Root finds the Preflash checkout that holds runtime/. The runtime isn't embedded
@@ -71,6 +72,12 @@ func (p Project) Run(b board.Board, headless bool) error {
 	}
 	if err := p.checkSocketPath(); err != nil {
 		return err
+	}
+	// Building now would change what's under the running app, so this comes first. The
+	// app makes the same check when it starts, which settles any race.
+	if c, err := client.Dial(p.SocketPath()); err == nil {
+		defer c.Close()
+		return fmt.Errorf("%s (pid %d) already holds the socket at %s", c.Hello.Project, c.Hello.PID, p.SocketPath())
 	}
 	resolved, err := board.Resolve(b)
 	if err != nil {

@@ -81,8 +81,12 @@ int main() {
   esp_timer_get_time();
   // Line by line, so that a line reaches the stream as firmware finishes it.
   setvbuf(stdout, nullptr, _IOLBF, 0);
-  // Before SDL starts, so that SDL leaves them in place.
-  for (const int stop : {SIGINT, SIGTERM, SIGHUP}) signal(stop, on_interrupt);
+  // Before SDL starts, so that SDL leaves them in place. SIGINT can't honour an inherited
+  // ignore, because a shell's background job starts with one, but nohup's must stand.
+  signal(SIGINT, on_interrupt);
+  for (const int stop : {SIGTERM, SIGHUP}) {
+    if (signal(stop, on_interrupt) == SIG_IGN) signal(stop, SIG_IGN);
+  }
 
   try {
     preflash::attach_chips(preflash::board());

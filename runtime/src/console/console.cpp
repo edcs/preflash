@@ -15,6 +15,7 @@
 #include "esp_console.h"
 #include "preflash/control.h"
 #include "preflash/fail.h"
+#include "preflash/socket.h"
 
 namespace {
 
@@ -248,18 +249,19 @@ bool is_quit_line(const std::string& line) { return is_quit(line); }
 void finish_queued_lines() {
   State& s = state();
   std::unique_lock<std::mutex> lock(s.mutex);
-  const auto idle = [&] { return s.lines.empty() && !s.line_running; };
-  while (!idle()) {
+  // Only the lines here now, or a steady stream behind them could hold quit off for good.
+  const uint64_t last = s.lines_finished + s.lines.size() + (s.line_running ? 1 : 0);
+  while (s.lines_finished < last) {
     const uint64_t finished = s.lines_finished;
-    const bool moved = s.line_finished.wait_for(lock, kQuitPatience, [&] {
-      return idle() || s.lines_finished != finished;
-    });
+    const bool moved = s.line_finished.wait_for(
+        lock, kQuitPatience, [&] { return s.lines_finished != finished; });
     if (!moved) return;
   }
 }
 
 bool submit_line(const std::string& line) {
   if (is_quit(line)) {
+    socket::note_quitting();
     finish_queued_lines();
     dispatch_line(line);
     return true;

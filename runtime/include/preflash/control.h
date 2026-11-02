@@ -27,8 +27,8 @@ bool submit_line(const std::string& line);
 // True for a line that submit_line runs as "@sim quit", which doesn't come back.
 bool is_quit_line(const std::string& line);
 
-// Waits for the queue to run dry, so that quitting doesn't lose lines sent before it. Gives
-// up once a line has run for a second without finishing, or one is waiting for a REPL.
+// Waits for the lines queued now, so that quitting doesn't lose them. Gives up once a line
+// has run for a second without finishing, or one is waiting for a REPL.
 void finish_queued_lines();
 
 // Starts the console task and the reader that feeds it from stdin until stdin ends. Safe to
