@@ -1,0 +1,43 @@
+runtime/include/driver/usb_serial_jtag.h
+  s_82b4983a83db4b::t_be0805da1b448b 1-36
+runtime/include/preflash/usb.h
+  s_82b4983a83db4b::t_be0805da1b448b 1-18
+runtime/include/preflash/port.h
+  s_82b4983a83db4b::t_be0805da1b448b 9-11,31-32
+  s_82b4983a83db4b::t_ed75826b4b0d6d 33
+runtime/src/console/console.cpp
+  s_82b4983a83db4b::t_be0805da1b448b 19,37-43,55-57,130-131,136,145-157,192-206,208-209,213,217-218,222,225,258-265,303-318,326-330,333-349,381-407,412-414,417-418
+tests/runtime/usb_test.cpp
+  s_82b4983a83db4b::t_be0805da1b448b 1-233
+runtime/include/driver/usb_serial_jtag_vfs.h
+  s_82b4983a83db4b::t_be0805da1b448b 1-26
+runtime/include/esp_console.h
+  s_82b4983a83db4b::t_be0805da1b448b 12-27,74-75,77-79,83-84
+  s_82b4983a83db4b::t_edc5835a65c345 11
+runtime/src/host/port.cpp
+  s_82b4983a83db4b::t_be0805da1b448b 118-123,134-138,266-270
+  s_82b4983a83db4b::t_ae6cb8d97d911d 271
+tests/runtime/port_test.cpp
+  s_82b4983a83db4b::t_be0805da1b448b 243-251
+runtime/src/console/usb_serial_jtag.cpp
+  s_82b4983a83db4b::t_be0805da1b448b 1-131
+runtime/include/preflash/control.h
+  s_82b4983a83db4b::t_be0805da1b448b 17-18,28-35
+  s_82b4983a83db4b::t_082ca5814bec6f 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "835703026414d69996c8b6094e6de490dc19e0b1",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
