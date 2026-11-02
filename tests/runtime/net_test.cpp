@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -27,6 +29,7 @@
 #include "esp_sntp.h"
 #include "esp_wifi.h"
 #include "mbedtls/base64.h"
+#include "preflash/trace.h"
 #include "preflash/net.h"
 
 namespace {
@@ -203,6 +206,39 @@ TEST_F(Wifi, ForcedFailureDisconnectsWithAuthReason) {
   preflash::wifi_force_join_failure(false);
   ASSERT_EQ(esp_wifi_connect(), ESP_OK);
   EXPECT_TRUE(log_.wait_for(IP_EVENT, IP_EVENT_STA_GOT_IP));
+}
+
+TEST_F(Wifi, TheTraceShowsAJoinAndWhoStoppedIt) {
+  std::mutex mutex;
+  std::vector<std::string> rows;
+  const int id = preflash::trace::subscribe([&](const preflash::trace::Record& r) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (r.stream == preflash::trace::Stream::Net) {
+      rows.push_back(std::string(r.op) + "|" + r.data + (r.injected ? "|injected" : ""));
+    }
+  });
+  const auto seen = [&](const std::string& row) {
+    for (int tries = 0; tries < 200; ++tries) {
+      {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (std::find(rows.begin(), rows.end(), row) != rows.end()) return true;
+      }
+      std::this_thread::sleep_for(5ms);
+    }
+    return false;
+  };
+  ASSERT_EQ(esp_wifi_start(), ESP_OK);
+  preflash::wifi_force_join_failure(true);
+  join("Preflash Fake Home");
+  EXPECT_TRUE(seen("join|Preflash Fake Home"));
+  EXPECT_TRUE(seen("join failed|Preflash Fake Home (injected)|injected"));
+  preflash::wifi_force_join_failure(false);
+  ASSERT_EQ(esp_wifi_connect(), ESP_OK);
+  EXPECT_TRUE(seen("connected|Preflash Fake Home"));
+  ASSERT_TRUE(log_.wait_for(IP_EVENT, IP_EVENT_STA_GOT_IP));
+  ASSERT_EQ(esp_wifi_disconnect(), ESP_OK);
+  EXPECT_TRUE(seen("disconnected|Preflash Fake Home"));
+  preflash::trace::unsubscribe(id);
 }
 
 TEST_F(Wifi, DisconnectReportsAssocLeaveAndConnectNeedsStart) {

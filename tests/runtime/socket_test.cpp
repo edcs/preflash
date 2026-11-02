@@ -525,6 +525,17 @@ TEST_F(SocketServe, ASubscriberToTheTraceHearsItUnderItsOwnEvent) {
   EXPECT_FALSE(preflash::trace::on());
 }
 
+TEST_F(SocketServe, AClientThatNeverReadsTheTraceCostsFirmwareNothing) {
+  Client stuck(path());
+  EXPECT_EQ(stuck.call({{"op", "subscribe"}, {"streams", {"trace"}}})["ok"], true);
+  const std::string text(100, 'x');
+  const auto start = std::chrono::steady_clock::now();
+  for (int i = 0; i < 500000; ++i) preflash::trace::note(preflash::trace::Stream::Net, "wifi", "flood", text);
+  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(10));
+  Client other(path());
+  EXPECT_EQ(other.call({{"op", "status"}})["ok"], true);
+}
+
 TEST_F(SocketServe, SavingTheTraceNamesWhereItWent) {
   const fs::path file = fs::temp_directory_path() / ("pfsave" + std::to_string(getpid()));
   Client client(path());

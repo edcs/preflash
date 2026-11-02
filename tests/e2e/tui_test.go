@@ -25,6 +25,9 @@ const (
 	keyEsc       = "\x1b"
 	ctrlB        = "\x02"
 	ctrlC        = "\x03"
+	ctrlD        = "\x04"
+	ctrlH        = "\x08"
+	keyTab       = "\t"
 	ctrlL        = "\x0c"
 	ctrlR        = "\x12"
 )
@@ -110,6 +113,28 @@ func TestTheWholeApp(t *testing.T) {
 	term.key(keyEnter)
 	term.wait("fixture> rotate 90", "rotation 90°", "last rotated")
 	term.waitGone("Rotate degrees>")
+
+	// The debug screen hears what firmware does, and the panel changes what firmware sees.
+	term.key(ctrlD)
+	term.wait("console", "gpio", "tasks", "addr", "device", "tab next view", "esc console")
+	term.key(keyEsc)
+	term.wait("^R rebuild")
+	term.typed("rtc")
+	term.key(keyEnter)
+	term.wait("fixture: rtc err 0 stopped 0")
+	term.key(ctrlH)
+	term.wait("Hardware", "Rotation", "Break something", "RTC", "↑↓ choose", "esc close")
+	term.snapshot("hardware-100x30")
+	term.wait("Applied now.")
+	term.key(keyEsc)
+	term.waitGone("esc close")
+	term.typed("rtc")
+	term.key(keyEnter)
+	term.key(ctrlD)
+	term.wait("0x51", "PCF85063", "read")
+	term.snapshot("debug-100x30")
+	term.key(keyEsc)
+	term.wait("^R rebuild")
 
 	// Typing, in which number keys are text, then history.
 	term.typed("ping 1")

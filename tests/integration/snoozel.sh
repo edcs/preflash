@@ -269,6 +269,25 @@ tap_until_bright "$lit"
 wait_for_shot picture
 quit_app
 
+# Turning the board reaches the firmware's own sensor driver, which turns the display.
+start_run_at "$noon" --board "$mod_board"
+wait_for_chips
+"$scratch/preflash" hardware rotation 90 --project "$copy" > /dev/null
+wait_for_output "orient: rotation 90"
+"$scratch/preflash" hardware rotation 0 --project "$copy" > /dev/null
+wait_for_output "orient: rotation 0"
+
+# A flat cell and a missing sensor wait for the boot, and the firmware meets them there.
+"$scratch/preflash" hardware rtc flat --project "$copy" > /dev/null
+"$scratch/preflash" hardware motion gone --project "$copy" > /dev/null
+quit_app
+start_run_at "$noon" --board "$mod_board"
+wait_for_output "forced on this boot"
+wait_for_output "imu: no motion sensor"
+"$scratch/preflash" hardware rtc healthy --project "$copy" > /dev/null
+"$scratch/preflash" hardware motion healthy --project "$copy" > /dev/null
+quit_app
+
 # The stock board has no enable pin, so the same low line blanks nothing.
 start_run_at "$noon"
 wait_for_brightness "brightness: 0 (pwm 100)"
