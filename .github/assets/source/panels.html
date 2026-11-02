@@ -1,10 +1,17 @@
 <!doctype html><html><head><meta charset="utf-8"><title>Preflash panels</title>
-<!-- Source for panels.png. Each frame is real panel output from a run. Render with: sh .github/assets/render.sh -->
+<!-- Source for panels.png. Each frame comes from preflash shot against examples/demo: capture.sh saves them, and render.sh draws this page. -->
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=block" rel="stylesheet">
+<link rel="stylesheet" href="screen.css">
 <style>
-*{box-sizing:border-box;margin:0}
-html,body{width:1280px;height:320px;background:#0E1113}
-body{display:flex;align-items:center;justify-content:center;gap:24px;padding:0 32px}
-img{width:276px;height:276px;border-radius:10px;border:1px solid #2A3036;image-rendering:pixelated}
+html,body{width:1440px;height:460px}
+body{display:flex;align-items:center;justify-content:center;gap:24px}
+figure{display:flex;flex-direction:column;gap:12px}
+.pair{display:flex;gap:16px}
+.square{width:360px;height:360px}
+.long{width:97px;height:360px}
 </style></head><body>
-<img src="panel-day.png" alt=""><img src="panel-menu.png" alt=""><img src="panel-night.png" alt=""><img src="panel-rotated.png" alt="">
+<figure><img class="panel square" src="4b-faults.png" alt=""><figcaption>4B, RTC off the bus</figcaption></figure>
+<figure><img class="panel square" src="4b-turned.png" alt=""><figcaption>4B, turned a quarter</figcaption></figure>
+<figure><img class="panel square" src="4b-power.png" alt=""><figcaption>4B, battery at 15%</figcaption></figure>
+<figure><div class="pair"><img class="panel long" src="349-faults.png" alt=""><img class="panel long" src="349-network.png" alt=""></div><figcaption>3.49 V2</figcaption></figure>
 </body></html>

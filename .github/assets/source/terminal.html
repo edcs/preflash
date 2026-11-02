@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Preflash terminal app</title>
+<!-- Source for terminal.png. tuishot reads each screen from a pseudo-terminal running examples/demo: capture.sh saves them, and render.sh draws this page. -->
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=block" rel="stylesheet">
+<link rel="stylesheet" href="screen.css">
+<style>
+html,body{width:1560px;height:700px}
+body{display:flex;align-items:center;justify-content:center;gap:24px}
+.term{flex:none;width:734px}
+</style></head><body>
+<div class="term"><div class="bar"><i></i><i></i><i></i></div><script src="tui-debug.js"></script></div>
+<div class="term"><div class="bar"><i></i><i></i><i></i></div><script src="tui-crash.js"></script></div>
+</body></html>
