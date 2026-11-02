@@ -1,0 +1,44 @@
+tests/runtime/console_test.cpp
+  s_82b4983a83db4b::t_36a389a0e799c5 258-282
+runtime/src/os/system.cpp
+  s_82b4983a83db4b::t_36a389a0e799c5 114
+tests/runtime/helpers/serial_helper.cpp
+  s_82b4983a83db4b::t_36a389a0e799c5 128-137
+tests/runtime/serial_test.cpp
+  s_82b4983a83db4b::t_36a389a0e799c5 236-243
+runtime/src/host/socket.cpp
+  s_82b4983a83db4b::t_36a389a0e799c5 12,56,209,486-488
+  s_82b4983a83db4b::t_09ea9d510387d2 489
+runtime/src/console/console.cpp
+  s_82b4983a83db4b::t_36a389a0e799c5 18,252-254,256-257,264
+tests/integration/control.sh
+  s_82b4983a83db4b::t_36a389a0e799c5 159,261-269,309-315
+  s_82b4983a83db4b::t_314762bfd07e36 316
+internal/project/run.go
+  s_82b4983a83db4b::t_36a389a0e799c5 17,76-80
+  s_82b4983a83db4b::t_1c3e5ae0181ad7 81
+runtime/include/preflash/control.h
+  s_82b4983a83db4b::t_36a389a0e799c5 30-31
+runtime/include/preflash/socket.h
+  s_82b4983a83db4b::t_36a389a0e799c5 21-25
+runtime/src/host/main.cpp
+  s_82b4983a83db4b::t_36a389a0e799c5 84-89
+README.md
+  s_82b4983a83db4b::t_36a389a0e799c5 130,132,137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0a13036efb80dad1b1897c49ca368e87dccdc16",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
