@@ -77,7 +77,7 @@ func Compare(ctx context.Context, capture Capture, b board.Board, replay Replay)
 	}
 	if len(answers) < len(capture.Transactions) {
 		next := capture.Transactions[len(answers)]
-		return Report{}, fmt.Errorf("the chip models stopped before transaction #%d, on %s", next.Seq, next.Chip)
+		return Report{}, fmt.Errorf("the chip models stopped at transaction #%d, on %s", next.Seq, next.Chip)
 	}
 
 	report := Report{Capture: capture, Board: b}

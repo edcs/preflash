@@ -270,7 +270,7 @@ func TestAReplayThatFailsIsAnError(t *testing.T) {
 func TestAReplayThatStopsEarlyNamesTheTransaction(t *testing.T) {
 	_, err := Compare(context.Background(), parsed(t, twoChips("12")), testBoard(), answers(acked("ff")))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "#2")
+	assert.Contains(t, err.Error(), "stopped at transaction #2")
 }
 
 func written(t *testing.T, report Report) string {
