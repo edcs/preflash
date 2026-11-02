@@ -25,7 +25,8 @@ type Choice struct {
 }
 
 // Boards lists what the project can run on: the file its config names, then any other
-// board files in the usual folders, then the stock boards.
+// board files in the usual folders, then the stock boards, with the default first so
+// that the launch screen starts on what preflash run would pick.
 func (p Project) Boards() []Choice {
 	var files []string
 	for _, folder := range boardFolders {
@@ -51,7 +52,17 @@ func (p Project) Boards() []Choice {
 		b, err := board.Load(path)
 		choices = append(choices, Choice{Board: b, File: relative, FromProject: true, Err: err})
 	}
-	for _, name := range board.Stock() {
+	stock := board.Stock()
+	slices.SortStableFunc(stock, func(a, b string) int {
+		switch {
+		case a == defaultBoard:
+			return -1
+		case b == defaultBoard:
+			return 1
+		}
+		return 0
+	})
+	for _, name := range stock {
 		if b, err := board.LoadStock(name); err == nil {
 			choices = append(choices, Choice{Board: b})
 		}

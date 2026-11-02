@@ -13,6 +13,12 @@ extern "C" {
 typedef int i2c_port_num_t;
 
 typedef enum {
+  I2C_NUM_0 = 0,
+  I2C_NUM_1 = 1,
+  I2C_NUM_MAX,
+} i2c_port_t;
+
+typedef enum {
   I2C_CLK_SRC_DEFAULT = 0,
 } i2c_clock_source_t;
 
@@ -48,7 +54,8 @@ typedef struct {
   } flags;
 } i2c_device_config_t;
 
-// Every call gets the one simulated bus, because a board lists one set of chips.
+// A bus is an i2c_port, and -1 takes the first one not asked for yet. Asking for a port
+// twice gives the same bus, where a device says it's busy.
 esp_err_t i2c_new_master_bus(const i2c_master_bus_config_t* bus_config,
                              i2c_master_bus_handle_t* ret_bus_handle);
 esp_err_t i2c_master_bus_add_device(i2c_master_bus_handle_t bus_handle,

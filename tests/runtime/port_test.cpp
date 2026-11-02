@@ -240,3 +240,12 @@ TEST(Port, FallsBackToTheDeviceWhenTheLinkFails) {
   EXPECT_NE(output.find("couldn't link"), std::string::npos) << output;
   EXPECT_NE(output.find("path=/dev/ttys"), std::string::npos) << output;
 }
+
+TEST(PortLines, WhatIsLeftInPartCanBeTaken) {
+  preflash::port::LineSplitter lines(16);
+  std::vector<std::string> out;
+  lines.feed("one\ntw", 6, [&](const std::string& line) { out.push_back(line); });
+  EXPECT_EQ(lines.take_partial(), "tw");
+  EXPECT_EQ(lines.take_partial(), "");
+  ASSERT_EQ(out.size(), 1u);
+}

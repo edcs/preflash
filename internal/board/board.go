@@ -23,11 +23,15 @@ type Display struct {
 	Controller string `yaml:"controller" json:"controller,omitempty"`
 	Width      int    `yaml:"width" json:"width"`
 	Height     int    `yaml:"height" json:"height"`
+	// ByteOrder is how the panel takes RGB565 pixels from esp_lcd: le, the default, or be.
+	ByteOrder string `yaml:"byte_order" json:"byte_order"`
 }
 
 type Chip struct {
 	Chip    string `yaml:"chip" json:"chip"`
 	Address int    `yaml:"address" json:"address"`
+	// Bus is the i2c_port firmware reaches the chip on.
+	Bus int `yaml:"bus" json:"bus"`
 }
 
 type Backlight struct {
@@ -35,6 +39,9 @@ type Backlight struct {
 	ActiveLow bool `yaml:"active_low" json:"active_low"`
 	// Enable is a separate pin that must be driven for the backlight to light.
 	Enable *int `yaml:"enable" json:"enable_pin,omitempty"`
+	// EnableExpander is the same thing on a bit of the board's TCA9554. A board file
+	// writes either as enable, like gpio43 or exio1.
+	EnableExpander *int `yaml:"-" json:"enable_expander_bit,omitempty"`
 }
 
 type Board struct {
@@ -43,6 +50,8 @@ type Board struct {
 	I2C        []Chip    `yaml:"i2c" json:"i2c"`
 	Backlight  Backlight `yaml:"backlight" json:"backlight"`
 	AudioCodec string    `yaml:"audio_codec" json:"audio_codec"`
+	// PowerAmp is the expander bit that switches the speaker amplifier, if there is one.
+	PowerAmp *int `yaml:"-" json:"power_amp_bit,omitempty"`
 
 	// Base is the board at the root of the extends chain, if there is one, and Changes
 	// what the chain changed from it, in path order. Neither reaches the runtime.
@@ -59,7 +68,13 @@ type Change struct {
 	Value string
 }
 
-var pinPattern = regexp.MustCompile(`^gpio(\d+)$`)
+var (
+	pinPattern      = regexp.MustCompile(`^gpio(\d+)$`)
+	expanderPattern = regexp.MustCompile(`^exio([0-7])$`)
+)
+
+// maxI2CBus is the highest i2c_port an ESP32-S3 has.
+const maxI2CBus = 1
 
 // Load reads a board file from disk and applies its extends chain.
 func Load(path string) (Board, error) {
@@ -107,6 +122,16 @@ func load(src source, path string) (Board, error) {
 	if err != nil {
 		return Board{}, err
 	}
+	// Before the pins, which leaves those a plain pin to convert.
+	backlight, _ := merged["backlight"].(map[string]any)
+	enableBit, err := takeExpanderBit(backlight, "enable", "backlight.enable", false)
+	if err != nil {
+		return Board{}, fmt.Errorf("%s: %w", path, err)
+	}
+	ampBit, err := takeExpanderBit(merged, "power_amp", "power_amp", true)
+	if err != nil {
+		return Board{}, fmt.Errorf("%s: %w", path, err)
+	}
 	if err := convertPins(merged); err != nil {
 		return Board{}, fmt.Errorf("%s: %w", path, err)
 	}
@@ -125,6 +150,10 @@ func load(src source, path string) (Board, error) {
 	}
 	if b.Display.Width <= 0 || b.Display.Height <= 0 {
 		return Board{}, fmt.Errorf("%s: display.width and display.height must be positive", path)
+	}
+	b.Backlight.EnableExpander, b.PowerAmp = enableBit, ampBit
+	if err := check(&b); err != nil {
+		return Board{}, fmt.Errorf("%s: %w", path, err)
 	}
 	if history.extended {
 		b.Base, b.Changes = history.root, history.list()
@@ -163,6 +192,52 @@ func (l *lineage) list() []Change {
 	}
 	slices.SortFunc(out, func(a, b Change) int { return strings.Compare(a.Path, b.Path) })
 	return out
+}
+
+// check stops a board whose values make no sense, and fills in the byte order.
+func check(b *Board) error {
+	switch b.Display.ByteOrder {
+	case "":
+		b.Display.ByteOrder = "le"
+	case "le", "be":
+	default:
+		return fmt.Errorf("display.byte_order: %q is neither le nor be", b.Display.ByteOrder)
+	}
+	hasExpander := false
+	for i, chip := range b.I2C {
+		if chip.Bus < 0 || chip.Bus > maxI2CBus {
+			return fmt.Errorf("i2c[%d].bus: %d is not a bus, it must be 0 or %d", i, chip.Bus, maxI2CBus)
+		}
+		hasExpander = hasExpander || chip.Chip == "tca9554"
+	}
+	if b.Backlight.EnableExpander != nil && !hasExpander {
+		return errors.New("backlight.enable: an exio bit needs a tca9554 under i2c")
+	}
+	return nil
+}
+
+// takeExpanderBit removes a value like exio3 from the map and returns its bit, which
+// leaves the map free of what the board's YAML fields don't take. Only a key that must be
+// an expander bit fails on anything else.
+func takeExpanderBit(doc map[string]any, key, field string, only bool) (*int, error) {
+	value, present := doc[key]
+	if !present {
+		return nil, nil
+	}
+	text, _ := value.(string)
+	m := expanderPattern.FindStringSubmatch(text)
+	if m == nil {
+		if only || strings.HasPrefix(text, "exio") {
+			return nil, fmt.Errorf("%s: %v is not an expander bit, write it like exio3", field, value)
+		}
+		return nil, nil
+	}
+	delete(doc, key)
+	bit, err := strconv.Atoi(m[1])
+	if err != nil {
+		return nil, fmt.Errorf("%s: %q is out of range", field, text)
+	}
+	return &bit, nil
 }
 
 // requireBacklightKeys stops a board that leaves out the backlight pin or

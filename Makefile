@@ -9,5 +9,7 @@ test:
 	tests/integration/display.sh
 	tests/integration/control.sh
 	tests/integration/port.sh
+	tests/integration/lcd.sh
 	tests/integration/tui.sh
 	tests/integration/snoozel.sh
+	tests/integration/nyx.sh

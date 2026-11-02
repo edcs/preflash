@@ -20,11 +20,13 @@
 #include "preflash/bus.h"
 #include "preflash/chips.h"
 #include "preflash/panel.h"
+#include "preflash/touch.h"
 
 namespace fs = std::filesystem;
 
 using preflash::attach_chips;
 using preflash::Axp2101;
+using preflash::Axs15231bTouch;
 using preflash::Board;
 using preflash::i2c_bus;
 using preflash::I2cDevice;
@@ -32,6 +34,7 @@ using preflash::Pcf85063;
 using preflash::Qmi8658;
 using preflash::register_chip;
 using preflash::RegisterChip;
+using preflash::Tca9554;
 
 namespace {
 
@@ -131,6 +134,24 @@ TEST(Registry, EveryChipOnTheStockBoardHasAModel) {
   attach_chips(board);
   for (const auto& entry : board.i2c)
     EXPECT_NE(i2c_bus().device(entry.address), nullptr) << entry.chip;
+}
+
+TEST(Registry, EveryChipOnThe349BoardHasAModel) {
+  Board board{};
+  board.i2c = {{"tca9554", 0x20}, {"qmi8658", 0x6b}, {"pcf85063", 0x51}, {"axs15231b", 0x3b, 1}};
+  attach_chips(board);
+  EXPECT_NE(i2c_bus(1).device(0x3b), nullptr);
+  EXPECT_EQ(i2c_bus(0).device(0x3b), nullptr);
+}
+
+TEST(Registry, OneAddressCanSitOnTwoBuses) {
+  Board board{};
+  board.i2c = {{"pcf85063", 0x70}, {"qmi8658", 0x70, 1}};
+  attach_chips(board);
+  EXPECT_NE(i2c_bus(0).device(0x70), nullptr);
+  EXPECT_NE(i2c_bus(1).device(0x70), nullptr);
+  i2c_bus(0).take(0x70);
+  i2c_bus(1).take(0x70);
 }
 
 TEST(RegisterChip, AutoIncrements) {
@@ -398,6 +419,155 @@ TEST(Pcf85063, GarbledCarryNamesTheVariable) {
     EXPECT_NE(std::string(e.what()).find("PREFLASH_RTC_CARRY"), std::string::npos);
   }
   EXPECT_EQ(std::getenv("PREFLASH_RTC_CARRY"), nullptr);
+}
+
+TEST(Tca9554, PowersUpWithEveryPinAnInputPulledHigh) {
+  Tca9554 expander;
+  EXPECT_EQ(take(expander, 0x00), 0xff);
+  EXPECT_EQ(take(expander, 0x01), 0xff);
+  EXPECT_EQ(take(expander, 0x02), 0x00);
+  EXPECT_EQ(take(expander, 0x03), 0xff);
+}
+
+TEST(Tca9554, AnOutputReadsWhatItDrives) {
+  Tca9554 expander;
+  put(expander, 0x01, 0x60);
+  put(expander, 0x03, 0x9d);
+  EXPECT_EQ(take(expander, 0x01), 0x60);
+  EXPECT_EQ(take(expander, 0x03), 0x9d);
+  EXPECT_EQ(take(expander, 0x00), 0xfd);
+  EXPECT_TRUE(preflash::expander_level(5));
+  EXPECT_FALSE(preflash::expander_level(1));
+  EXPECT_TRUE(preflash::expander_level(0));  // an input, so the pull-up has it
+}
+
+TEST(Tca9554, ThePolarityRegisterInvertsTheInputRegisterOnly) {
+  Tca9554 expander;
+  put(expander, 0x02, 0x0f);
+  EXPECT_EQ(take(expander, 0x00), 0xf0);
+  EXPECT_TRUE(preflash::expander_level(0));
+}
+
+TEST(Tca9554, WritingTheInputRegisterDoesNothing) {
+  Tca9554 expander;
+  put(expander, 0x00, 0x00);
+  EXPECT_EQ(take(expander, 0x00), 0xff);
+}
+
+TEST(Tca9554, AReadStaysOnItsRegister) {
+  Tca9554 expander;
+  put(expander, 0x01, 0x12);
+  const auto bytes = take<2>(expander, 0x01);
+  EXPECT_EQ(bytes[0], 0x12);
+  EXPECT_EQ(bytes[1], 0x12);
+}
+
+TEST(Tca9554, SharesItsPinsWithTheExpanderCalls) {
+  Tca9554 expander;
+  esp_io_expander_handle_t io = bsp_io_expander_init();
+  ASSERT_EQ(esp_io_expander_set_dir(io, IO_EXPANDER_PIN_NUM_2, IO_EXPANDER_OUTPUT), ESP_OK);
+  ASSERT_EQ(esp_io_expander_set_level(io, IO_EXPANDER_PIN_NUM_2, 0), ESP_OK);
+  EXPECT_EQ(take(expander, 0x00), 0xfb);
+  put(expander, 0x01, 0xff);
+  uint32_t level = 0;
+  ASSERT_EQ(esp_io_expander_get_level(io, IO_EXPANDER_PIN_NUM_2, &level), ESP_OK);
+  EXPECT_NE(level, 0u);
+}
+
+TEST(Tca9554DeathTest, ARegisterItLacksNamesTheChip) {
+  EXPECT_DEATH(
+      {
+        Tca9554 expander;
+        put(expander, 0x04, 0x00);
+      },
+      "tca9554 register 0x04");
+}
+
+namespace touch_chip {
+
+constexpr std::array<uint8_t, 11> kReadCommand = {0xb5, 0xab, 0xa5, 0x5a, 0x00, 0x00,
+                                                  0x00, 0x0e, 0x00, 0x00, 0x00};
+
+std::array<uint8_t, 32> poll(I2cDevice& chip) {
+  std::array<uint8_t, 32> reply;
+  reply.fill(0xee);
+  EXPECT_TRUE(chip.write(kReadCommand));
+  EXPECT_TRUE(chip.read(reply));
+  return reply;
+}
+
+int long_side(const std::array<uint8_t, 32>& reply) { return (reply[2] & 0x0f) << 8 | reply[3]; }
+int short_side(const std::array<uint8_t, 32>& reply) { return (reply[4] & 0x0f) << 8 | reply[5]; }
+
+}  // namespace touch_chip
+
+TEST(Axs15231bTouch, ReportsNoPointsWhenIdle) {
+  while (preflash::touch::pop()) {
+  }
+  Axs15231bTouch chip(172, 640);
+  const auto reply = touch_chip::poll(chip);
+  EXPECT_EQ(reply[1], 0);
+}
+
+TEST(Axs15231bTouch, ReportsAPressAlongTheLongSideFromTheFarEnd) {
+  while (preflash::touch::pop()) {
+  }
+  Axs15231bTouch chip(172, 640);
+  preflash::touch::push({40, 600, true});
+  const auto reply = touch_chip::poll(chip);
+  EXPECT_EQ(reply[1], 1);
+  EXPECT_EQ(touch_chip::short_side(reply), 40);
+  EXPECT_EQ(touch_chip::long_side(reply), 640 - 1 - 600);
+}
+
+TEST(Axs15231bTouch, HoldsAPressUntilTheRelease) {
+  while (preflash::touch::pop()) {
+  }
+  Axs15231bTouch chip(172, 640);
+  preflash::touch::push({40, 600, true});
+  EXPECT_EQ(touch_chip::poll(chip)[1], 1);
+  EXPECT_EQ(touch_chip::poll(chip)[1], 1);
+  preflash::touch::push({40, 600, false});
+  EXPECT_EQ(touch_chip::poll(chip)[1], 0);
+}
+
+TEST(Axs15231bTouch, AQuickTapTakesTwoPolls) {
+  while (preflash::touch::pop()) {
+  }
+  Axs15231bTouch chip(172, 640);
+  preflash::touch::push({1, 2, true});
+  preflash::touch::push({1, 2, false});
+  EXPECT_EQ(touch_chip::poll(chip)[1], 1);
+  EXPECT_EQ(touch_chip::poll(chip)[1], 0);
+}
+
+TEST(Axs15231bTouch, FillsTheRestOfTheReplyWithZeros) {
+  Axs15231bTouch chip(172, 640);
+  const auto reply = touch_chip::poll(chip);
+  for (size_t i = 6; i < reply.size(); ++i) EXPECT_EQ(reply[i], 0) << i;
+}
+
+TEST(Axs15231bTouchDeathTest, ACommandItDoesntKnowNamesTheChip) {
+  const std::array<uint8_t, 2> other = {0x01, 0x02};
+  EXPECT_DEATH(
+      {
+        Axs15231bTouch chip(172, 640);
+        (void)chip.write(other);
+      },
+      "axs15231b");
+}
+
+TEST(Qmi8658, ResetsThenAutoIncrementsThroughAnAccelRead) {
+  Qmi8658 imu;
+  EXPECT_EQ(take(imu, 0x00), 0x05);
+  put(imu, 0x60, 0xb0);
+  put(imu, kCtrl1, 0x40);
+  put(imu, kCtrl2, 0x08);
+  put(imu, kCtrl7, 0x01);
+  const auto sample = take<6>(imu, kAccelX);
+  EXPECT_EQ(little_endian(sample[0], sample[1]), 0);
+  EXPECT_EQ(little_endian(sample[2], sample[3]), 16384);
+  EXPECT_EQ(little_endian(sample[4], sample[5]), 0);
 }
 
 TEST(Qmi8658DeathTest, UnmodelledReadNamesChipAndRegister) {

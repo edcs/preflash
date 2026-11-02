@@ -6,8 +6,9 @@
 
 // The virtual serial port: a pseudo-terminal carrying the same stream as the console, for a
 // companion app to open as it would a board's USB port. Output goes to the terminal as well
-// as everywhere else, and what comes back joins the console's line queue. Nothing here reads
-// meaning into the bytes, apart from where their lines end.
+// as everywhere else, and what comes back joins the console's queue: as lines, or as bytes
+// just as they came once firmware has installed the USB serial driver, because then "@sim "
+// and the ends of lines are the firmware's business.
 //
 // PREFLASH_PORT asks for it, and names a link to the device. PREFLASH_PORT_LINK names a
 // second link. Both ends of the terminal outlive esp_restart, named in PREFLASH_PORT_FDS, so
@@ -26,6 +27,9 @@ class LineSplitter {
   // Calls emit with each line this finishes. Returns how many lines it threw away for
   // being longer than the limit.
   size_t feed(const char* data, size_t size, const Emit& emit);
+
+  // Hands over a line still waiting for its end.
+  std::string take_partial();
 
  private:
   size_t longest_;

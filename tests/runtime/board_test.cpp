@@ -99,3 +99,66 @@ TEST(Board, DisplaySizeMustBePositive) {
   EXPECT_NE(board_error(with_replaced("\"height\": 320", "\"height\": -5")).find("display.height must be positive"),
             std::string::npos);
 }
+
+TEST(Board, AChipIsOnBusZeroUnlessItSaysOtherwise) {
+  std::string json = kBoard;
+  json.replace(json.find("\"address\": 107"), 14, "\"address\": 107, \"bus\": 1");
+  preflash::Board b = preflash::parse_board(json);
+  EXPECT_EQ(b.i2c[0].bus, 0);
+  EXPECT_EQ(b.i2c[1].bus, 1);
+}
+
+TEST(Board, ABusTheChipLacksNamesTheField) {
+  std::string json = kBoard;
+  json.replace(json.find("\"address\": 107"), 14, "\"address\": 107, \"bus\": 2");
+  try {
+    preflash::parse_board(json);
+    FAIL() << "expected a throw";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string(e.what()).find("i2c[1].bus"), std::string::npos) << e.what();
+  }
+}
+
+TEST(Board, ThePanelIsLittleEndianUnlessItSaysOtherwise) {
+  EXPECT_FALSE(preflash::parse_board(kBoard).big_endian);
+  std::string json = kBoard;
+  json.replace(json.find("\"height\": 320"), 13, "\"height\": 320, \"byte_order\": \"be\"");
+  EXPECT_TRUE(preflash::parse_board(json).big_endian);
+}
+
+TEST(Board, ABadByteOrderNamesTheField) {
+  std::string json = kBoard;
+  json.replace(json.find("\"height\": 320"), 13, "\"height\": 320, \"byte_order\": \"up\"");
+  try {
+    preflash::parse_board(json);
+    FAIL() << "expected a throw";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string(e.what()).find("display.byte_order"), std::string::npos) << e.what();
+  }
+}
+
+TEST(Board, ReadsTheController) {
+  EXPECT_EQ(preflash::parse_board(kBoard).controller, "");
+  std::string json = kBoard;
+  json.replace(json.find("\"height\": 320"), 13, "\"height\": 320, \"controller\": \"axs15231b\"");
+  EXPECT_EQ(preflash::parse_board(json).controller, "axs15231b");
+}
+
+TEST(Board, ExpanderBitsAreOptional) {
+  preflash::Board b = preflash::parse_board(kBoard);
+  EXPECT_FALSE(b.backlight.enable_expander_bit.has_value());
+  EXPECT_FALSE(b.power_amp_bit.has_value());
+
+  std::string json = kBoard;
+  json.replace(json.find(", \"enable_pin\": 43"), 18, ", \"enable_expander_bit\": 1");
+  json.replace(json.find("\"audio_codec\""), 13, "\"power_amp_bit\": 3, \"audio_codec\"");
+  b = preflash::parse_board(json);
+  EXPECT_EQ(b.backlight.enable_expander_bit, 1);
+  EXPECT_EQ(b.power_amp_bit, 3);
+}
+
+TEST(Board, AnExpanderBitMustBeOnTheExpander) {
+  std::string json = kBoard;
+  json.replace(json.find(", \"enable_pin\": 43"), 18, ", \"enable_expander_bit\": 8");
+  EXPECT_THROW(preflash::parse_board(json), std::runtime_error);
+}

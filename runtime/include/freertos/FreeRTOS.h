@@ -1,7 +1,10 @@
 #pragma once
 
+#include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#include "esp_attr.h"
 
 #if __has_include("sdkconfig.h")
 #include "sdkconfig.h"
@@ -29,3 +32,8 @@ typedef uint32_t TickType_t;
 #define pdTRUE ((BaseType_t)1)
 #define pdPASS (pdTRUE)
 #define pdFAIL (pdFALSE)
+
+#define configASSERT(condition) assert(condition)
+
+// Nothing runs at interrupt level here, so there's nothing to yield to.
+#define portYIELD_FROM_ISR(...) ((void)0)

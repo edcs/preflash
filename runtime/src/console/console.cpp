@@ -16,6 +16,7 @@
 #include "preflash/control.h"
 #include "preflash/fail.h"
 #include "preflash/socket.h"
+#include "preflash/usb.h"
 
 namespace {
 
@@ -33,6 +34,13 @@ struct Command {
   void* context;
 };
 
+// Raw bytes came from the wire to firmware's driver, and no line of theirs means anything
+// to the simulator.
+struct Queued {
+  std::string text;
+  bool raw;
+};
+
 struct Repl : esp_console_repl_t {
   std::string prompt;
   bool started = false;
@@ -44,7 +52,9 @@ struct State {
   std::map<std::string, std::function<void(std::vector<std::string>)>> controls;
   // Set once firmware's REPL takes commands.
   const Repl* open_repl = nullptr;
-  std::deque<std::string> lines;
+  bool repl_made = false;
+  bool initialized = false;
+  std::deque<Queued> lines;
   size_t queued_bytes = 0;
   std::condition_variable line_ready;
   bool line_running = false;
@@ -117,17 +127,13 @@ void run_control(std::vector<std::string> words) {
   fn(std::move(words));
 }
 
-void run_command(const std::vector<std::string>& words) {
-  if (words.empty()) return;
+// False if nobody registered the command.
+bool call_command(const std::vector<std::string>& words, int* code) {
   Command command{};
   {
     std::lock_guard<std::mutex> lock(state().mutex);
     auto it = state().commands.find(words[0]);
-    if (it == state().commands.end()) {
-      std::printf("Unrecognized command: %s\n", words[0].c_str());
-      std::fflush(stdout);
-      return;
-    }
+    if (it == state().commands.end()) return false;
     command = it->second;
   }
   // argv ends with a null pointer, as a command expects.
@@ -136,8 +142,19 @@ void run_command(const std::vector<std::string>& words) {
   for (auto& w : storage) argv.push_back(w.data());
   argv.push_back(nullptr);
   const int argc = static_cast<int>(words.size());
-  const int code = command.func ? command.func(argc, argv.data())
-                                : command.func_w_context(command.context, argc, argv.data());
+  *code = command.func ? command.func(argc, argv.data())
+                       : command.func_w_context(command.context, argc, argv.data());
+  return true;
+}
+
+void run_command(const std::vector<std::string>& words) {
+  if (words.empty()) return;
+  int code = 0;
+  if (!call_command(words, &code)) {
+    std::printf("Unrecognized command: %s\n", words[0].c_str());
+    std::fflush(stdout);
+    return;
+  }
   if (code != 0) {
     std::printf("Command returned non-zero error code: 0x%x\n", static_cast<unsigned>(code));
   }
@@ -172,24 +189,40 @@ void print_prompt() {
 
 std::atomic<bool> g_reader_done{false};
 
+bool is_control(const Queued& queued) { return !queued.raw && is_control(queued.text); }
+
+// Takes this queued item to whoever it's for. Firmware's driver may keep this waiting
+// for room, as a full buffer holds the host back on the device.
+void deliver(const Queued& queued) {
+  if (queued.raw) {
+    preflash::usb::feed(queued.text.data(), queued.text.size());
+  } else if (preflash::usb::installed() && !is_control(queued.text)) {
+    const std::string line = queued.text + "\n";
+    preflash::usb::feed(line.data(), line.size());
+  } else {
+    preflash::dispatch_line(queued.text);
+  }
+}
+
 // Runs the queue. A control can go ahead of any REPL, so a project without one still
-// answers it, but a firmware command waits for the REPL with every later line behind it,
-// as it would in a device's UART buffer.
+// answers it, but a firmware line waits for a REPL or a USB serial driver with every later
+// line behind it, as it would in a device's UART buffer.
 void line_task(void*) {
   State& s = state();
   for (;;) {
-    std::string line;
+    Queued line;
     {
       std::unique_lock<std::mutex> lock(s.mutex);
       s.line_ready.wait(lock, [&] {
-        return !s.lines.empty() && (s.open_repl || is_control(s.lines.front()));
+        return !s.lines.empty() &&
+               (s.open_repl || preflash::usb::installed() || is_control(s.lines.front()));
       });
       line = std::move(s.lines.front());
       s.lines.pop_front();
-      s.queued_bytes -= queued_size(line);
+      s.queued_bytes -= queued_size(line.text);
       s.line_running = true;
     }
-    preflash::dispatch_line(line);
+    deliver(line);
     print_prompt();
     {
       std::lock_guard<std::mutex> lock(s.mutex);
@@ -220,6 +253,14 @@ int help_command(int, char**) {
                 command.help.c_str());
   }
   return 0;
+}
+
+void add_help_command() {
+  std::lock_guard<std::mutex> lock(state().mutex);
+  if (!state().commands.count("help")) {
+    state().commands["help"] =
+        Command{"Print the list of registered commands", "", help_command, nullptr, nullptr};
+  }
 }
 
 esp_err_t repl_del(esp_console_repl_t*) {
@@ -259,6 +300,22 @@ void finish_queued_lines() {
   }
 }
 
+namespace {
+
+bool enqueue(Queued queued) {
+  {
+    std::lock_guard<std::mutex> lock(state().mutex);
+    const size_t size = queued_size(queued.text);
+    if (state().queued_bytes + size > kQueuedLineBytes) return false;
+    state().queued_bytes += size;
+    state().lines.push_back(std::move(queued));
+  }
+  state().line_ready.notify_one();
+  return true;
+}
+
+}  // namespace
+
 bool submit_line(const std::string& line) {
   if (is_quit(line)) {
     socket::note_quitting();
@@ -266,15 +323,29 @@ bool submit_line(const std::string& line) {
     dispatch_line(line);
     return true;
   }
-  {
-    std::lock_guard<std::mutex> lock(state().mutex);
-    if (state().queued_bytes + queued_size(line) > kQueuedLineBytes) return false;
-    state().queued_bytes += queued_size(line);
-    state().lines.push_back(line);
-  }
-  state().line_ready.notify_one();
-  return true;
+  return enqueue({line, false});
 }
+
+bool submit_bytes(const char* data, size_t size) {
+  return enqueue({std::string(data, size), true});
+}
+
+bool firmware_reads_serial() { return usb::installed(); }
+
+namespace usb {
+
+bool repl_has_port() {
+  std::lock_guard<std::mutex> lock(state().mutex);
+  return state().repl_made;
+}
+
+void wake_queue() {
+  // Through the lock, so that the queue can't look and miss this between its check and its wait.
+  { std::lock_guard<std::mutex> lock(state().mutex); }
+  state().line_ready.notify_all();
+}
+
+}  // namespace usb
 
 bool console_reader_done() { return g_reader_done; }
 
@@ -307,16 +378,44 @@ esp_err_t esp_console_cmd_register(const esp_console_cmd_t* cmd) {
   return ESP_OK;
 }
 
+esp_err_t esp_console_init(const esp_console_config_t* config) {
+  if (!config) return ESP_ERR_INVALID_ARG;
+  std::lock_guard<std::mutex> lock(state().mutex);
+  if (state().initialized) return ESP_ERR_INVALID_STATE;
+  state().initialized = true;
+  return ESP_OK;
+}
+
+esp_err_t esp_console_register_help_command(void) {
+  {
+    std::lock_guard<std::mutex> lock(state().mutex);
+    if (!state().initialized) return ESP_ERR_INVALID_STATE;
+  }
+  add_help_command();
+  return ESP_OK;
+}
+
+esp_err_t esp_console_run(const char* cmdline, int* cmd_ret) {
+  {
+    std::lock_guard<std::mutex> lock(state().mutex);
+    if (!state().initialized) return ESP_ERR_INVALID_STATE;
+  }
+  const std::vector<std::string> words = split_words(cmdline);
+  if (words.empty()) return ESP_ERR_INVALID_ARG;
+  return call_command(words, cmd_ret) ? ESP_OK : ESP_ERR_NOT_FOUND;
+}
+
 esp_err_t esp_console_new_repl_usb_serial_jtag(const esp_console_dev_usb_serial_jtag_config_t*,
                                                const esp_console_repl_config_t* repl_config,
                                                esp_console_repl_t** ret_repl) {
   if (!repl_config || !ret_repl) return ESP_ERR_INVALID_ARG;
+  // The device's REPL installs the driver itself, which a second install then fails.
+  if (preflash::usb::installed()) return ESP_ERR_INVALID_STATE;
+  add_help_command();
   {
     std::lock_guard<std::mutex> lock(state().mutex);
-    if (!state().commands.count("help")) {
-      state().commands["help"] = Command{"Print the list of registered commands", "", help_command,
-                                         nullptr, nullptr};
-    }
+    state().repl_made = true;
+    state().initialized = true;
   }
   auto* repl = new Repl;
   repl->del = repl_del;

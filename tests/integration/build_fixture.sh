@@ -91,9 +91,19 @@ expect_output "clamped=3"
 expect_output "constructor ran"
 expect_output "embedded=hello bytes"
 expect_output "embedded text=notes length=6"
-expect_output "lvgl os_none=1 color_depth=16 sdl=0"
+expect_output "lvgl os_none=0 os_threads=1 color_depth=16 sdl=0"
 expect_output "ESP_PLATFORM is defined"
 expect_no_output "asserts are off"
+
+# A project that asked for no OS in LVGL gets none.
+sed -i '' 's/^CONFIG_LV_OS_FREERTOS=y$/CONFIG_LV_OS_NONE=y/' "$work/project/sdkconfig"
+log="$(configure)" || fail "configure with no LVGL OS" "$log"
+log="$(cmake --build "$work/build" 2>&1)" || fail "build with no LVGL OS" "$log"
+run_fixture
+expect_output "lvgl os_none=1 os_threads=0 color_depth=16 sdl=0"
+sed -i '' 's/^CONFIG_LV_OS_NONE=y$/CONFIG_LV_OS_FREERTOS=y/' "$work/project/sdkconfig"
+log="$(configure)" || fail "configure" "$log"
+log="$(cmake --build "$work/build" 2>&1)" || fail "build" "$log"
 
 # With no board there's nothing to simulate, and the message says why.
 if output="$(env -u PREFLASH_BOARD "$work/build/app" 2>&1 < /dev/null)"; then

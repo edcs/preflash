@@ -395,7 +395,7 @@ func TestBoardsListProjectFilesAndStock(t *testing.T) {
 	for _, c := range choices {
 		names = append(names, c.Board.Name+"/"+c.File)
 	}
-	assert.Equal(t, []string{"stray/elsewhere.yaml", "/sim/broken.yml", "mod/sim/mod.yaml", "ESP32-S3-Touch-LCD-4B/"}, names)
+	assert.Equal(t, []string{"stray/elsewhere.yaml", "/sim/broken.yml", "mod/sim/mod.yaml", "ESP32-S3-Touch-LCD-4B/", "ESP32-S3-Touch-LCD-3.49-V2/"}, names)
 	assert.Error(t, choices[1].Err, "a board file that won't load stays on the list")
 	assert.True(t, choices[0].FromProject)
 	assert.False(t, choices[3].FromProject)
@@ -411,7 +411,7 @@ func TestBoardsPutTheConfiguredFileFirst(t *testing.T) {
 
 	choices := p.Boards()
 
-	require.Len(t, choices, 3)
+	require.Len(t, choices, 4)
 	assert.Equal(t, "custom", choices[0].Board.Name)
 	assert.Equal(t, "mod", choices[1].Board.Name)
 }

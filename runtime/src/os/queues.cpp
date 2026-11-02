@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "preflash/fail.h"
 #include "ticks.h"
 
@@ -51,11 +52,42 @@ BaseType_t xQueueReceive(QueueHandle_t queue, void* item, TickType_t ticks_to_wa
   } else if (!queue->changed.wait_for(lock, preflash::ticks_to_duration(ticks_to_wait), any)) {
     return pdFALSE;
   }
-  std::memcpy(item, queue->items.front().data(), queue->item_size);
+  if (queue->item_size > 0) std::memcpy(item, queue->items.front().data(), queue->item_size);
   queue->items.pop_front();
   lock.unlock();
   queue->changed.notify_all();
   return pdTRUE;
 }
+
+SemaphoreHandle_t xSemaphoreCreateBinary(void) { return new QueueDefinition(1, 0); }
+
+SemaphoreHandle_t xSemaphoreCreateCounting(UBaseType_t max_count, UBaseType_t initial_count) {
+  if (max_count == 0 || initial_count > max_count) return nullptr;
+  auto* semaphore = new QueueDefinition(max_count, 0);
+  semaphore->items.resize(initial_count);
+  return semaphore;
+}
+
+SemaphoreHandle_t xSemaphoreCreateMutex(void) { return xSemaphoreCreateCounting(1, 1); }
+
+BaseType_t xSemaphoreGive(SemaphoreHandle_t semaphore) {
+  return xQueueSend(semaphore, nullptr, 0);
+}
+
+BaseType_t xSemaphoreGiveFromISR(SemaphoreHandle_t semaphore, BaseType_t* task_woken) {
+  if (task_woken) *task_woken = pdFALSE;  // the host's scheduler has already been told
+  return xSemaphoreGive(semaphore);
+}
+
+BaseType_t xSemaphoreTake(SemaphoreHandle_t semaphore, TickType_t ticks_to_wait) {
+  return xQueueReceive(semaphore, nullptr, ticks_to_wait);
+}
+
+UBaseType_t uxSemaphoreGetCount(SemaphoreHandle_t semaphore) {
+  std::lock_guard<std::mutex> lock(semaphore->mutex);
+  return static_cast<UBaseType_t>(semaphore->items.size());
+}
+
+void vSemaphoreDelete(SemaphoreHandle_t semaphore) { delete semaphore; }
 
 }  // extern "C"

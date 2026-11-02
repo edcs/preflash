@@ -33,10 +33,32 @@ class I2cBus {
   std::map<uint8_t, std::unique_ptr<I2cDevice>> devices_;
 };
 
-I2cBus& i2c_bus();
+// An ESP32-S3 has two I2C controllers, each with its own wires.
+constexpr int kI2cPorts = 2;
 
-// The level on a pin. Nothing drives a pin until firmware or a test does, and
-// such a pin reads low, because the model has no pull resistors.
+I2cBus& i2c_bus(int port = 0);
+
+// The pins of the board's I/O expander. The TCA9554 model and firmware's esp_io_expander
+// calls are two ways to reach the same pins.
+struct ExpanderPins {
+  uint32_t outputs;  // pins that are outputs
+  uint32_t levels;   // what those drive, kept while a pin is an input
+};
+ExpanderPins expander_pins();
+// Change only the bits in mask.
+void expander_set_outputs(uint32_t mask, uint32_t outputs);
+void expander_set_levels(uint32_t mask, uint32_t levels);
+// As the chip's power-on: every pin an input, every level high.
+void expander_power_on();
+// What's on the pin. Nothing drives an input here, so the chip's pull-up holds it high.
+bool expander_level(int bit);
+
+// Whether firmware has started this SPI bus.
+bool spi_bus_started(int host);
+
+// The level on a pin. Nothing drives a pin until firmware or a test does, and such a
+// pin reads as its pull resistor holds it, or low if firmware has set none. What a
+// test or the outside drives wins over a pull.
 void gpio_write(int pin, bool level);
 bool gpio_read(int pin);
 // Whether firmware drives the pin as an output, and whether it holds the pad's level.

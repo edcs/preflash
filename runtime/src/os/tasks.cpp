@@ -7,6 +7,7 @@
 #include <system_error>
 #include <thread>
 
+#include "esp_timer.h"
 #include "freertos/task.h"
 #include "preflash/fail.h"
 #include "ticks.h"
@@ -53,6 +54,18 @@ BaseType_t xTaskCreatePinnedToCore(TaskFunction_t task, const char* name, uint32
     return pdFAIL;
   }
   return pdPASS;
+}
+
+TickType_t xTaskGetTickCount(void) {
+  return static_cast<TickType_t>(esp_timer_get_time() * configTICK_RATE_HZ / 1000000);
+}
+
+void vTaskDelayUntil(TickType_t* previous_wake, TickType_t increment) {
+  const TickType_t wake = *previous_wake + increment;
+  *previous_wake = wake;
+  const TickType_t left = wake - xTaskGetTickCount();
+  // Unsigned, so a wake time already gone shows as a huge number.
+  if (left != 0 && left <= increment) std::this_thread::sleep_for(preflash::ticks_to_duration(left));
 }
 
 void vTaskDelay(TickType_t ticks) {

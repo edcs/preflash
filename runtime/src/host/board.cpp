@@ -9,6 +9,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "preflash/bus.h"
+
 namespace preflash {
 namespace {
 
@@ -37,6 +39,14 @@ int integer(const json& obj, const std::string& parent, const char* key) {
   return v.get<int>();
 }
 
+// The bit of the 8-pin expander, if the object names one.
+std::optional<int> expander_bit(const json& obj, const std::string& parent, const char* key) {
+  if (!obj.contains(key)) return std::nullopt;
+  const int bit = integer(obj, parent, key);
+  if (bit < 0 || bit > 7) bad(parent.empty() ? key : parent + "." + key, "must be a bit from 0 to 7");
+  return bit;
+}
+
 std::string text(const json& obj, const std::string& parent, const char* key) {
   const json& v = member(obj, parent, key);
   if (!v.is_string()) bad(parent.empty() ? key : parent + "." + key, "must be a string");
@@ -57,6 +67,13 @@ Board parse_board(const std::string& source) {
   b.height = integer(display, "display", "height");
   if (b.width <= 0) bad("display.width", "must be positive");
   if (b.height <= 0) bad("display.height", "must be positive");
+  if (display.contains("controller")) b.controller = text(display, "display", "controller");
+  b.big_endian = false;
+  if (display.contains("byte_order")) {
+    const std::string order = text(display, "display", "byte_order");
+    if (order != "le" && order != "be") bad("display.byte_order", "must be le or be");
+    b.big_endian = order == "be";
+  }
 
   const json& chips = member(root, "", "i2c");
   if (!chips.is_array()) bad("i2c", "must be a list");
@@ -64,7 +81,10 @@ Board parse_board(const std::string& source) {
     std::string where = "i2c[" + std::to_string(i) + "]";
     int address = integer(chips[i], where, "address");
     if (address < 0 || address > 0x7f) bad(where + ".address", "must be a 7-bit address");
-    b.i2c.push_back({text(chips[i], where, "chip"), static_cast<uint8_t>(address)});
+    int bus = 0;
+    if (chips[i].contains("bus")) bus = integer(chips[i], where, "bus");
+    if (bus < 0 || bus >= kI2cPorts) bad(where + ".bus", "must be 0 or 1");
+    b.i2c.push_back({text(chips[i], where, "chip"), static_cast<uint8_t>(address), bus});
   }
 
   const json& bl = member(root, "", "backlight");
@@ -73,8 +93,10 @@ Board parse_board(const std::string& source) {
   if (!low.is_boolean()) bad("backlight.active_low", "must be true or false");
   b.backlight.active_low = low.get<bool>();
   if (bl.contains("enable_pin")) b.backlight.enable_pin = integer(bl, "backlight", "enable_pin");
+  b.backlight.enable_expander_bit = expander_bit(bl, "backlight", "enable_expander_bit");
 
   b.audio_codec = text(root, "", "audio_codec");
+  b.power_amp_bit = expander_bit(root, "", "power_amp_bit");
   return b;
 }
 
