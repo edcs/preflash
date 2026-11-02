@@ -55,8 +55,8 @@ void sleep_ms() {
   nanosleep(&ms, nullptr);
 }
 
-// A real stdout that went away must not take the firmware with it, as it did not on the
-// device, so the pump carries on for the ring and subscribers.
+// A real stdout that went away must not take the firmware with it, so the pump carries
+// on for the ring and subscribers.
 void write_real(int* fd, const char* data, size_t size) {
   while (*fd >= 0 && size > 0) {
     const ssize_t wrote = write(*fd, data, size);

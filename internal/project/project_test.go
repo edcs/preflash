@@ -209,7 +209,7 @@ func TestUnreadableRcIsAnError(t *testing.T) {
 }
 
 func TestEnvironmentForTheApp(t *testing.T) {
-	base := []string{"PATH=/bin", "PREFLASH_HEADLESS=1", "IDF_PATH=/real/esp-idf"}
+	base := []string{"PATH=/bin", "PREFLASH_HEADLESS=1", "IDF_PATH=/real/esp-idf", "PREFLASH_SOCKET=/old.sock"}
 	p := Project{Dir: "/x/demo", id: "demo-12345678"}
 	t.Setenv("HOME", "/home/me")
 
@@ -219,10 +219,22 @@ func TestEnvironmentForTheApp(t *testing.T) {
 	assert.Contains(t, windowed, "PREFLASH_BOARD=/home/me/.preflash/build/demo-12345678/board.json")
 	assert.Contains(t, windowed, "PREFLASH_STATE=/home/me/.preflash/state/demo-12345678")
 	assert.Contains(t, windowed, "PREFLASH_PROJECT=demo")
+	assert.Contains(t, windowed, "PREFLASH_SOCKET="+p.SocketPath())
+	assert.NotContains(t, windowed, "PREFLASH_SOCKET=/old.sock")
 	assert.NotContains(t, windowed, "PREFLASH_HEADLESS=1")
 	assert.NotContains(t, windowed, "IDF_PATH=/real/esp-idf")
 
 	assert.Contains(t, p.environment(base, "/repo", true), "PREFLASH_HEADLESS=1")
+}
+
+func TestSocketPathFitsAUnixSocket(t *testing.T) {
+	t.Setenv("HOME", "/Users/someone/with/a/fairly/long/home/folder")
+	p := Project{Dir: "/some/very/deep/folder/" + strings.Repeat("x", 200)}
+
+	path := p.SocketPath()
+	assert.Regexp(t, `/Library/Caches/preflash/[0-9a-f]{12}\.sock$`, path)
+	assert.Less(t, len(path), 104)
+	assert.NotEqual(t, path, Project{Dir: "/elsewhere"}.SocketPath())
 }
 
 func TestRootComesFromTheEnvironment(t *testing.T) {

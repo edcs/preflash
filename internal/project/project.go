@@ -125,6 +125,15 @@ func (p Project) StateDir() string { return filepath.Join(preflashHome(), "state
 // BuildDir is where this checkout is built, outside the project.
 func (p Project) BuildDir() string { return filepath.Join(preflashHome(), "build", p.id) }
 
+// SocketPath is where this checkout's running app listens. It's named by a short hash
+// and sits under the cache folder, because macOS allows a socket's path 104 bytes.
+func (p Project) SocketPath() string {
+	// Only fails with no HOME, and then a relative folder still works.
+	home, _ := os.UserHomeDir()
+	sum := sha256.Sum256([]byte(p.Dir))
+	return filepath.Join(home, "Library", "Caches", "preflash", hex.EncodeToString(sum[:6])+".sock")
+}
+
 func preflashHome() string {
 	// Only fails with no HOME, and then a relative folder still works.
 	home, _ := os.UserHomeDir()

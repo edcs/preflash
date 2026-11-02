@@ -45,6 +45,7 @@ func (p Project) environment(base []string, root string, headless bool) []string
 		"PREFLASH_BOARD=" + filepath.Join(p.BuildDir(), "board.json"),
 		"PREFLASH_STATE=" + p.StateDir(),
 		"PREFLASH_PROJECT=" + filepath.Base(p.Dir),
+		"PREFLASH_SOCKET=" + p.SocketPath(),
 	}
 	if headless {
 		set = append(set, "PREFLASH_HEADLESS=1")
@@ -53,7 +54,7 @@ func (p Project) environment(base []string, root string, headless bool) []string
 	for _, entry := range base {
 		name, _, _ := strings.Cut(entry, "=")
 		switch name {
-		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_PROJECT", "PREFLASH_HEADLESS":
+		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_PROJECT", "PREFLASH_SOCKET", "PREFLASH_HEADLESS":
 		default:
 			env = append(env, entry)
 		}
@@ -103,7 +104,10 @@ func (p Project) makeDirs() error {
 	if err := os.MkdirAll(p.StateDir(), 0o700); err != nil {
 		return err
 	}
-	return os.Chmod(p.StateDir(), 0o700)
+	if err := os.Chmod(p.StateDir(), 0o700); err != nil {
+		return err
+	}
+	return os.MkdirAll(filepath.Dir(p.SocketPath()), 0o755)
 }
 
 func (p Project) build(env []string) error {

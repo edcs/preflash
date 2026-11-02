@@ -325,6 +325,19 @@ void preflash_net_post_got_ip() {
 namespace preflash {
 
 void wifi_force_join_failure(bool on) { g_force_failure = on; }
+
+const char* wifi_state() {
+  Radio& r = radio();
+  std::lock_guard<std::mutex> lock(r.mutex);
+  if (!r.started) return "off";
+  switch (r.link) {
+    case Link::Down: return "disconnected";
+    case Link::Joining: return "connecting";
+    case Link::Up: return "connected";
+  }
+  return "off";
+}
+
 void net_set_online(bool online) { g_online = online; }
 bool net_online() { return g_online; }
 

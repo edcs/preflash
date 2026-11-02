@@ -6,6 +6,8 @@
 // arrive between two reads still reach firmware as two events.
 namespace preflash::touch {
 
+constexpr int kDefaultPressMs = 80;
+
 struct Event {
   int x, y;
   bool down;
@@ -13,5 +15,10 @@ struct Event {
 
 void push(Event e);
 std::optional<Event> pop();
+
+// Presses the panel and holds for ms before letting go, in the panel's own coordinates.
+// Blocks the caller for that long. False, doing nothing, if the point is off the panel or
+// ms is negative.
+bool press(int x, int y, int ms);
 
 }  // namespace preflash::touch

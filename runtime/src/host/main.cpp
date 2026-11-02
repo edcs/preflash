@@ -2,14 +2,12 @@
 #include <unistd.h>
 
 #include <charconv>
-#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <optional>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "freertos/task.h"
@@ -26,8 +24,6 @@
 extern "C" void app_main(void);
 
 namespace {
-
-constexpr int kDefaultPressMs = 80;
 
 // Stack size as ESP-IDF's main task has it, though the host ignores it.
 constexpr uint32_t kMainTaskStack = 3584;
@@ -50,15 +46,10 @@ std::optional<int> parse_number(const std::string& word) {
 void control_touch(const std::vector<std::string>& args) {
   const auto x = args.size() >= 2 ? parse_number(args[0]) : std::nullopt;
   const auto y = args.size() >= 2 ? parse_number(args[1]) : std::nullopt;
-  const auto ms = args.size() >= 3 ? parse_number(args[2]) : kDefaultPressMs;
-  const preflash::Board& board = preflash::board();
-  if (!x || !y || !ms || *ms < 0 || *x < 0 || *y < 0 || *x >= board.width || *y >= board.height) {
+  const auto ms = args.size() >= 3 ? parse_number(args[2]) : preflash::touch::kDefaultPressMs;
+  if (!x || !y || !ms || !preflash::touch::press(*x, *y, *ms)) {
     std::printf("@sim touch needs x y [ms], with x and y on the panel\n");
-    return;
   }
-  preflash::touch::push({*x, *y, true});
-  std::this_thread::sleep_for(std::chrono::milliseconds(*ms));
-  preflash::touch::push({*x, *y, false});
 }
 
 void control_shot(const std::vector<std::string>& args) {
@@ -99,6 +90,13 @@ int main() {
 
   const char* headless_env = std::getenv("PREFLASH_HEADLESS");
   const bool headless = headless_env && std::strcmp(headless_env, "1") == 0;
+  // Before the window, so that a second app stops without opening one.
+  std::string socket_error;
+  if (!preflash::socket::claim(&socket_error)) {
+    std::fprintf(stderr, "preflash: %s\n", socket_error.c_str());
+    return 1;
+  }
+
   if (!headless) preflash::window::open();
 
   // After the window, whose failures print straight to the terminal.
@@ -111,6 +109,11 @@ int main() {
   preflash::add_control("quit", [](std::vector<std::string>) { preflash::socket::quit(); });
   if (!preflash::start_console_reader()) {
     std::fprintf(stderr, "preflash: couldn't start the console task\n");
+    return 1;
+  }
+
+  if (!preflash::socket::serve()) {
+    std::fprintf(stderr, "preflash: couldn't start answering the control socket\n");
     return 1;
   }
 

@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <cstdlib>
 
 #include "bsp/esp-bsp.h"
@@ -12,6 +13,7 @@ namespace {
 constexpr const char* kTag = "fixture";
 
 lv_display_t* g_display = nullptr;
+esp_console_repl_t* g_repl = nullptr;
 
 void on_clicked(lv_event_t*) { ESP_LOGI(kTag, "clicked"); }
 
@@ -71,6 +73,23 @@ int restart_command(int, char**) {
   return 0;
 }
 
+// Far more than a client's queue holds, as fast as the host can print it.
+int flood_command(int, char**) {
+  for (int i = 0; i < 80000; ++i) std::printf("%099d\n", i);
+  ESP_LOGI(kTag, "flood done");
+  return 0;
+}
+
+// Never comes back, as a firmware command with a bug might not.
+int hang_command(int, char**) {
+  ESP_LOGI(kTag, "hanging");
+  for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
+  return 0;
+}
+
+// A call the simulator refuses, which stops the process.
+int unsupported_command(int, char**) { return g_repl->del(g_repl); }
+
 void add_command(const char* name, esp_console_cmd_func_t func) {
   esp_console_cmd_t cmd = {};
   cmd.command = name;
@@ -85,11 +104,13 @@ void start_console() {
   add_command("play", play_command);
   add_command("ping", ping_command);
   add_command("restart", restart_command);
-  esp_console_repl_t* repl = nullptr;
+  add_command("flood", flood_command);
+  add_command("hang", hang_command);
+  add_command("unsupported", unsupported_command);
   esp_console_repl_config_t config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
   esp_console_dev_usb_serial_jtag_config_t device = ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
-  ESP_ERROR_CHECK(esp_console_new_repl_usb_serial_jtag(&device, &config, &repl));
-  ESP_ERROR_CHECK(esp_console_start_repl(repl));
+  ESP_ERROR_CHECK(esp_console_new_repl_usb_serial_jtag(&device, &config, &g_repl));
+  ESP_ERROR_CHECK(esp_console_start_repl(g_repl));
 }
 
 }  // namespace
