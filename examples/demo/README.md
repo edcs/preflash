@@ -16,7 +16,7 @@ From a clean clone, with Preflash built as the main README says:
 preflash --project examples/demo
 ```
 
-You need no ESP-IDF and no `idf.py reconfigure`. The first build downloads LVGL at the version and hash `dependencies.lock` pins, into `~/.preflash/components`, and leaves this folder alone. The 4B is the default. For the long panel, pick the 3.49 V2 on the launch screen or pass it by name:
+You need no ESP-IDF and no `idf.py reconfigure`. The first build downloads LVGL at the version and hash `dependencies.lock` pins, into `~/.preflash/components`, and leaves this folder alone. The 4B is the default. For the long panel, press `^B` in the terminal app and pick the 3.49 V2, or pass it by name:
 
 ```sh
 preflash run --project examples/demo --board ESP32-S3-Touch-LCD-3.49-V2

@@ -1,0 +1,11 @@
+/* What the README's images share. */
+:root{--ground:#0E1113;--surface:#15191C;--line:#2A3036;--text:#E7ECEF;--muted:#8D98A1;--accent:#5FD4E8}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--text);font:400 13px/18px 'JetBrains Mono',monospace}
+.term{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 24px 60px #0008}
+.bar{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.bar i{width:12px;height:12px;border-radius:50%;background:var(--line)}
+pre.screen{padding:12px 14px;font:inherit;white-space:pre}
+.panel{display:block;border-radius:10px;border:1px solid var(--line);box-shadow:0 24px 60px #000a;box-sizing:content-box}
+figure{margin:0}
+figcaption{color:var(--muted);font-size:12px;line-height:16px;text-align:center}

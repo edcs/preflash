@@ -1,7 +1,7 @@
 #!/bin/sh
-# Draws hero.png and panels.png from source/ at twice their CSS size. Needs
-# Google Chrome, and a network connection for JetBrains Mono: offline, hero.png
-# falls back to another font. The images in source/ are real captures from a run.
+# Draws the README's images from source/ at twice their CSS size. Needs Google Chrome, and a
+# network connection for JetBrains Mono: offline, the terminals fall back to another font.
+# source/capture.sh saves the frames and terminal screens these pages show.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 chrome="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
@@ -17,5 +17,6 @@ render() { # render <name> <width> <height>
   echo "wrote $here/$1.png"
 }
 
-render hero 1280 680
-render panels 1280 320
+render hero 1520 720
+render panels 1440 460
+render terminal 1560 700
