@@ -1,0 +1,23 @@
+runtime/include/preflash/control.h
+  s_82b4983a83db4b::t_aeb2f333bc27ab 11-12,20-27,30
+runtime/src/console/console.cpp
+  s_82b4983a83db4b::t_2fa6c3aaeafb24 6,40,42-43,163-169,171-176,183-187,222-233,238-239,241-247,288,293-298
+tests/runtime/console_test.cpp
+  s_82b4983a83db4b::t_35105832a14110 192,236-260,270-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c8e839402d91268c9b3b4e17d1af668ca8e363d",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
