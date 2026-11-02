@@ -71,6 +71,9 @@ func (p Project) withNamedFirst(files []string, named string) []string {
 	return append([]string{path}, slices.DeleteFunc(files, func(file string) bool { return file == path })...)
 }
 
+// boardKey is how a file that doesn't parse can still show it's meant as a board.
+var boardKey = regexp.MustCompile(`(?m)^(extends|display):`)
+
 // looksLikeBoard tells a board file, even a broken one, from the other YAML in a project.
 func looksLikeBoard(path string) bool {
 	data, err := os.ReadFile(path)
@@ -79,7 +82,7 @@ func looksLikeBoard(path string) bool {
 	}
 	var doc map[string]any
 	if yaml.Unmarshal(data, &doc) != nil {
-		return false
+		return boardKey.Match(data)
 	}
 	_, extends := doc["extends"]
 	_, display := doc["display"]

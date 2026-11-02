@@ -314,8 +314,14 @@ func (m *Model) scrollBy(rows int) {
 	m.scroll = scroll
 }
 
+// startRun builds and runs b as its file stands now.
 func (m *Model) startRun(b board.Board) {
-	if !m.b.Run(b) {
+	fresh, err := board.Reload(b)
+	if err != nil {
+		m.say(err.Error(), lineBad)
+		return
+	}
+	if !m.b.Run(fresh) {
 		m.say("A build is already running.", lineWarn)
 	}
 }
@@ -386,7 +392,7 @@ func (m *Model) shortcutKey(k tea.KeyPressMsg) (int, bool) {
 }
 
 func (m *Model) useShortcut(i int) {
-	if i >= len(m.opts.Config.Shortcuts) {
+	if m.ask != nil || i >= len(m.opts.Config.Shortcuts) {
 		return
 	}
 	s := m.opts.Config.Shortcuts[i]

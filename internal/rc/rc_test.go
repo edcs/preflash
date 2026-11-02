@@ -84,6 +84,8 @@ func TestErrorsNameTheLine(t *testing.T) {
 		"bad board":      {"board: [a]\n", `rc:1: board must be text`},
 		"no name":        {"status:\n  - pattern: a\n", `rc:2: a status field needs a name`},
 		"no pattern":     {"status:\n  - name: a\n", `rc:2: status field "a" needs a pattern`},
+		"null pattern":   {"status:\n  - name: wifi\n    pattern:\n", `rc:3: status field "wifi" has an empty pattern`},
+		"empty pattern":  {"status:\n  - name: a\n    pattern: ''\n", `rc:3: status field "a" has an empty pattern`},
 		"bad pattern":    {"status:\n  - name: a\n    pattern: '('\n", `rc:3: status field "a": `},
 		"repeated field": {"status:\n  - name: a\n    pattern: b\n  - name: a\n    pattern: c\n", `rc:4: status field "a" is listed twice`},
 		"broken yaml":    {"board: [a\n", `rc: `},

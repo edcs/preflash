@@ -48,6 +48,9 @@ type Board struct {
 	// what the chain changed from it, in path order. Neither reaches the runtime.
 	Base    string   `yaml:"-" json:"-"`
 	Changes []Change `yaml:"-" json:"-"`
+
+	// Source is the file this came from. A stock board has none.
+	Source string `yaml:"-" json:"-"`
 }
 
 // Change is one value a board file sets over the board it extends.
@@ -64,7 +67,18 @@ func Load(path string) (Board, error) {
 	if err != nil {
 		return Board{}, err
 	}
-	return load(source{path: abs}, abs)
+	b, err := load(source{path: abs}, abs)
+	b.Source = abs
+	return b, err
+}
+
+// Reload reads a board from its file again, so a run sees any edit. A stock board can't
+// have changed.
+func Reload(b Board) (Board, error) {
+	if b.Source == "" {
+		return b, nil
+	}
+	return Load(b.Source)
 }
 
 // LoadStock reads the stock board with this name. It reports fs.ErrNotExist if

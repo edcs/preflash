@@ -165,3 +165,24 @@ func TestAChangedListReadsAsReplaced(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []Change{{Path: "i2c", Value: "replaced"}}, b.Changes)
 }
+
+func TestReloadReadsTheFileAgain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "b.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("extends: ESP32-S3-Touch-LCD-4B\nname: first\n"), 0o644))
+	b, err := Load(path)
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(path, []byte("extends: ESP32-S3-Touch-LCD-4B\nname: second\n"), 0o644))
+	b, err = Reload(b)
+
+	require.NoError(t, err)
+	assert.Equal(t, "second", b.Name)
+}
+
+func TestReloadLeavesAStockBoardAlone(t *testing.T) {
+	b, err := LoadStock("ESP32-S3-Touch-LCD-4B")
+	require.NoError(t, err)
+	again, err := Reload(b)
+	require.NoError(t, err)
+	assert.Equal(t, b, again)
+}

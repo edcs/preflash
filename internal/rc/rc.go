@@ -352,6 +352,9 @@ func (p parser) field(n *yaml.Node) (Field, error) {
 	if err != nil {
 		return Field{}, err
 	}
+	if text == "" {
+		return Field{}, p.fail(pattern, "status field %q has an empty pattern", f.Name)
+	}
 	if f.Pattern, err = regexp.Compile(text); err != nil {
 		return Field{}, p.fail(pattern, "status field %q: %v", f.Name, err)
 	}

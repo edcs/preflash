@@ -2,6 +2,8 @@ package tui
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/edcs/preflash/internal/app"
+	"github.com/edcs/preflash/internal/board"
 	"github.com/edcs/preflash/internal/client"
 	"github.com/edcs/preflash/internal/rc"
 )
@@ -582,4 +585,42 @@ func TestClickingAnAskingChipKeepsWhatWasTyped(t *testing.T) {
 	press(m, "enter")
 	assert.Equal(t, [][]string{{"timer 120"}}, f.sent)
 	assert.Equal(t, "half a comm", m.input.Value())
+}
+
+func TestClickingAChipDuringAnAskDoesNothing(t *testing.T) {
+	f := newFake()
+	m := running(t, f)
+	typed(m, "draft")
+	x, y := find(t, m, "3 Timer")
+	click(m, x, y)
+	x, y = find(t, m, "1 Phase")
+
+	click(m, x, y)
+
+	assert.Empty(t, f.sent)
+	wantScreen(t, m, "Timer seconds>")
+	press(m, "esc")
+	assert.Equal(t, "draft", m.input.Value())
+}
+
+func TestRebuildReadsTheBoardFileAgain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "b.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("extends: ESP32-S3-Touch-LCD-4B\nname: first\n"), 0o644))
+	b, err := board.Load(path)
+	require.NoError(t, err)
+	f := newFake()
+	opts := options()
+	opts.Board = &b
+	m := New(f, opts)
+	resize(m, 100, 30)
+	m.Init()
+
+	require.NoError(t, os.WriteFile(path, []byte("extends: ESP32-S3-Touch-LCD-4B\nname: second\n"), 0o644))
+	press(m, "ctrl+r")
+	assert.Equal(t, "second", f.runs[len(f.runs)-1].Name)
+
+	require.NoError(t, os.WriteFile(path, []byte("extends: nothing-at-all\n"), 0o644))
+	press(m, "ctrl+r")
+	assert.Len(t, f.runs, 2, "a broken file builds nothing")
+	wantScreen(t, m, "nothing-at-all")
 }

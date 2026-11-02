@@ -493,3 +493,16 @@ func TestAFailedBuildPrintsItsOutput(t *testing.T) {
 	assert.ErrorContains(t, err, "the build failed")
 	assert.Contains(t, printed.String(), "/nowhere")
 }
+
+func TestABoardFileWithASyntaxErrorStaysOnTheList(t *testing.T) {
+	dir := idfProject(t, t.TempDir())
+	writeFile(t, filepath.Join(dir, "sim", "mod.yaml"), "name: mod\nextends: ESP32-S3-Touch-LCD-4B\nchanges: [\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+
+	choices := p.Boards()
+
+	require.Len(t, choices, len(board.Stock())+1)
+	assert.Equal(t, filepath.Join("sim", "mod.yaml"), choices[0].File)
+	assert.Error(t, choices[0].Err)
+}

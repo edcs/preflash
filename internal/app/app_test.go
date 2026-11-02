@@ -27,14 +27,15 @@ const patience = 5 * time.Second
 
 // fakeTarget builds by calling build, and runs a shell script as the app.
 type fakeTarget struct {
-	dir     string
-	script  string
-	build   func(out io.Writer) error
-	noApp   error
-	mu      sync.Mutex
-	boards  []string
-	builds  int
-	headles bool
+	dir        string
+	script     string
+	build      func(out io.Writer) error
+	noApp      error
+	mu         sync.Mutex
+	boards     []string
+	builds     int
+	headles    bool
+	installErr error
 }
 
 func newTarget(t *testing.T, script string) *fakeTarget {
@@ -61,6 +62,9 @@ func (f *fakeTarget) Build(ctx context.Context, env []string, out io.Writer) err
 	return nil
 }
 func (f *fakeTarget) Install(b board.Board, env []string) (string, []string, error) {
+	if f.installErr != nil {
+		return "", nil, f.installErr
+	}
 	path := filepath.Join(f.dir, "app")
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+f.script+"\n"), 0o755); err != nil {
 		return "", nil, err
@@ -599,4 +603,16 @@ func TestALineThatTimesOutIsNotSentAgain(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, 1, sends)
+}
+
+func TestAFailedInstallKeepsTheOldAppRunning(t *testing.T) {
+	f := newTarget(t, "exec sleep 30")
+	s, _, begun := started(t, f)
+	f.installErr = errors.New("the build made no app")
+
+	require.True(t, s.Run(testBoard))
+
+	failed := next[BuildFailed](t, s, nil)
+	assert.True(t, failed.AppRunning)
+	assert.True(t, alive(begun.PID))
 }

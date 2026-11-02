@@ -198,10 +198,16 @@ func (s *Supervisor) run(b board.Board) {
 	if s.ctx.Err() != nil {
 		return
 	}
+	// Before the old app stops, so a failure here leaves it running.
+	path, runEnv, err := s.target.Install(b, env)
+	if err != nil {
+		s.emit(BuildFailed{Err: err, AppRunning: s.running() != nil})
+		return
+	}
 	if old := s.running(); old != nil {
 		s.stop(old)
 	}
-	if err := s.start(b, env); err != nil {
+	if err := s.start(b, path, runEnv); err != nil {
 		s.emit(BuildFailed{Err: err})
 	}
 }
@@ -213,11 +219,7 @@ func (s *Supervisor) running() *child {
 	return s.current
 }
 
-func (s *Supervisor) start(b board.Board, env []string) error {
-	path, runEnv, err := s.target.Install(b, env)
-	if err != nil {
-		return err
-	}
+func (s *Supervisor) start(b board.Board, path string, runEnv []string) error {
 	log, err := os.Create(s.target.LogPath())
 	if err != nil {
 		return err
