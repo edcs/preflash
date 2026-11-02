@@ -13,6 +13,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
+  <a href="#terminal-app">Terminal app</a> ·
   <a href="#how-it-compares">How it compares</a> ·
   <a href="#known-limitations">Known limitations</a> ·
   <a href="#development">Development</a>
@@ -51,6 +52,7 @@ Use it for quick development and debugging, then test on real hardware before yo
 | Firmware | FreeRTOS tasks, queues and notifications on host threads, `esp_timer`, the task watchdog, restart |
 | Storage | NVS, saved per checkout |
 | Console | The firmware's own serial console, in your terminal |
+| Terminal app | A status bar over the serial console, shortcut buttons per project, a board picker and rebuilds that keep the old app on failure |
 | Scripting | A control socket and command line for console lines, status, the serial stream, screenshots and touch |
 | Chips | PCF85063 RTC, QMI8658 motion sensor and AXP2101 power chip at register level. ES8311, ES7210, TCA9554 and GT911 answer on the bus without a behaviour model |
 | Network | Simulated Wi-Fi, SNTP, and real HTTP and HTTPS through `esp_http_client` |
@@ -59,7 +61,6 @@ Use it for quick development and debugging, then test on real hardware before yo
 
 ### Coming soon
 
-- **Terminal app.** A status bar over the serial console, shortcut buttons per project, and pickers for board and hardware state.
 - **ESP32-S3-Touch-LCD-3.49 V2.** The second stock board, and direct `esp_lcd` use for projects with no BSP.
 - **Debug views.** Live I2C, GPIO, task, NVS and network traces, forced hardware failures, and sanitizer builds.
 - **Hardware checks.** Chip models compared against captures from real boards.
@@ -112,7 +113,7 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 | Command | What it does |
 | --- | --- |
 | `preflash send <line...>` | Sends a line to the firmware's console and returns without waiting for it to run. Put `--project` before the line |
-| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, frames, fps and Wi-Fi state |
+| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, rotation, frames, fps and Wi-Fi state |
 | `preflash serial` | Prints the serial stream, starting with what this boot has kept (up to 256 KiB), and follows it through restarts until the app stops |
 | `preflash shot <file.png\|file.bmp>` | Saves what the panel shows |
 | `preflash touch x y [ms]` | Presses the panel, in the panel's own coordinates, and returns after the release |
@@ -183,6 +184,52 @@ backlight:
 audio_codec: es8311
 ```
 
+## Terminal app
+
+Run `preflash` with no arguments in your project, or `preflash tui`, or pass `--project dir`. `--board` and `--headless` work as they do for `preflash run`.
+
+The launch screen lists the board files in your project and the stock boards, with each board's chips and changes. Enter builds and runs. A project whose `.preflashrc` names a board skips this screen and goes straight to running.
+
+The running screen has a toolbar, the serial console, your shortcuts and an input line. Press a number to run a shortcut while the input is empty, or click its button. The wheel and PgUp/PgDn scroll the console, and up and down walk your history.
+
+| Key | What it does |
+| --- | --- |
+| `^R` | Rebuilds and restarts, with the build's output in the console. If the build fails, the old app keeps running |
+| `^B` | Picks another board |
+| `^L` | Clears the console |
+| `^C` | Quits and stops the app |
+
+The app runs as a child with its stdin closed and its stdout and stderr in `app.log` in the build folder. The screen reads the serial stream over the control socket, so every `preflash` command still works from a second terminal. If the app stops or crashes, the toolbar says how and the console keeps its last output. The screen takes the mouse, so selecting text in the console needs your terminal's selection modifier.
+
+A `.preflashrc` in the project sets up the rest:
+
+```yaml
+board: sim/my-board.yaml
+
+console:
+  prompt: "my-app>"
+
+shortcuts:
+  - label: Status
+    send: status
+  - label: Evening
+    send:
+      - fake {today}T22:00:00Z
+      - speed 600
+  - label: Timer
+    send: timer {seconds}
+    ask:
+      seconds: 120
+
+status:
+  - name: screen
+    pattern: 'screen=(\w+)'
+  - name: backlight
+  - name: wifi
+```
+
+`send` is one line or a list. `ask` prompts for each value first, with the number given as its default, and `{today}` fills in the local date. A status field shows the last value its pattern found in the serial stream: the first capture group, or the whole match with no group. Backlight, rotation and Wi-Fi are built in. Naming one with no pattern places it in the toolbar, and naming one with a pattern replaces it. An unknown key stops with an error naming the line, for `preflash run` too.
+
 ## How it compares
 
 - **Flashing a real board** is the only test that counts before you ship, and Preflash doesn't replace it. It saves the round trips while you work.
@@ -215,20 +262,23 @@ If your firmware stops on a call Preflash doesn't implement, that call needs a s
 make test
 ```
 
-That runs the Go tests, the runtime suite and the integration scripts. `tests/integration/snoozel.sh` runs a real project end to end and needs a checkout of it at `../snoozel`, or `SNOOZEL` pointing at one, with a current `sdkconfig`. Snoozel is a private project, so without it run the steps before that script in the `Makefile`.
+That runs the Go tests, the runtime suite and the integration scripts. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/snoozel.sh` runs a real project end to end and needs a checkout of it at `../snoozel`, or `SNOOZEL` pointing at one, with a current `sdkconfig`. Snoozel is a private project, so without it run the steps before that script in the `Makefile`.
 
 ### Layout
 
 ```text
 cmd/preflash/     command line
+internal/app/     supervising a build and its app for the terminal app
 internal/board/   board files: extends, changes and validation
 internal/client/  talking to a running app over its socket
 internal/project/ finding, building and running a project
+internal/rc/      reading .preflashrc
+internal/tui/     the terminal app's screens
 boards/           stock boards
 runtime/idf/      the CMake layer that stands in for IDF_PATH
 runtime/include/  ESP-IDF headers the firmware compiles against
 runtime/src/      stand-ins, chip models, the window and the host
-tests/            runtime suite, fixtures and integration scripts
+tests/            runtime suite, fixtures, integration scripts and terminal tests
 .github/assets/   README images, redrawn by render.sh
 ```
 
