@@ -1,0 +1,21 @@
+tests/integration/nyx.sh
+  s_82b4983a83db4b::t_4313a4300d78fe 1-164
+Makefile
+  s_82b4983a83db4b::t_beb047bbd00062 12,15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e47d2ae78e2c198e9c0b5e2a913e1b08805c465",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
