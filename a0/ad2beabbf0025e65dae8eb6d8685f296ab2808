@@ -1,0 +1,23 @@
+tests/integration/demo.sh
+  s_82b4983a83db4b::t_e28376a6ee5058 331-336
+examples/demo/main/console.cpp
+  s_82b4983a83db4b::t_e28376a6ee5058 3,169,172-174
+examples/demo/main/timekeeper.cpp
+  s_82b4983a83db4b::t_e28376a6ee5058 86-92,95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a0ad2beabbf0025e65dae8eb6d8685f296ab2808",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
