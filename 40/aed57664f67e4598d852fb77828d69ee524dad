@@ -1,0 +1,16 @@
+internal/project/project_test.go
+  h_13c4e797d6e9d2 4-6,260-291
+internal/project/run.go
+  h_13c4e797d6e9d2 76-77,106-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "40aed57664f67e4598d852fb77828d69ee524dad",
+  "prompts": {},
+  "humans": {
+    "h_13c4e797d6e9d2": {
+      "author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
