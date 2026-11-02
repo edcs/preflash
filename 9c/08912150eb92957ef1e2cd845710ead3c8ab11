@@ -1,0 +1,21 @@
+README.md
+  s_82b4983a83db4b::t_11b723542d2fd1 62,124,126,367,375-382,393,403,412,416
+hardware/capture/README.md
+  s_82b4983a83db4b::t_f3e02df85ae54b 1-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9c08912150eb92957ef1e2cd845710ead3c8ab11",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
