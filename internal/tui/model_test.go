@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -25,6 +26,29 @@ func TestTheToolbarReadsLikeTheMockup(t *testing.T) {
 
 	wantScreen(t, m, "preflash", "snoozel", "ESP32-S3-Touch-LCD-4B + backlight mod", "● running", "04:12",
 		"backlight 100%", "rotation 90°", "wifi simulated", "60 fps")
+}
+
+func TestTheToolbarShowsTheSerialPort(t *testing.T) {
+	t.Setenv("HOME", "/Users/someone")
+	m := running(t, newFake())
+	m.opts.Config.Status = nil
+	feed(m, app.Status{Status: client.Status{SerialPort: "/Users/someone/ports/a.tty"}})
+	wantScreen(t, m, "port ~/ports/a.tty")
+}
+
+func TestTheToolbarSkipsAPortTheAppDoesNotHave(t *testing.T) {
+	m := running(t, newFake())
+	feed(m, app.Status{Status: client.Status{}})
+	assert.NotContains(t, ansi.Strip(m.toolbarBottom()), "port")
+}
+
+func TestAConfigCanPlaceThePort(t *testing.T) {
+	m := running(t, newFake())
+	m.opts.Config.Status = []rc.Field{{Name: "port"}}
+	feed(m, app.Status{Status: client.Status{SerialPort: "/tmp/a.tty", WiFi: "off"}})
+	x1, _ := find(t, m, "port /tmp/a.tty")
+	x2, _ := find(t, m, "backlight")
+	assert.Less(t, x1, x2)
 }
 
 func TestUptimePastAnHourShowsHours(t *testing.T) {

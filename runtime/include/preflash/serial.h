@@ -10,8 +10,8 @@
 
 // USB serial is one stream, as on the device. Once started, stdout and stderr both
 // write to a pipe, and a pump thread passes what comes out to a ring of recent output,
-// each subscriber and the real stdout. Neither a subscriber nor the real stdout can hold
-// the pump up: each has a bounded queue and a thread of its own.
+// each subscriber, the virtual serial port and the real stdout. None of them can hold the
+// pump up: each has a bounded queue and a thread of its own.
 namespace preflash::serial {
 
 std::string base64(const void* data, size_t size);
@@ -91,6 +91,11 @@ using Subscriber = std::function<void(const char* data, size_t size)>;
 int subscribe(Subscriber subscriber);
 void unsubscribe(int subscription);
 
+// Tells the people watching something firmware didn't say: it reaches the ring, subscribers
+// and the real stdout, and stays off the virtual serial port, where a companion app would
+// read it as firmware's. Never waits.
+void notice(const std::string& text);
+
 std::string ring_contents();
 
 // Blocks the signals that belong to firmware's threads. For the threads that serve the
@@ -110,7 +115,7 @@ void hand_back();
 // wait is bounded, because a client that stopped reading never will clear it.
 void wait_sent();
 
-// Both of the above, for a process about to end.
+// Both of the above, and the virtual serial port's links gone, for a process about to end.
 void release();
 
 }  // namespace preflash::serial

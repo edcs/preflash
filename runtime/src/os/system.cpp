@@ -19,6 +19,7 @@
 #include "esp_timer.h"
 #include "preflash/chips.h"
 #include "preflash/fail.h"
+#include "preflash/port.h"
 #include "preflash/serial.h"
 #include "preflash/socket.h"
 
@@ -31,9 +32,9 @@ constexpr size_t kReportedFreeBytes = 256 * 1024;
 
 // Replaces this process with a fresh run of the executable. Plain execv would
 // pass on every open descriptor, the calling thread's blocked signals and any
-// ignored ones, so this closes every descriptor but the standard three and
-// resets the signals in the same step, whichever thread opened what. Returns
-// only on failure.
+// ignored ones, so this closes every descriptor but the standard three and the
+// virtual serial port, and resets the signals in the same step, whichever thread
+// opened what. Returns only on failure.
 int exec_clean(const char* path, char* const argv[]) {
   posix_spawnattr_t attr;
   posix_spawn_file_actions_t actions;
@@ -60,9 +61,14 @@ int exec_clean(const char* path, char* const argv[]) {
     err = posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETEXEC | POSIX_SPAWN_CLOEXEC_DEFAULT |
                                               POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF);
   }
-  for (int fd = STDIN_FILENO; !err && fd <= STDERR_FILENO; ++fd) {
-    // Inheriting a closed descriptor would fail the whole spawn.
-    if (fcntl(fd, F_GETFD) != -1) err = posix_spawn_file_actions_addinherit_np(&actions, fd);
+  const int kept[] = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, preflash::port::master_fd(),
+                      preflash::port::slave_fd()};
+  for (const int fd : kept) {
+    // Inheriting a closed descriptor would fail the whole spawn, and so would one still
+    // marked to close on exec.
+    if (!err && fd >= 0 && fcntl(fd, F_SETFD, 0) != -1) {
+      err = posix_spawn_file_actions_addinherit_np(&actions, fd);
+    }
   }
   if (!err) err = posix_spawn(nullptr, path, &actions, &attr, argv, *_NSGetEnviron());
   posix_spawn_file_actions_destroy(&actions);
@@ -120,6 +126,7 @@ esp_reset_reason_t esp_reset_reason(void) {
 
 void esp_restart(void) {
   if (preflash::socket::quitting()) preflash::socket::quit();
+  preflash::port::hold_input();
   // Not fflush(nullptr): that also waits on stdin, which the console task keeps
   // locked for as long as it sits in a read.
   std::fflush(stdout);

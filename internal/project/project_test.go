@@ -217,11 +217,12 @@ func TestUnreadableRcIsAnError(t *testing.T) {
 }
 
 func TestEnvironmentForTheApp(t *testing.T) {
-	base := []string{"PATH=/bin", "PREFLASH_HEADLESS=1", "IDF_PATH=/real/esp-idf", "PREFLASH_SOCKET=/old.sock"}
+	base := []string{"PATH=/bin", "PREFLASH_HEADLESS=1", "IDF_PATH=/real/esp-idf", "PREFLASH_SOCKET=/old.sock",
+		"PREFLASH_PORT=/old.tty", "PREFLASH_PORT_LINK=/old-link.tty", "PREFLASH_PORT_FDS=7:8"}
 	p := Project{Dir: "/x/demo", id: "demo-12345678"}
 	t.Setenv("HOME", "/home/me")
 
-	windowed := p.environment(base, "/repo", false)
+	windowed := p.environment(base, "/repo", "", false)
 	assert.Contains(t, windowed, "PATH=/bin")
 	assert.Contains(t, windowed, "IDF_PATH=/repo/runtime/idf")
 	assert.Contains(t, windowed, "PREFLASH_BOARD=/home/me/.preflash/build/demo-12345678/board.json")
@@ -229,10 +230,46 @@ func TestEnvironmentForTheApp(t *testing.T) {
 	assert.Contains(t, windowed, "PREFLASH_PROJECT=demo")
 	assert.Contains(t, windowed, "PREFLASH_SOCKET="+p.SocketPath())
 	assert.NotContains(t, windowed, "PREFLASH_SOCKET=/old.sock")
+	assert.Contains(t, windowed, "PREFLASH_PORT="+p.PortPath())
+	for _, stale := range []string{"PREFLASH_PORT=/old.tty", "PREFLASH_PORT_LINK=/old-link.tty", "PREFLASH_PORT_FDS=7:8"} {
+		assert.NotContains(t, windowed, stale)
+	}
 	assert.NotContains(t, windowed, "PREFLASH_HEADLESS=1")
 	assert.NotContains(t, windowed, "IDF_PATH=/real/esp-idf")
 
-	assert.Contains(t, p.environment(base, "/repo", true), "PREFLASH_HEADLESS=1")
+	assert.Contains(t, p.environment(base, "/repo", "", true), "PREFLASH_HEADLESS=1")
+}
+
+func TestEnvironmentNamesTheProjectsLink(t *testing.T) {
+	p := Project{Dir: "/work/demo", id: "demo-1234"}
+	assert.Contains(t, p.environment(nil, "/repo", "/work/demo/nyx.tty", false), "PREFLASH_PORT_LINK=/work/demo/nyx.tty")
+}
+
+func TestPortPathSitsBesideTheSocket(t *testing.T) {
+	p := Project{Dir: "/work/demo"}
+	assert.Equal(t, strings.TrimSuffix(p.SocketPath(), ".sock")+".tty", p.PortPath())
+}
+
+func TestSerialLinkIsRelativeToTheProject(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := t.TempDir()
+	p := Project{Dir: dir}
+
+	link, err := p.serialLink()
+	require.NoError(t, err)
+	assert.Empty(t, link, "no .preflashrc asks for none")
+
+	for value, want := range map[string]string{
+		"sim/nyx.tty":  filepath.Join(dir, "sim", "nyx.tty"),
+		"/tmp/nyx.tty": "/tmp/nyx.tty",
+		"~/nyx.tty":    filepath.Join(home, "nyx.tty"),
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, ".preflashrc"), []byte("serial_link: "+value+"\n"), 0o644))
+		link, err := p.serialLink()
+		require.NoError(t, err)
+		assert.Equal(t, want, link)
+	}
 }
 
 func TestSocketPathFitsAUnixSocket(t *testing.T) {

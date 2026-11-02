@@ -159,3 +159,21 @@ func TestAGroupThatMatchedNothingIsAnEmptyValue(t *testing.T) {
 	assert.True(t, ok)
 	assert.Empty(t, value)
 }
+
+func TestSerialLinkIsReadAsGiven(t *testing.T) {
+	c, err := Parse("rc", []byte("serial_link: sim/nyx.tty\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "sim/nyx.tty", c.SerialLink)
+}
+
+func TestSerialLinkMustBeText(t *testing.T) {
+	_, err := Parse("rc", []byte("serial_link:\n  - one\n"))
+	assert.ErrorContains(t, err, "rc:2: serial_link must be text")
+}
+
+func TestPortIsABuiltInField(t *testing.T) {
+	c, err := Parse("rc", []byte("status:\n  - name: port\n"))
+	require.NoError(t, err)
+	require.Len(t, c.Status, 1)
+	assert.Nil(t, c.Status[0].Pattern)
+}

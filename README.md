@@ -51,7 +51,7 @@ Use it for quick development and debugging, then test on real hardware before yo
 | Input | Mouse as touch, scripted taps |
 | Firmware | FreeRTOS tasks, queues and notifications on host threads, `esp_timer`, the task watchdog, restart |
 | Storage | NVS, saved per checkout |
-| Console | The firmware's own serial console, in your terminal |
+| Console | The firmware's own serial console, in your terminal, and a virtual serial port for a companion app |
 | Terminal app | A status bar over the serial console, shortcut buttons per project, a board picker and rebuilds that keep the old app on failure |
 | Scripting | A control socket and command line for console lines, status, the serial stream, screenshots and touch |
 | Chips | PCF85063 RTC, QMI8658 motion sensor and AXP2101 power chip at register level. ES8311, ES7210, TCA9554 and GT911 answer on the bus without a behaviour model |
@@ -64,7 +64,6 @@ Use it for quick development and debugging, then test on real hardware before yo
 - **ESP32-S3-Touch-LCD-3.49 V2.** The second stock board, and direct `esp_lcd` use for projects with no BSP.
 - **Debug views.** Live I2C, GPIO, task, NVS and network traces, forced hardware failures, and sanitizer builds.
 - **Hardware checks.** Chip models compared against captures from real boards.
-- **Virtual serial port.** A companion app can talk to the firmware alongside the terminal.
 
 ## Install
 
@@ -113,8 +112,9 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 | Command | What it does |
 | --- | --- |
 | `preflash send <line...>` | Sends a line to the firmware's console and returns without waiting for it to run. Put `--project` before the line |
-| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, rotation, frames, fps and Wi-Fi state |
+| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, rotation, frames, fps, Wi-Fi state and serial port |
 | `preflash serial` | Prints the serial stream, starting with what this boot has kept (up to 256 KiB), and follows it through restarts until the app stops |
+| `preflash port` | Prints the virtual serial port's path |
 | `preflash shot <file.png\|file.bmp>` | Saves what the panel shows |
 | `preflash touch x y [ms]` | Presses the panel, in the panel's own coordinates, and returns after the release |
 | `preflash quit` | Stops the app and returns once it has gone |
@@ -152,6 +152,22 @@ Stdin takes the same console lines. Lines starting `@sim ` go to the simulator, 
 `--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked Mac. A headless run ends on `@sim quit` or `preflash quit`, not at the end of stdin.
 
 To boot firmware at a chosen moment, set `PREFLASH_RTC_START=2026-11-01T22:00:00Z`. The simulated RTC starts there and runs on, and it keeps the firmware's time across a restart.
+
+### Connect a companion app
+
+`preflash port` prints a path for your app to open as it would a board's serial port, such as `~/Library/Caches/preflash/<hash>.tty`. The path is a link to a pseudo-terminal, and it stays the same from one run to the next. The port carries the serial stream, so your app reads what `preflash serial` shows, and each line it writes joins the console queue, ending in `\n`, `\r` or `\r\n`. Preflash doesn't read your protocol.
+
+The port starts raw at 115200 with no echo. Your app keeps its connection through `esp_restart`, and sees the port hang up on quit, on a crash and on a rebuild, as it would when you unplug a board. Open the path again to reconnect.
+
+To put a link where your app's developer setting looks, add one to `.preflashrc`. Preflash removes both links when the app stops, and refuses to replace a file that isn't a link. Only `kill -9` leaves them behind, and the next run replaces them.
+
+```yaml
+serial_link: sim/my-board.tty
+```
+
+A relative path starts at the project, and `~/` at your home folder. The link's folder must exist already. If a link fails, the app prints why and runs on, and `preflash port` gives the device's own path if there's no other.
+
+The port doesn't appear as a USB device, so an app that finds boards by USB identity needs that developer setting. Firmware never waits for the port. It holds about 65 KiB, and past that it loses the oldest output, with no notice in the stream, because a notice would land in your protocol. An app that opens the port late reads what it's holding first, so expect old lines ahead of live ones, with a gap between them.
 
 ### Describe your board
 
@@ -201,10 +217,13 @@ The running screen has a toolbar, the serial console, your shortcuts and an inpu
 
 The app runs as a child with its stdin closed and its stdout and stderr in `app.log` in the build folder. The screen reads the serial stream over the control socket, so every `preflash` command still works from a second terminal. If the app stops or crashes, the toolbar says how and the console keeps its last output. The screen takes the mouse, so selecting text in the console needs your terminal's selection modifier.
 
+The toolbar shows the serial port last, so a narrow window cuts it off. `preflash port` prints it in full.
+
 A `.preflashrc` in the project sets up the rest:
 
 ```yaml
 board: sim/my-board.yaml
+serial_link: sim/my-board.tty
 
 console:
   prompt: "my-app>"
@@ -228,7 +247,7 @@ status:
   - name: wifi
 ```
 
-`send` is one line or a list. `ask` prompts for each value first, with the number given as its default, and `{today}` fills in the local date. A status field shows the last value its pattern found in the serial stream: the first capture group, or the whole match with no group. Backlight, rotation and Wi-Fi are built in. Naming one with no pattern places it in the toolbar, and naming one with a pattern replaces it. An unknown key stops with an error naming the line, for `preflash run` too.
+`send` is one line or a list. `ask` prompts for each value first, with the number given as its default, and `{today}` fills in the local date. A status field shows the last value its pattern found in the serial stream: the first capture group, or the whole match with no group. Backlight, rotation, Wi-Fi and the serial port (`port`) are built in. Naming one with no pattern places it in the toolbar, and naming one with a pattern replaces it. An unknown key stops with an error naming the line, for `preflash run` too.
 
 ## How it compares
 
