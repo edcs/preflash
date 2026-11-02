@@ -139,7 +139,11 @@ void esp_restart(void) {
   }
   setenv(kRestartedEnv, "1", 1);
   preflash::carry_chips_across_restart();
-  if (preflash::trace::on()) setenv("PREFLASH_TRACE", "1", 1);
+  if (preflash::trace::on()) {
+    setenv("PREFLASH_TRACE", "1", 1);
+  } else {
+    unsetenv("PREFLASH_TRACE");
+  }
   // The stream's pipe ends with this process, and the next run needs the real fds.
   preflash::serial::hand_back();
   preflash::socket::announce_restart();
