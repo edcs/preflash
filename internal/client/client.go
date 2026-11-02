@@ -157,6 +157,16 @@ func dialOnce(path string) (*Client, error) {
 	return c, nil
 }
 
+// Await waits up to patience for an app to answer at path, or until the process pid dies.
+// The socket's file may not exist yet, and a stale one may still be there.
+func Await(path string, patience time.Duration, pid int) (*Client, error) {
+	return dialWithin(path, patience, patience, pid)
+}
+
+// SetDeadline limits the calls to come, as net.Conn.SetDeadline does. The zero time clears
+// it. A call that runs into it wraps ErrStopped, and the connection is no use after that.
+func (c *Client) SetDeadline(t time.Time) error { return c.conn.SetDeadline(t) }
+
 // Close ends the connection, leaving the app running.
 func (c *Client) Close() error { return c.conn.Close() }
 
@@ -322,12 +332,37 @@ func (c *Client) WaitForExit(patience time.Duration) error {
 // on through restarts. It returns nil when the app stops, and warn hears about any output
 // lost to a reader too slow to keep up.
 func Follow(path string, out io.Writer, warn func(string)) error {
+	return Watch(path, Watcher{
+		Serial: func(data []byte) error {
+			_, err := out.Write(data)
+			return err
+		},
+		Dropped: func(n int) {
+			warn(fmt.Sprintf("%d bytes of serial were dropped because this reader fell behind", n))
+		},
+	})
+}
+
+// Watcher hears what happens on an app's stream. Any of these can be nil.
+type Watcher struct {
+	Connected  func(Hello)        // a boot answered
+	Serial     func([]byte) error // the next bytes of the stream
+	Dropped    func(int)          // this many bytes went because the reader fell behind
+	Restarting func()             // the app said it's restarting
+}
+
+// Watch subscribes to the serial stream and follows it through restarts, starting with
+// what the app has kept. It returns nil when the app stops.
+func Watch(path string, w Watcher) error {
 	c, err := Dial(path)
 	if err != nil {
 		return err
 	}
 	for {
-		restarting, err := followOne(c, out, warn)
+		if w.Connected != nil {
+			w.Connected(c.Hello)
+		}
+		restarting, err := watchOne(c, w)
 		pid := c.Hello.PID
 		c.Close()
 		switch {
@@ -357,9 +392,9 @@ func Follow(path string, out io.Writer, warn func(string)) error {
 	}
 }
 
-// followOne covers one boot, saying whether it ended in a restart. The event comes ahead
+// watchOne covers one boot, saying whether it ended in a restart. The event comes ahead
 // of any serial still queued, so this reads on to the hang-up.
-func followOne(c *Client, out io.Writer, warn func(string)) (bool, error) {
+func watchOne(c *Client, w Watcher) (bool, error) {
 	// An app that stops here can still have said it's restarting, so the loop looks.
 	if err := c.Subscribe("serial"); err != nil && !errors.Is(err, ErrStopped) {
 		return false, err
@@ -375,13 +410,20 @@ func followOne(c *Client, out io.Writer, warn func(string)) (bool, error) {
 		}
 		switch event.Kind {
 		case "serial":
-			if _, err := out.Write(event.Data); err != nil {
-				return false, err
+			if w.Serial != nil {
+				if err := w.Serial(event.Data); err != nil {
+					return false, err
+				}
 			}
 		case "dropped":
-			warn(fmt.Sprintf("%d bytes of serial were dropped because this reader fell behind", event.Bytes))
+			if w.Dropped != nil {
+				w.Dropped(event.Bytes)
+			}
 		case "restarting":
 			restarting = true
+			if w.Restarting != nil {
+				w.Restarting()
+			}
 		}
 	}
 }

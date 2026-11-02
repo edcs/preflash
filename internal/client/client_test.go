@@ -679,3 +679,75 @@ func (b *syncBuffer) String() string {
 	defer b.mu.Unlock()
 	return b.buf.String()
 }
+
+func TestWatchReportsEachBootAndWhatHappensInIt(t *testing.T) {
+	path := shortPath(t)
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	serve := func(l net.Listener, lines ...string) {
+		conn, err := l.Accept()
+		require.NoError(t, err)
+		reader := bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1,"project":"demo"}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		for _, line := range lines {
+			fmt.Fprintln(conn, line)
+		}
+		conn.Close()
+		l.Close()
+	}
+	go func() {
+		serve(listener, `{"event":"serial","data":"b25l"}`, `{"event":"dropped","bytes":9}`, `{"event":"restarting"}`)
+		next, err := net.Listen("unix", path)
+		require.NoError(t, err)
+		serve(next, `{"event":"serial","data":"dHdv"}`)
+	}()
+
+	var log []string
+	err = Watch(path, Watcher{
+		Connected:  func(h Hello) { log = append(log, "connected "+h.Project) },
+		Serial:     func(b []byte) error { log = append(log, "serial "+string(b)); return nil },
+		Dropped:    func(n int) { log = append(log, fmt.Sprintf("dropped %d", n)) },
+		Restarting: func() { log = append(log, "restarting") },
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"connected demo", "serial one", "dropped 9", "restarting", "connected demo", "serial two"}, log)
+}
+
+func TestSetDeadlineStopsACallToAnAppThatHasGoneQuiet(t *testing.T) {
+	path := shortPath(t)
+	startFake(t, path, func(req map[string]any, reply func(string)) {})
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+
+	require.NoError(t, c.SetDeadline(time.Now().Add(50*time.Millisecond)))
+	_, err = c.Status()
+
+	assert.ErrorIs(t, err, ErrStopped)
+}
+
+func TestAwaitWaitsForASocketToAppear(t *testing.T) {
+	path := shortPath(t)
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		startFake(t, path, func(req map[string]any, reply func(string)) { reply(ok(req)) })
+	}()
+	c, err := Await(path, 5*time.Second, os.Getpid())
+	require.NoError(t, err)
+	c.Close()
+}
+
+func TestAwaitStopsWhenTheProcessDies(t *testing.T) {
+	cmd := exec.Command("true")
+	require.NoError(t, cmd.Run())
+	start := time.Now()
+
+	_, err := Await(shortPath(t), time.Minute, cmd.Process.Pid)
+
+	assert.ErrorIs(t, err, ErrNotRunning)
+	assert.Less(t, time.Since(start), time.Second)
+}
