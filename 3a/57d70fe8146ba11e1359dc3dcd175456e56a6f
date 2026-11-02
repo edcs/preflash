@@ -1,0 +1,27 @@
+internal/client/client.go
+  s_82b4983a83db4b::t_615204247f939f 281,284-294
+internal/client/client_test.go
+  s_82b4983a83db4b::t_12954e54b04b43 270-310
+runtime/include/preflash/control.h
+  s_82b4983a83db4b::t_38b5c3dd78b202 26-28
+runtime/src/console/console.cpp
+  s_82b4983a83db4b::t_bc0053b9afd771 235-236
+runtime/src/host/socket.cpp
+  s_82b4983a83db4b::t_1b742cd0527b27 135-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3a57d70fe8146ba11e1359dc3dcd175456e56a6f",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
