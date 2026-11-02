@@ -232,22 +232,32 @@ size_t save(const std::string& path) {
       ++saved;
     });
   }
-  const int fd = open(path.c_str(), O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC, 0600);
-  if (fd < 0) throw std::runtime_error("couldn't save the trace to " + path + ": " + std::strerror(errno));
+  // Beside the target and renamed, so a failed save leaves any file already there.
+  const std::string temp = path + ".tmp";
+  const auto failed = [&path](int error) {
+    return std::runtime_error("couldn't save the trace to " + path + ": " + std::strerror(error));
+  };
+  const int fd = open(temp.c_str(), O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC, 0600);
+  if (fd < 0) throw failed(errno);
   const char* at = text.data();
   size_t left = text.size();
   while (left > 0) {
     const ssize_t wrote = write(fd, at, left);
     if (wrote < 0) {
       if (errno == EINTR) continue;
-      const std::string why = std::strerror(errno);
+      const int error = errno;
       close(fd);
-      throw std::runtime_error("couldn't save the trace to " + path + ": " + why);
+      unlink(temp.c_str());
+      throw failed(error);
     }
     at += wrote;
     left -= static_cast<size_t>(wrote);
   }
-  close(fd);
+  if (close(fd) != 0 || rename(temp.c_str(), path.c_str()) != 0) {
+    const int error = errno;
+    unlink(temp.c_str());
+    throw failed(error);
+  }
   return saved;
 }
 

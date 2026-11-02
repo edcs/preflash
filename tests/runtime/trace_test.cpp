@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <signal.h>
+#include <sys/resource.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -171,6 +173,30 @@ TEST(Trace, SavingWritesTheRingAsJsonLines) {
   }
   EXPECT_EQ(lines, saved);
   EXPECT_TRUE(found);
+  fs::remove(path);
+}
+
+TEST(Trace, AFailedSaveLeavesTheFileThatWasThere) {
+  const fs::path path = fs::temp_directory_path() / ("pfkeep" + std::to_string(getpid()));
+  std::ofstream(path) << "precious";
+  {
+    Heard heard;
+    preflash::trace::note(Stream::Net, "wifi", "too long", std::string(100, 'x'));
+    heard.wait_for(Stream::Net, "too long");
+  }
+  // A full disk, near enough: writes past this size fail.
+  rlimit before{};
+  ASSERT_EQ(getrlimit(RLIMIT_FSIZE, &before), 0);
+  rlimit tight = before;
+  tight.rlim_cur = 16;
+  void (*old_handler)(int) = signal(SIGXFSZ, SIG_IGN);
+  ASSERT_EQ(setrlimit(RLIMIT_FSIZE, &tight), 0);
+  EXPECT_THROW(preflash::trace::save(path.string()), std::runtime_error);
+  setrlimit(RLIMIT_FSIZE, &before);
+  signal(SIGXFSZ, old_handler);
+  std::stringstream kept;
+  kept << std::ifstream(path).rdbuf();
+  EXPECT_EQ(kept.str(), "precious");
   fs::remove(path);
 }
 
