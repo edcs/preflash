@@ -1,0 +1,19 @@
+tests/fixtures/lcd_project/main/main.cpp
+  s_82b4983a83db4b::t_fd5ab56f8794a8 1-3,5-7,11,30-31,33-37,40-41,44-58,62-77,80,84,86,90-92,95,101-108,111-121,126-131,133-134,139,141-148,150-151,154,158-173,175-229,232,235,237-239,242-245,249-262,265-271,274,276,279,284,287,289,292,295-297,300-301,304-305,308-312,315-321,324-334,337-343,346-368,371-377,380,386-391,395-410
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d258c1ac01f1541ecacf966d5d185b167e60587e",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
