@@ -328,6 +328,12 @@ before="$(snapshot)"
 boot
 expect_in "demo-4b" "$(pf status --project "$project")"
 expect_in "version=1.0.0" "$(console_status)"
+mark
+pf send --project "$project" time 2026-02-31T10:00:00Z
+saw "usage: time"
+mark
+pf send --project "$project" spew 1
+saw "xspew done"
 pf hardware --project "$project" internet offline > /dev/null
 restart
 hold_clock

@@ -83,10 +83,16 @@ bool parse(const char* text, time_t* utc) {
   char end = 0;
   const int found = std::sscanf(text, "%d-%d-%dT%d:%d:%d%c", &year, &month, &day, &hour, &minute, &second, &end);
   if (found != 7 || end != 'Z') return false;
-  if (year < 2000 || month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) {
+  if (year < 2000) return false;
+  // A date that doesn't exist, such as 31 February, comes back as a different one.
+  const time_t candidate = epoch_from_date(year, month, day, hour, minute, second);
+  std::tm date;
+  gmtime_r(&candidate, &date);
+  if (date.tm_year + 1900 != year || date.tm_mon + 1 != month || date.tm_mday != day || date.tm_hour != hour ||
+      date.tm_min != minute || date.tm_sec != second) {
     return false;
   }
-  *utc = epoch_from_date(year, month, day, hour, minute, second);
+  *utc = candidate;
   return true;
 }
 

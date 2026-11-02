@@ -1,5 +1,6 @@
 #include "console.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -165,11 +166,12 @@ int hang_command(int, char**) {
 // Prints this many bytes as fast as the console takes them, to measure the serial stream.
 int spew_command(int argc, char** argv) {
   if (argc != 2) return fail("usage: spew bytes");
-  char line[kSpewLine + 1];
+  char line[kSpewLine];
   std::memset(line, 'x', kSpewLine - 1);
   line[kSpewLine - 1] = '\n';
-  line[kSpewLine] = '\0';
-  for (long left = std::strtol(argv[1], nullptr, 10); left > 0; left -= kSpewLine) std::fputs(line, stdout);
+  for (long left = std::strtol(argv[1], nullptr, 10); left > 0; left -= kSpewLine) {
+    std::fwrite(line, 1, std::min<long>(left, kSpewLine), stdout);
+  }
   std::printf("spew done\n");
   return 0;
 }
