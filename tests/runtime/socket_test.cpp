@@ -342,18 +342,20 @@ TEST_F(SocketServe, SendReachesTheConsoleQueue) {
 
 TEST_F(SocketServe, AFullConsoleQueueIsAnError) {
   ASSERT_TRUE(preflash::start_console_reader());
-  // Each line takes a while to run, so they arrive faster than they leave.
+  // The first line holds the queue up until the test is done.
+  static std::atomic<bool> let_go{false};
+  preflash::add_control("socket_padding", [](std::vector<std::string>) {
+    while (!let_go) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  });
   Client client(path());
   bool refused = false;
   const std::string padding = "@sim socket_padding " + std::string(200 * 1000, 'x');
-  preflash::add_control("socket_padding", [](std::vector<std::string>) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  });
   for (int i = 0; i < 100 && !refused; ++i) {
     const json reply = client.call({{"op", "send"}, {"line", padding}});
     refused = reply["ok"] == false;
     if (refused) EXPECT_NE(reply["error"].get<std::string>().find("full"), std::string::npos);
   }
+  let_go = true;
   EXPECT_TRUE(refused);
 }
 

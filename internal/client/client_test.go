@@ -427,6 +427,37 @@ func TestFollowStopsAtOnceWhenTheProcessHasGone(t *testing.T) {
 	assert.Less(t, time.Since(start), 2*time.Second)
 }
 
+// A restart can land on a rebuilt app, and that's no reason to report a stopped one.
+func TestFollowSaysWhenTheNextBootSpeaksAnotherProtocol(t *testing.T) {
+	path := shortPath(t)
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	go func() {
+		conn, err := listener.Accept()
+		require.NoError(t, err)
+		reader := bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		fmt.Fprintln(conn, `{"event":"restarting"}`)
+		conn.Close()
+		listener.Close()
+		next, err := net.Listen("unix", path)
+		require.NoError(t, err)
+		defer next.Close()
+		conn, err = next.Accept()
+		require.NoError(t, err)
+		bufio.NewReader(conn).ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":99}`)
+		conn.Close()
+	}()
+
+	err = Follow(path, &syncBuffer{}, func(string) {})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "99")
+}
+
 func TestFollowPassesOnDrops(t *testing.T) {
 	path := shortPath(t)
 	listener, err := net.Listen("unix", path)

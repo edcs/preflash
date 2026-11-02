@@ -427,6 +427,8 @@ void mask_signals_on_this_thread() {
   sigset_t set;
   sigemptyset(&set);
   sigaddset(&set, SIGINT);
+  sigaddset(&set, SIGTERM);
+  sigaddset(&set, SIGHUP);
   // A real stdout that went away shows up as an error from write. Sockets need SO_NOSIGPIPE.
   sigaddset(&set, SIGPIPE);
   pthread_sigmask(SIG_BLOCK, &set, nullptr);

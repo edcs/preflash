@@ -55,23 +55,22 @@ void put_le(std::vector<char>* out, size_t at, uint32_t value, int bytes) {
 
 void draw(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame) {
   Pixels& p = pixels();
-  if (last_of_frame) {
-    // Read under the lock, so that the times in the list stay in order.
-    std::lock_guard<std::mutex> lock(p.mutex);
-    const auto now = std::chrono::steady_clock::now();
-    ++p.frames;
-    forget_old_frames(p, now);
-    p.recent.push_back(now);
-  }
   const int source_stride = (x2 - x1) * kBytesPerPixel;
   const int left = std::max(x1, 0);
   const int right = std::min(x2, p.width);
   const int top = std::max(y1, 0);
   const int bottom = std::min(y2, p.height);
-  if (left >= right || top >= bottom) return;
 
   const auto* source = static_cast<const uint8_t*>(rgb565);
+  // One lock for the pixels and the count, so that a frame counted can also be read.
   std::lock_guard<std::mutex> lock(p.mutex);
+  if (last_of_frame) {
+    const auto now = std::chrono::steady_clock::now();
+    ++p.frames;
+    forget_old_frames(p, now);
+    p.recent.push_back(now);
+  }
+  if (left >= right || top >= bottom) return;
   for (int y = top; y < bottom; ++y) {
     const uint8_t* from = source + (y - y1) * source_stride + (left - x1) * kBytesPerPixel;
     uint8_t* to = p.data.data() + (y * p.width + left) * kBytesPerPixel;

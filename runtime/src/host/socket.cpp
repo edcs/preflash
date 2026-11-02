@@ -383,7 +383,7 @@ std::optional<std::string> holder(const char* path) {
     return std::nullopt;
   }
   ignore_hang_ups(fd);
-  timeval wait = {0, kHolderAnswerMs * 1000};
+  timeval wait = {kHolderAnswerMs / 1000, (kHolderAnswerMs % 1000) * 1000};
   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &wait, sizeof wait);
   const std::string request = encode({{"id", 1}, {"op", "hello"}}) + "\n";
   std::string reply;

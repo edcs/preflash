@@ -305,14 +305,20 @@ func Follow(path string, out io.Writer, warn func(string)) error {
 		case err != nil:
 			return err
 		case restarting:
-			if c, err = dialWithin(path, restartGrace, restartGrace, pid); err != nil {
+			if c, err = dialWithin(path, restartGrace, restartGrace, pid); errors.Is(err, ErrNotRunning) {
 				return ErrStopped
+			}
+			if err != nil {
+				return err
 			}
 		default:
 			// A writer stuck on this reader can lose the restarting event at the exec, so
 			// a hang-up from a live process may be a restart. A quit removes the socket.
-			if c, err = dialWithin(path, restartGrace, replaceGrace, pid); err != nil {
+			if c, err = dialWithin(path, restartGrace, replaceGrace, pid); errors.Is(err, ErrNotRunning) {
 				return nil
+			}
+			if err != nil {
+				return err
 			}
 		}
 	}

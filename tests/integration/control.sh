@@ -286,4 +286,14 @@ finish_app
 [ "$app_status" -eq 0 ] || fail "SIGINT exited with status $app_status" "$(cat "$app_log")"
 [ ! -e "$socket" ] || fail "SIGINT left the socket behind"
 
+# Stopping from outside drains the stream and removes the socket too.
+for signal in TERM HUP; do
+  start_run
+  wait_for_output "ready, reset reason"
+  kill -"$signal" "$app_pid"
+  finish_app
+  [ "$app_status" -eq 0 ] || fail "SIG$signal exited with status $app_status" "$(cat "$app_log")"
+  [ ! -e "$socket" ] || fail "SIG$signal left the socket behind"
+done
+
 echo "PASS: control"

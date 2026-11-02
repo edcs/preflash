@@ -81,8 +81,8 @@ int main() {
   esp_timer_get_time();
   // Line by line, so that a line reaches the stream as firmware finishes it.
   setvbuf(stdout, nullptr, _IOLBF, 0);
-  // Before SDL starts, so that SDL leaves it in place.
-  signal(SIGINT, on_interrupt);
+  // Before SDL starts, so that SDL leaves them in place.
+  for (const int stop : {SIGINT, SIGTERM, SIGHUP}) signal(stop, on_interrupt);
 
   try {
     preflash::attach_chips(preflash::board());
