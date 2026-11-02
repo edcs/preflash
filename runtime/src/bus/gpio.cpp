@@ -144,6 +144,7 @@ int gpio_get_level(gpio_num_t gpio_num) {
 }
 
 esp_err_t gpio_set_pull_mode(gpio_num_t gpio_num, gpio_pull_mode_t pull) {
+  if (pull < GPIO_PULLUP_ONLY || pull > GPIO_FLOATING) return ESP_ERR_INVALID_ARG;
   return set_pull(gpio_num, pull == GPIO_PULLUP_ONLY || pull == GPIO_PULLUP_PULLDOWN);
 }
 

@@ -231,6 +231,23 @@ TEST(Ledc, ChannelBeforeItsTimerStillSetsTheBacklight) {
   EXPECT_EQ(panel::brightness_level(), 50);
 }
 
+TEST(Ledc, ATimerArrivingLaterStartsItsChannels) {
+  ledc_channel_config_t channel = {};
+  channel.gpio_num = 4;
+  channel.speed_mode = LEDC_LOW_SPEED_MODE;
+  channel.channel = LEDC_CHANNEL_0;
+  channel.timer_sel = LEDC_TIMER_0;
+  channel.duty = 191;
+  ASSERT_EQ(ledc_channel_config(&channel), ESP_OK);
+  ledc_timer_config_t timer = {};
+  timer.speed_mode = LEDC_LOW_SPEED_MODE;
+  timer.duty_resolution = LEDC_TIMER_8_BIT;
+  timer.timer_num = LEDC_TIMER_0;
+  timer.freq_hz = 5000;
+  ASSERT_EQ(ledc_timer_config(&timer), ESP_OK);
+  EXPECT_EQ(panel::brightness_level(), 25);
+}
+
 TEST(Ledc, RefusesWhatTheHardwareLacks) {
   ledc_timer_config_t timer = {};
   timer.speed_mode = LEDC_LOW_SPEED_MODE;

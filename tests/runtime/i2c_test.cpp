@@ -313,6 +313,10 @@ TEST(Gpio, APullDownBeatsNothingButReadsLow) {
   EXPECT_EQ(gpio_get_level(GPIO_NUM_8), 1);
 }
 
+TEST(Gpio, RejectsAPullModeThatDoesntExist) {
+  EXPECT_EQ(gpio_set_pull_mode(GPIO_NUM_8, static_cast<gpio_pull_mode_t>(9)), ESP_ERR_INVALID_ARG);
+}
+
 TEST(Gpio, AnOutputOnlyPinReadsZero) {
   ASSERT_EQ(gpio_set_direction(GPIO_NUM_9, GPIO_MODE_OUTPUT), ESP_OK);
   ASSERT_EQ(gpio_set_level(GPIO_NUM_9, 1), ESP_OK);

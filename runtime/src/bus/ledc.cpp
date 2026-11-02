@@ -62,6 +62,10 @@ esp_err_t ledc_timer_config(const ledc_timer_config_t* timer_conf) {
   }
   timer.configured = true;
   timer.resolution_bits = timer_conf->duty_resolution;
+  // A channel set up first has been waiting for this to start counting.
+  for (const Channel& channel : g_channels) {
+    if (channel.configured && channel.timer == timer_conf->timer_num) show(channel);
+  }
   return ESP_OK;
 }
 
