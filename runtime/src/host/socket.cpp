@@ -423,7 +423,7 @@ bool claim(std::string* error) {
 
   // Held from the check to the listen, so two apps starting together can't both find the
   // socket stale. The lock goes with this function, or with the process if it dies here.
-  const int lock = open((shown + ".lock").c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+  const int lock = open((shown + ".lock").c_str(), O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0600);
   if (lock < 0) {
     *error = "couldn't lock " + shown + ": " + std::strerror(errno);
     return false;

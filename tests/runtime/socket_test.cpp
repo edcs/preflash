@@ -245,6 +245,23 @@ TEST(SocketClaim, LeavesAFileThatIsNotASocket) {
   fs::remove(path);
 }
 
+TEST(SocketClaim, WontFollowASymlinkAtTheLock) {
+  const std::string path = socket_path("sym");
+  const std::string lock = path + ".lock";
+  const std::string target = path + ".target";
+  unlink(path.c_str());
+  unlink(lock.c_str());
+  unlink(target.c_str());
+  ASSERT_EQ(symlink(target.c_str(), lock.c_str()), 0);
+  setenv("PREFLASH_SOCKET", path.c_str(), 1);
+  std::string error;
+  EXPECT_FALSE(preflash::socket::claim(&error));
+  EXPECT_NE(error.find("couldn't lock"), std::string::npos) << error;
+  EXPECT_FALSE(fs::exists(target));
+  unsetenv("PREFLASH_SOCKET");
+  unlink(lock.c_str());
+}
+
 TEST(SocketClaim, SaysWhenThePathIsTooLong) {
   const std::string path = "/tmp/" + std::string(200, 'x');
   setenv("PREFLASH_SOCKET", path.c_str(), 1);

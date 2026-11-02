@@ -33,6 +33,8 @@ const char kAlphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01
 
 std::atomic<long> g_unsent{0};
 
+constexpr unsigned kFatalDrainSeconds = 3;
+
 // Plain values and atomics only, because a signal handler reads them.
 std::atomic<bool> g_started{false};
 std::atomic<bool> g_handed_back{false};
@@ -169,7 +171,10 @@ void pump(int from) {
 }
 
 // A process dying with output still in the pipe would lose the message that says why.
+// The crash can have stopped a thread holding a lock release() needs, so the alarm's
+// default action ends the process if the drain doesn't finish.
 void on_fatal_signal(int signal_number) {
+  alarm(kFatalDrainSeconds);
   release();
   signal(signal_number, SIG_DFL);
   raise(signal_number);
