@@ -112,17 +112,17 @@ int main() {
   preflash::add_control("quit", [](std::vector<std::string>) { preflash::socket::quit(); });
   if (!preflash::start_console_reader()) {
     std::fprintf(stderr, "preflash: couldn't start the console task\n");
-    return 1;
+    preflash::socket::leave(1);
   }
 
   if (!preflash::socket::serve()) {
     std::fprintf(stderr, "preflash: couldn't start answering the control socket\n");
-    return 1;
+    preflash::socket::leave(1);
   }
 
   if (xTaskCreate(main_task, "main", kMainTaskStack, nullptr, kMainTaskPriority, nullptr) != pdPASS) {
     std::fprintf(stderr, "preflash: couldn't start the main task\n");
-    return 1;
+    preflash::socket::leave(1);
   }
 
   if (!headless) preflash::window::run();

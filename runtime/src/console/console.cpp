@@ -44,8 +44,8 @@ struct State {
 };
 
 State& state() {
-  static State s;
-  return s;
+  static State* s = new State;  // never destroyed: the console task outlives static destructors
+  return *s;
 }
 
 // Splits as ESP-IDF's esp_console_split_argv does. A quote opens a word only at

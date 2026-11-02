@@ -761,14 +761,14 @@ TEST(Ota, ReportsNoUpdateAvailable) {
 }
 
 TEST_F(Wifi, StateFollowsTheLink) {
-  EXPECT_EQ(preflash::wifi_state(), "off");
+  EXPECT_STREQ(preflash::wifi_state(), "off");
   ASSERT_EQ(esp_wifi_start(), ESP_OK);
-  EXPECT_EQ(preflash::wifi_state(), "disconnected");
+  EXPECT_STREQ(preflash::wifi_state(), "disconnected");
   join("Preflash Fake Home");
-  EXPECT_EQ(preflash::wifi_state(), "connecting");
+  EXPECT_STREQ(preflash::wifi_state(), "connecting");
   Seen got_ip{};
   ASSERT_TRUE(log_.wait_for(IP_EVENT, IP_EVENT_STA_GOT_IP, &got_ip));
-  EXPECT_EQ(preflash::wifi_state(), "connected");
+  EXPECT_STREQ(preflash::wifi_state(), "connected");
   ASSERT_EQ(esp_wifi_stop(), ESP_OK);
-  EXPECT_EQ(preflash::wifi_state(), "off");
+  EXPECT_STREQ(preflash::wifi_state(), "off");
 }

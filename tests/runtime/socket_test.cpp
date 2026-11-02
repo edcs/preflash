@@ -271,6 +271,40 @@ TEST_F(SocketServe, SendNeedsOneLine) {
   EXPECT_EQ(client.call({{"op", "send"}, {"line", "one\ntwo"}})["ok"], false);
 }
 
+// Replies are never dropped, so a client that sends and never reads gets cut off, and what
+// it had already sent after the limit doesn't run. An id comes back as given, which makes
+// each reply as long as its request.
+TEST_F(SocketServe, AClientPilingUpRepliesIsCutOffAtOnce) {
+  static std::atomic<bool> ran{false};
+  preflash::add_control("socket_late", [](std::vector<std::string>) { ran = true; });
+  ASSERT_TRUE(preflash::start_console_reader());
+
+  const std::string long_request =
+      json({{"id", std::string(900 * 1000, 'x')}, {"op", "hello"}}).dump() + "\n";
+  std::string batch;
+  for (int i = 0; i < 90; ++i) batch += long_request;
+  batch += json({{"id", 1}, {"op", "send"}, {"line", "@sim socket_late"}}).dump() + "\n";
+  Client client(path());
+  client.send_raw(batch);
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  EXPECT_FALSE(ran);
+}
+
+// macOS raises SIGPIPE for a socket at the process, so masking it on the writer's thread
+// isn't enough, and this would end the whole app.
+TEST_F(SocketServe, AClientThatHangsUpMidReplyLeavesTheAppRunning) {
+  const std::string long_request =
+      json({{"id", std::string(900 * 1000, 'x')}, {"op", "hello"}}).dump() + "\n";
+  {
+    Client client(path());
+    client.send_raw(long_request + long_request + long_request);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  Client client(path());
+  EXPECT_EQ(client.call({{"op", "hello"}})["ok"], true);
+}
+
 TEST_F(SocketServe, TouchPressesAndReleases) {
   while (preflash::touch::pop()) {
   }

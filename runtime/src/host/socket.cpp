@@ -244,8 +244,12 @@ void read_requests(std::shared_ptr<Connection> c) {
     size_t start = 0;
     for (size_t end; (end = buffer.find('\n', start)) != std::string::npos; start = end + 1) {
       handle_line(*c, buffer.substr(start, end - start));
-      if (c->out.message_bytes() > kLongestReplyQueue) cut_off = true;
+      if (c->out.message_bytes() > kLongestReplyQueue) {
+        cut_off = true;
+        break;
+      }
     }
+    if (cut_off) break;
     buffer.erase(0, start);
     if (buffer.size() > kLongestRequest) {
       reply_error(*c, nullptr, "that request is too long");
@@ -282,6 +286,13 @@ void write_lines(std::shared_ptr<Connection> c) {
   shutdown(c->fd, SHUT_RDWR);
 }
 
+// macOS raises SIGPIPE for a socket at the process, past any thread's mask, so a client
+// hanging up mid-write would stop the app. This turns it into an error from write.
+void ignore_hang_ups(int fd) {
+  const int on = 1;
+  setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
+}
+
 void accept_clients() {
   serial::mask_signals_on_this_thread();
   for (;;) {
@@ -294,6 +305,7 @@ void accept_clients() {
       }
       continue;
     }
+    ignore_hang_ups(fd);
     auto connection = std::make_shared<Connection>(fd);
     {
       std::lock_guard<std::mutex> lock(clients().mutex);
@@ -326,6 +338,7 @@ std::optional<std::string> holder(const char* path) {
     close(fd);
     return std::nullopt;
   }
+  ignore_hang_ups(fd);
   std::string name = "another app";
   timeval wait = {kHolderAnswerSeconds, 0};
   setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &wait, sizeof wait);
