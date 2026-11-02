@@ -395,6 +395,9 @@ bool start() {
   // Only fds 1 and 2 hold the pipe now, so putting them back ends the pump.
   close(write_end);
   g_started = true;
+  // macOS raises SIGPIPE for a pipe at the process, past any thread's mask, so a reader of
+  // the real stdout going away would stop the firmware.
+  signal(SIGPIPE, SIG_IGN);
   for (const int fatal : {SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE}) signal(fatal, on_fatal_signal);
   return true;
 }
@@ -429,8 +432,6 @@ void mask_signals_on_this_thread() {
   sigaddset(&set, SIGINT);
   sigaddset(&set, SIGTERM);
   sigaddset(&set, SIGHUP);
-  // A real stdout that went away shows up as an error from write. Sockets need SO_NOSIGPIPE.
-  sigaddset(&set, SIGPIPE);
   pthread_sigmask(SIG_BLOCK, &set, nullptr);
 }
 

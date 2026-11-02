@@ -481,6 +481,49 @@ func TestFollowPassesOnDrops(t *testing.T) {
 	assert.Contains(t, warnings[0], "5 bytes")
 }
 
+// A quit that lands just as a restart execs goes unanswered by the new boot.
+func TestQuitAsksAgainIfTheAppCameBack(t *testing.T) {
+	path := shortPath(t)
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	listener.(*net.UnixListener).SetUnlinkOnClose(false)
+	stopped := make(chan struct{})
+	go func() {
+		conn, err := listener.Accept()
+		require.NoError(t, err)
+		reader := bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		conn.Close()
+		listener.Close()
+		os.Remove(path)
+		next, err := net.Listen("unix", path)
+		require.NoError(t, err)
+		conn, err = next.Accept()
+		require.NoError(t, err)
+		reader = bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		next.Close() // removes the socket, as a real quit does
+		conn.Close()
+		close(stopped)
+	}()
+
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+	require.NoError(t, c.Quit())
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the second boot never heard a quit")
+	}
+}
+
 func TestFollowSaysWhenNoAppIsRunning(t *testing.T) {
 	assert.ErrorIs(t, Follow(shortPath(t), &syncBuffer{}, func(string) {}), ErrNotRunning)
 }

@@ -35,6 +35,9 @@ const helloGrace = 2 * time.Second
 
 const dialPause = 20 * time.Millisecond
 
+// How many times Quit asks again.
+const quitTries = 2
+
 var (
 	// ErrNotRunning means no app answers on the socket.
 	ErrNotRunning = errors.New("no app is running")
@@ -45,6 +48,7 @@ var (
 // Client is one connection to an app. It isn't safe for concurrent use.
 type Client struct {
 	conn    net.Conn
+	path    string
 	reader  *bufio.Reader
 	lastID  int
 	pending []Event
@@ -127,7 +131,7 @@ func dialOnce(path string) (*Client, error) {
 		}
 		return nil, err
 	}
-	c := &Client{conn: conn, reader: bufio.NewReader(conn)}
+	c := &Client{conn: conn, reader: bufio.NewReader(conn), path: path}
 	// A listener that's stopped still accepts, so hello can't wait for good.
 	if err := conn.SetDeadline(time.Now().Add(helloGrace)); err != nil {
 		conn.Close()
@@ -268,12 +272,30 @@ func (c *Client) TouchDefault(x, y int) error {
 	return c.Call("touch", map[string]any{"x": x, "y": y}, nil)
 }
 
-// Quit stops the app and returns once it has gone.
+// Quit stops the app and returns once it has gone. A quit that lands just as a restart
+// execs is lost, and quitting removes the socket, so one that still answers gets asked again.
 func (c *Client) Quit() error {
-	if err := c.Call("quit", nil, nil); err != nil {
-		return err
+	for try := 0; ; try++ {
+		if err := c.Call("quit", nil, nil); err != nil {
+			return err
+		}
+		if err := c.WaitForExit(quitGrace); err != nil {
+			return err
+		}
+		next, err := Dial(c.path)
+		if errors.Is(err, ErrNotRunning) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if try == quitTries {
+			next.Close()
+			return errors.New("the app is still running")
+		}
+		c.conn.Close()
+		*c = *next
 	}
-	return c.WaitForExit(quitGrace)
 }
 
 // WaitForExit returns when the app hangs up, or with an error if it hasn't in time.

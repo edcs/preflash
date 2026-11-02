@@ -267,6 +267,14 @@ TEST(SerialPump, OutOfDescriptorsLeavesStdoutAndStderrAlone) {
   EXPECT_NE(output.find("stderr still open"), std::string::npos) << output;
 }
 
+// As with preflash run | head -1: firmware outlives whatever read its stdout.
+TEST(SerialPump, ARealStdoutThatGoesAwayLeavesFirmwareRunning) {
+  int status = -1;
+  const std::string output = run_helper("stdout_gone", &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("survived"), std::string::npos) << output;
+}
+
 TEST(SerialPump, BinaryOutputArrivesWhole) {
   int status = -1;
   const std::string output = run_helper("binary", &status);

@@ -312,6 +312,11 @@ wait_for_output "ready, reset reason"
 kill -HUP "$app_pid"
 sleep 0.3
 pf status --project "$project" > /dev/null || fail "SIGHUP stopped a run that ignores it"
+pf send --project "$project" restart
+wait_for_output "ready, reset reason 3"
+kill -HUP "$app_pid"
+sleep 0.3
+pf status --project "$project" > /dev/null || fail "the ignore didn't survive a restart"
 quit_app
 
 echo "PASS: control"

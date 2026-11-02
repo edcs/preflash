@@ -49,6 +49,20 @@ int run_out_of_fds() {
   return 0;
 }
 
+int outlive_stdout() {
+  int ends[2];
+  if (pipe(ends) != 0) return 7;
+  const int report = dup(STDOUT_FILENO);
+  dup2(ends[1], STDOUT_FILENO);
+  close(ends[1]);
+  close(ends[0]);
+  if (!preflash::serial::start()) return 8;
+  flood();
+  usleep(200 * 1000);
+  dprintf(report, "survived\n");
+  _exit(0);
+}
+
 // A pipe nobody reads, as with a terminal stopped by ^S.
 int flood_a_stuck_stdout() {
   int ends[2];
@@ -102,6 +116,7 @@ int main(int argc, char** argv) {
   if (mode == "interrupt") signal(SIGINT, on_interrupt);
   if (mode == "no_fds") return run_out_of_fds();
   if (mode == "stalled") return flood_a_stuck_stdout();
+  if (mode == "stdout_gone") return outlive_stdout();
   if (!preflash::serial::start()) return 3;
 
   if (mode == "subscribe") {
