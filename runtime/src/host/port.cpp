@@ -110,11 +110,9 @@ void write_queue() {
   }
 }
 
+// The app's own words stay off the port, which carries only what firmware says.
 void take_line(const std::string& line) {
-  if (!submit_line(line)) {
-    std::printf("preflash: the console queue is full, so a line was dropped\n");
-    std::fflush(stdout);
-  }
+  if (!submit_line(line)) serial::notice("preflash: the console queue is full, so a line was dropped\n");
 }
 
 void read_input() {
@@ -129,8 +127,7 @@ void read_input() {
     const ssize_t got = read(g_master, buffer, sizeof buffer);
     if (got > 0) {
       if (lines.feed(buffer, static_cast<size_t>(got), take_line) > 0) {
-        std::printf("preflash: a line on the serial port was too long, so it was dropped\n");
-        std::fflush(stdout);
+        serial::notice("preflash: a line on the serial port was too long, so it was dropped\n");
       }
     } else if (got == 0 || (errno != EAGAIN && errno != EINTR)) {
       sleep_ms(kBusyMs);
@@ -234,8 +231,14 @@ bool make_link(const char* link, int slot) {
       return false;
     }
     const std::string next = std::string(link) + ".next";
-    unlink(next.c_str());
-    if (symlink(g_device, next.c_str()) != 0 || rename(next.c_str(), link) != 0) {
+    // Only a run that stopped right here leaves a link at that name. A file there is someone's.
+    if (lstat(next.c_str(), &info) == 0 && S_ISLNK(info.st_mode)) unlink(next.c_str());
+    if (symlink(g_device, next.c_str()) != 0) {
+      std::fprintf(stderr, "preflash: couldn't link the serial port at %s: %s\n", link,
+                   std::strerror(errno));
+      return false;
+    }
+    if (rename(next.c_str(), link) != 0) {
       std::fprintf(stderr, "preflash: couldn't link the serial port at %s: %s\n", link,
                    std::strerror(errno));
       unlink(next.c_str());
@@ -282,8 +285,10 @@ void start() {
   if (!take_over() && !open_new()) return;
   std::strncpy(g_device, ptsname(g_master), sizeof g_device - 1);
   setenv(kFdsEnv, (std::to_string(g_master) + ":" + std::to_string(g_slave)).c_str(), 1);
-  g_path = make_link(link, 0) ? link : g_device;
-  if (const char* extra = std::getenv(kExtraLinkEnv); extra && *extra) make_link(extra, 1);
+  const char* extra = std::getenv(kExtraLinkEnv);
+  const bool linked = make_link(link, 0);
+  const bool extra_linked = extra && *extra && make_link(extra, 1);
+  g_path = linked ? link : extra_linked ? extra : g_device;
   try {
     std::thread(write_queue).detach();
     std::thread(read_input).detach();

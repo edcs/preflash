@@ -121,15 +121,24 @@ start_companion() {
   companion_in="$(mktemp -u "$scratch/steps.XXXXXX")"
   companion_log="$(mktemp "$scratch/companion.XXXXXX")"
   mkfifo "$companion_in"
+  steps=0
   python3 -I "$scratch/companion.py" "$1" < "$companion_in" > "$companion_log" 2>&1 &
   companion=$!
   exec 4> "$companion_in"
 }
 
-# Gives the companion a step and waits for it to finish.
+# Gives the companion a step and waits for it to finish. Steps repeat, so this counts
+# them, and an earlier step's line in the log can't pass for this one's.
 step() {
+  local tenths
+  steps=$((steps + 1))
   printf '%s\n' "$1" >&4
-  wait_in_file "done $1" "$companion_log"
+  for tenths in $(seq 1 200); do
+    [ "$(grep -c '^done ' "$companion_log" || true)" -ge "$steps" ] && return 0
+    kill -0 "$companion" 2>/dev/null || break
+    sleep 0.1
+  done
+  fail "the companion didn't finish: $1" "$(cat "$companion_log")"
 }
 
 stop_companion() {
@@ -200,14 +209,41 @@ step "wait ready, reset reason 3"
 step "send ping"
 step "wait pong"
 
+# A quit left in the terminal during a restart works on the next boot. A client that has
+# stopped reading stretches the restart, so that the line lands while nothing reads it.
+python3 -I - "${port%.tty}.sock" <<'PY' &
+import socket, sys, time
+client = socket.socket(socket.AF_UNIX)
+client.connect(sys.argv[1])
+client.sendall(b'{"id":1,"op":"subscribe","streams":["serial"]}\n')
+time.sleep(5)
+PY
+stuck=$!
+step "send flood"
+step "wait flood done"
+step "send restart"
+sleep 0.2
+step "send @sim quit"
+step "eof"
+stop_companion
+kill "$stuck" 2>/dev/null || true
+wait "$stuck" 2>/dev/null || true
+finish_app
+[ "$app_status" -eq 0 ] || fail "that quit exited with status $app_status" "$(cat "$app_log")"
+grep -qF "Unknown control" "$app_log" && fail "the quit reached a boot that couldn't run it" "$(cat "$app_log")"
+kill "$follower" 2>/dev/null || true
+wait "$follower" 2>/dev/null || true
+follower=""
+start_run
+wait_for_output "ready, reset reason 1"
+start_companion "$port"
+step "open"
+
 # Quitting hangs up, and takes the link with it.
 pf quit --project "$project"
 step "eof"
 stop_companion
 [ ! -L "$port" ] || fail "quit left the port's link behind"
-kill "$follower" 2>/dev/null || true
-wait "$follower" 2>/dev/null || true
-follower=""
 finish_app
 
 # With nobody attached, the firmware runs on, and a late companion finds a working port.

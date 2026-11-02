@@ -198,6 +198,39 @@ TEST(Port, OffersNoPortItCantServe) {
   EXPECT_FALSE(fs::is_symlink(folder.path + "/port.tty")) << output;
 }
 
+TEST(Port, OffersTheExtraLinkWhenItsOwnFails) {
+  TempFolder folder;
+  const std::string link = folder.path + "/extra.tty";
+  int status = -1;
+  const std::string output =
+      run_helper("settings", "PREFLASH_PORT=" + quoted(folder.path + "/none/port.tty") +
+                                 " PREFLASH_PORT_LINK=" + quoted(link), &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("path=" + link), std::string::npos) << output;
+}
+
+TEST(Port, LeavesAFileAtItsTemporaryNameAlone) {
+  TempFolder folder;
+  const std::string next = folder.path + "/port.tty.next";
+  FILE* file = std::fopen(next.c_str(), "w");
+  ASSERT_NE(file, nullptr);
+  std::fclose(file);
+  int status = -1;
+  const std::string output = run_helper("settings", with_port(folder), &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("couldn't link"), std::string::npos) << output;
+  EXPECT_TRUE(fs::is_regular_file(next));
+}
+
+TEST(Port, KeepsItsOwnNoticesOutOfThePort) {
+  TempFolder folder;
+  int status = -1;
+  const std::string output = run_helper("notice", with_port(folder), &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("clients heard the notice"), std::string::npos) << output;
+  EXPECT_NE(output.find("the port stayed clean"), std::string::npos) << output;
+}
+
 TEST(Port, FallsBackToTheDeviceWhenTheLinkFails) {
   TempFolder folder;
   int status = -1;

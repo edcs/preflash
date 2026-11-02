@@ -423,6 +423,20 @@ void unsubscribe(int subscription) {
   p.subscribers.erase(subscription);
 }
 
+void notice(const std::string& text) {
+  if (!g_started || g_handed_back) {
+    std::fputs(text.c_str(), stderr);
+    return;
+  }
+  Pump& p = pump_state();
+  {
+    std::lock_guard<std::mutex> lock(p.mutex);
+    p.ring.append(text.data(), text.size());
+    for (auto& [id, subscriber] : p.subscribers) subscriber(text.data(), text.size());
+  }
+  queue_for_terminal(text.data(), text.size());
+}
+
 std::string ring_contents() {
   Pump& p = pump_state();
   std::lock_guard<std::mutex> lock(p.mutex);

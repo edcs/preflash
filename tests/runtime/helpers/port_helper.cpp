@@ -11,12 +11,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <thread>
 
 #include "esp_system.h"
 #include "preflash/control.h"
 #include "preflash/port.h"
+#include "preflash/serial.h"
 
 namespace port = preflash::port;
 
@@ -166,6 +168,37 @@ int restart() {
   return 0;
 }
 
+// A line too long to keep, with the stream running, so that any notice about it would
+// reach a client and could reach the port.
+int notice() {
+  std::mutex mutex;
+  std::string heard;
+  preflash::serial::subscribe([&](const char* data, size_t size) {
+    std::lock_guard<std::mutex> lock(mutex);
+    heard.append(data, size);
+  });
+  const int fd = attach();
+  const std::string line(1024 * 1024 + 16, 'x');
+  std::thread writer([&] {
+    if (::write(fd, line.data(), line.size()) < 0) std::perror("write");
+    send(fd, "\n");
+  });
+  const std::string got = read_all(fd, 500);
+  writer.join();
+  bool clean;
+  bool told;
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    told = heard.find("too long") != std::string::npos;
+    clean = got.find("too long") == std::string::npos;
+  }
+  if (told) std::printf("clients heard the notice\n");
+  if (clean) std::printf("the port stayed clean\n");
+  std::fflush(stdout);
+  preflash::serial::release();
+  return 0;
+}
+
 int links() {
   const char* extra = std::getenv("PREFLASH_PORT_LINK");
   if (read_link(extra) == port::device()) std::printf("extra points at the device\n");
@@ -199,6 +232,7 @@ int main(int argc, char** argv) {
   if (argc != 2) return 2;
   const std::string mode = argv[1];
   setvbuf(stdout, nullptr, _IOLBF, 0);
+  if (mode == "notice" && !preflash::serial::start()) return 1;
   if (mode == "nothreads") {
     use_up_threads();
     port::start();
@@ -214,5 +248,6 @@ int main(int argc, char** argv) {
   if (mode == "input") return input();
   if (mode == "restart") return restart();
   if (mode == "links") return links();
+  if (mode == "notice") return notice();
   return 2;
 }

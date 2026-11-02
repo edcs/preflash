@@ -91,6 +91,11 @@ using Subscriber = std::function<void(const char* data, size_t size)>;
 int subscribe(Subscriber subscriber);
 void unsubscribe(int subscription);
 
+// Tells the people watching something firmware didn't say: it reaches the ring, subscribers
+// and the real stdout, and stays off the virtual serial port, where a companion app would
+// read it as firmware's. Never waits.
+void notice(const std::string& text);
+
 std::string ring_contents();
 
 // Blocks the signals that belong to firmware's threads. For the threads that serve the

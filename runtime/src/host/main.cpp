@@ -109,14 +109,14 @@ int main() {
 
   // After the window, whose failures print straight to the terminal.
   if (!preflash::serial::start()) preflash::socket::leave(1);
-  // After the stream, so that the toolbar's reader hears any trouble with it.
-  preflash::port::start();
-
   preflash::add_control("touch", control_touch);
   preflash::add_control("audio", control_audio);
   preflash::add_control("brightness", control_brightness);
   preflash::add_control("shot", control_shot);
   preflash::add_control("quit", [](std::vector<std::string>) { preflash::socket::quit(); });
+  // After the stream, so that the toolbar's reader hears any trouble with it, and after the
+  // controls, because a restart can leave a quit waiting in the terminal.
+  preflash::port::start();
   if (!preflash::start_console_reader()) {
     std::fprintf(stderr, "preflash: couldn't start the console task\n");
     preflash::socket::leave(1);
