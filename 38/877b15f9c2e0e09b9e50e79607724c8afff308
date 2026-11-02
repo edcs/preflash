@@ -1,0 +1,21 @@
+internal/check/replay.go
+  s_0ea1b3691aef4f::t_e511ca4c68b91e 119-121
+internal/check/replay_test.go
+  s_0ea1b3691aef4f::t_ea6952595e6df7 60-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "38877b15f9c2e0e09b9e50e79607724c8afff308",
+  "prompts": {},
+  "sessions": {
+    "s_0ea1b3691aef4f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a89dc6180bdd8a0ba",
+        "model": "unknown"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
