@@ -16,8 +16,9 @@ import (
 	"github.com/edcs/preflash/internal/project"
 )
 
-const usage = `usage: preflash <command> [--project dir]
+const usage = `usage: preflash [command] [--project dir]
 
+  tui [--board file] [--headless]   open the terminal app, the default in a terminal
   run [--board file] [--headless]   build the project and run it
   send <line...>                    send a line to the firmware's console
   status [--json]                   show how the running app stands
@@ -29,6 +30,7 @@ const usage = `usage: preflash <command> [--project dir]
 
 func main() {
 	commands := map[string]func([]string) error{
+		"tui":    terminalApp,
 		"run":    run,
 		"send":   send,
 		"status": status,
@@ -37,11 +39,12 @@ func main() {
 		"touch":  touch,
 		"quit":   quit,
 	}
-	if len(os.Args) < 2 || commands[os.Args[1]] == nil {
+	command, args := chooseCommand(os.Args[1:], interactive())
+	if commands[command] == nil {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
-	if err := commands[os.Args[1]](os.Args[2:]); err != nil {
+	if err := commands[command](args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprint(os.Stdout, usage)
 			return
@@ -49,6 +52,18 @@ func main() {
 		fmt.Fprintf(os.Stderr, "preflash: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// chooseCommand splits the arguments into a command and its own. No command means the
+// terminal app, where there's a terminal for it, and that goes for a flag first too.
+func chooseCommand(args []string, inTerminal bool) (string, []string) {
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		return args[0], args[1:]
+	}
+	if len(args) == 0 && !inTerminal {
+		return "", nil
+	}
+	return "tui", args
 }
 
 func run(args []string) error {
