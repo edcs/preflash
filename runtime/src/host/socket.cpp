@@ -31,6 +31,7 @@
 #include "preflash/control.h"
 #include "preflash/net.h"
 #include "preflash/panel.h"
+#include "preflash/port.h"
 #include "preflash/serial.h"
 #include "preflash/touch.h"
 
@@ -128,7 +129,8 @@ void op_status(Connection& c, const json&, const json& id) {
             {"rotation", panel::rotation()},
             {"frames", panel::frames_drawn()},
             {"fps", panel::fps()},
-            {"wifi", wifi_state()}});
+            {"wifi", wifi_state()},
+            {"serial_port", port::path()}});
 }
 
 void op_send(Connection& c, const json& request, const json& id) {

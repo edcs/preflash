@@ -91,7 +91,7 @@ func TestTheWholeApp(t *testing.T) {
 	term.snapshot("launch-100x30")
 
 	term.key(keyEnter)
-	term.waitLong(buildPatience, "● running", "fps", "wifi", "1 Ping", "2 Two", "fixture>", "^R rebuild", "^B board", "^L clear", "^C quit")
+	term.waitLong(buildPatience, "● running", "fps", "wifi", "port ~/", "1 Ping", "2 Two", "fixture>", "^R rebuild", "^B board", "^L clear", "^C quit")
 	term.snapshot("running-100x30")
 
 	// A number key, with the empty input, runs a chip.

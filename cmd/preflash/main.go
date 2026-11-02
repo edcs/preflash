@@ -23,6 +23,7 @@ const usage = `usage: preflash [command] [--project dir]
   send <line...>                    send a line to the firmware's console
   status [--json]                   show how the running app stands
   serial                            print the serial stream and follow it
+  port                              print the virtual serial port's path
   shot <file.png|file.bmp>          save what the panel shows
   touch x y [ms]                    press the panel
   quit                              stop the running app
@@ -35,6 +36,7 @@ func main() {
 		"send":   send,
 		"status": status,
 		"serial": serial,
+		"port":   port,
 		"shot":   shot,
 		"touch":  touch,
 		"quit":   quit,
@@ -122,6 +124,9 @@ func status(args []string) error {
 		fmt.Printf("rotation   %d°\n", s.Rotation)
 		fmt.Printf("frames     %d (%d fps)\n", s.Frames, s.FPS)
 		fmt.Printf("wifi       %s\n", s.WiFi)
+		if s.SerialPort != "" {
+			fmt.Printf("port       %s\n", s.SerialPort)
+		}
 		return nil
 	})
 }
@@ -139,6 +144,24 @@ func serial(args []string) error {
 		fmt.Fprintf(os.Stderr, "preflash: %s\n", warning)
 	})
 	return describe(err, *dir)
+}
+
+func port(args []string) error {
+	flags, dir := newFlags("port")
+	if err := noArguments(flags, args); err != nil {
+		return err
+	}
+	return withApp(*dir, func(c *client.Client) error {
+		s, err := c.Status()
+		if err != nil {
+			return err
+		}
+		if s.SerialPort == "" {
+			return errors.New("this app has no serial port")
+		}
+		fmt.Println(s.SerialPort)
+		return nil
+	})
 }
 
 func shot(args []string) error {

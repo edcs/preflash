@@ -46,14 +46,19 @@ func Root() (string, error) {
 }
 
 // environment is the base environment with the app's variables replacing any
-// already there: a real ESP-IDF's IDF_PATH must not reach the build.
-func (p Project) environment(base []string, root string, headless bool) []string {
+// already there: a real ESP-IDF's IDF_PATH must not reach the build. A link of "" asks for
+// no link beyond the port's own.
+func (p Project) environment(base []string, root, link string, headless bool) []string {
 	set := []string{
 		"IDF_PATH=" + filepath.Join(root, "runtime", "idf"),
 		"PREFLASH_BOARD=" + filepath.Join(p.BuildDir(), "board.json"),
 		"PREFLASH_STATE=" + p.StateDir(),
 		"PREFLASH_PROJECT=" + filepath.Base(p.Dir),
 		"PREFLASH_SOCKET=" + p.SocketPath(),
+		"PREFLASH_PORT=" + p.PortPath(),
+	}
+	if link != "" {
+		set = append(set, "PREFLASH_PORT_LINK="+link)
 	}
 	if headless {
 		set = append(set, "PREFLASH_HEADLESS=1")
@@ -62,7 +67,8 @@ func (p Project) environment(base []string, root string, headless bool) []string
 	for _, entry := range base {
 		name, _, _ := strings.Cut(entry, "=")
 		switch name {
-		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_PROJECT", "PREFLASH_SOCKET", "PREFLASH_HEADLESS":
+		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_PROJECT", "PREFLASH_SOCKET", "PREFLASH_HEADLESS",
+			"PREFLASH_PORT", "PREFLASH_PORT_LINK", "PREFLASH_PORT_FDS":
 		default:
 			env = append(env, entry)
 		}
@@ -94,7 +100,11 @@ func (p Project) Run(b board.Board, headless bool) error {
 		return err
 	}
 
-	env := p.environment(os.Environ(), root, headless)
+	link, err := p.serialLink()
+	if err != nil {
+		return err
+	}
+	env := p.environment(os.Environ(), root, link, headless)
 	fmt.Fprintf(os.Stderr, "preflash: building %s for %s\n", filepath.Base(p.Dir), b.Name)
 	ctx, cancel := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer cancel()
@@ -204,7 +214,11 @@ func (p Project) Environment(headless bool) ([]string, error) {
 	if err := p.makeDirs(); err != nil {
 		return nil, err
 	}
-	return p.environment(os.Environ(), root, headless), nil
+	link, err := p.serialLink()
+	if err != nil {
+		return nil, err
+	}
+	return p.environment(os.Environ(), root, link, headless), nil
 }
 
 // LogPath is where a supervised app's stdout and stderr go.

@@ -142,6 +142,12 @@ func (p Project) SocketPath() string {
 	return filepath.Join(os.TempDir(), name)
 }
 
+// PortPath is the link to this checkout's virtual serial port, which stays the same from
+// one run to the next while the device behind it changes.
+func (p Project) PortPath() string {
+	return strings.TrimSuffix(p.SocketPath(), ".sock") + ".tty"
+}
+
 // checkSocketPath fails if neither of SocketPath's folders leaves room for the socket.
 func (p Project) checkSocketPath() error {
 	if path := p.SocketPath(); len(path) >= socketPathLimit {
@@ -154,6 +160,27 @@ func preflashHome() string {
 	// Only fails with no HOME, and then a relative folder still works.
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".preflash")
+}
+
+// serialLink gives the full path of the link .preflashrc asks for, or nothing if it doesn't.
+// It's relative to the project, as a board file is, and ~/ means the user's home.
+func (p Project) serialLink() (string, error) {
+	config, _, err := rc.Load(p.Dir)
+	if err != nil || config.SerialLink == "" {
+		return "", err
+	}
+	link := config.SerialLink
+	if rest, ok := strings.CutPrefix(link, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, rest), nil
+	}
+	if !filepath.IsAbs(link) {
+		link = filepath.Join(p.Dir, link)
+	}
+	return link, nil
 }
 
 // Board loads the board named on the command line, or else in .preflashrc, or

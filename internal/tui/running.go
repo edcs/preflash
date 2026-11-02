@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,8 +23,9 @@ const (
 )
 
 // builtInFields are the toolbar values Preflash knows by itself, added after the config's
-// fields unless the config places them.
-var builtInFields = []string{"backlight", "rotation", "wifi"}
+// fields unless the config places them. The port comes last, being the longest, so that a
+// narrow window cuts it first: preflash port prints it in full.
+var builtInFields = []string{"backlight", "rotation", "wifi", "port"}
 
 func (m *Model) runningView() string {
 	rows := make([]string, 0, m.height)
@@ -104,6 +106,9 @@ func (m *Model) fieldNames() []string {
 		names = append(names, field.Name)
 	}
 	for _, name := range builtInFields {
+		if name == "port" && m.status.SerialPort == "" {
+			continue
+		}
 		if !slices.Contains(names, name) {
 			names = append(names, name)
 		}
@@ -134,8 +139,24 @@ func (m *Model) fieldValue(name string) string {
 			return "simulated"
 		}
 		return m.status.WiFi
+	case "port":
+		if m.status.SerialPort != "" {
+			return cleanText(shortHome(m.status.SerialPort))
+		}
 	}
 	return unknown
+}
+
+// shortHome writes a path in the home folder with ~, to save the toolbar's room.
+func shortHome(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if rest, ok := strings.CutPrefix(path, home+"/"); ok {
+		return "~/" + rest
+	}
+	return path
 }
 
 func (m *Model) consoleWidth() int { return max(m.width-2*sidePad, 1) }

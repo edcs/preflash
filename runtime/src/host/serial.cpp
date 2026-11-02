@@ -17,6 +17,8 @@
 #include <system_error>
 #include <thread>
 
+#include "preflash/port.h"
+
 namespace preflash::serial {
 namespace {
 
@@ -162,6 +164,7 @@ void pump(int from) {
       p.ring.append(buffer, static_cast<size_t>(got));
       for (auto& [id, subscriber] : p.subscribers) subscriber(buffer, static_cast<size_t>(got));
     }
+    port::write(buffer, static_cast<size_t>(got));
     queue_for_terminal(buffer, static_cast<size_t>(got));
   }
   close(from);
@@ -459,11 +462,13 @@ void hand_back() {
 
 void wait_sent() {
   for (int ms = 0; ms < kSendWaitMs && g_unsent > 0; ++ms) sleep_ms();
+  port::wait_sent();
 }
 
 void release() {
   hand_back();
   wait_sent();
+  port::remove_links();
 }
 
 }  // namespace preflash::serial

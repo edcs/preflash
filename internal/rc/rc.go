@@ -27,6 +27,8 @@ type Config struct {
 	Prompt    string
 	Shortcuts []Shortcut
 	Status    []Field
+	// SerialLink is a path for a link to the serial port, as the project wrote it.
+	SerialLink string
 }
 
 // Shortcut sends lines to the console, once any values it asks for are in.
@@ -49,7 +51,7 @@ type Field struct {
 }
 
 // builtIn is what a status field can show with no pattern.
-var builtIn = map[string]bool{"backlight": true, "rotation": true, "wifi": true}
+var builtIn = map[string]bool{"backlight": true, "rotation": true, "wifi": true, "port": true}
 
 var (
 	placeholder = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
@@ -136,6 +138,8 @@ func (p parser) config(root *yaml.Node) (Config, error) {
 			c.Shortcuts, err = p.shortcuts(value)
 		case "status":
 			c.Status, err = p.status(value)
+		case "serial_link":
+			c.SerialLink, err = p.text(value, "serial_link")
 		default:
 			err = p.fail(keyNode, "unknown key %q", key)
 		}

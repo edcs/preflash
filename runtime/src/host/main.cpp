@@ -17,6 +17,7 @@
 #include "preflash/chips.h"
 #include "preflash/control.h"
 #include "preflash/panel.h"
+#include "preflash/port.h"
 #include "preflash/serial.h"
 #include "preflash/socket.h"
 #include "preflash/touch.h"
@@ -108,6 +109,8 @@ int main() {
 
   // After the window, whose failures print straight to the terminal.
   if (!preflash::serial::start()) preflash::socket::leave(1);
+  // After the stream, so that the toolbar's reader hears any trouble with it.
+  preflash::port::start();
 
   preflash::add_control("touch", control_touch);
   preflash::add_control("audio", control_audio);

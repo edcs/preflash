@@ -77,6 +77,8 @@ type Status struct {
 	Frames    uint64 `json:"frames"`
 	FPS       int    `json:"fps"`
 	WiFi      string `json:"wifi"`
+	// SerialPort is the path a companion app opens, empty if the app has no port.
+	SerialPort string `json:"serial_port"`
 }
 
 // Event is a message from the app that answers no request.
