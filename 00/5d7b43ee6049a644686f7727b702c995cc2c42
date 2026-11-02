@@ -1,0 +1,19 @@
+internal/app/app_test.go
+  s_c866e590b156e1::t_61a071388be941 486
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "005d7b43ee6049a644686f7727b702c995cc2c42",
+  "prompts": {},
+  "sessions": {
+    "s_c866e590b156e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a5e558fa02948a18e",
+        "model": "unknown"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
