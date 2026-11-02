@@ -52,6 +52,11 @@ var (
 	killPatience = 2 * time.Second
 )
 
+// resolveCrash names a report's frames. Tests replace it.
+var resolveCrash = resolveWithAtos
+
+func resolveWithAtos(r *crash.Report, project string) { r.Resolve(project, crash.RunCommand) }
+
 // Event is something that happened to the build or the app.
 type Event any
 
@@ -348,7 +353,10 @@ func (s *Supervisor) watchForCrash(c *child, began time.Time) {
 			continue
 		}
 		c.crashed.Store(true)
-		report.Resolve(s.target.ProjectDir(), crash.RunCommand)
+		resolveCrash(report, s.target.ProjectDir())
+		if c.stopping.Load() {
+			return // a rebuild got there first, and nobody needs to hear about this app
+		}
 		s.emit(Crashed{Report: report, PID: report.PID})
 		return
 	}

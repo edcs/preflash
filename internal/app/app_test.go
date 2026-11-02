@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/edcs/preflash/internal/board"
+	"github.com/edcs/preflash/internal/crash"
 )
 
 const patience = 5 * time.Second
@@ -464,6 +465,27 @@ func TestARebuildReplacesACrashedAppStraightAway(t *testing.T) {
 
 	assert.False(t, alive(begun.PID))
 	assert.Less(t, time.Since(before), stopPatience, "a frozen app can't answer a quit")
+}
+
+// Naming a crash's frames takes seconds, and a rebuild can start meanwhile.
+func TestAReportForAnAppAlreadyReplacedStaysUnsaid(t *testing.T) {
+	naming, release := make(chan struct{}), make(chan struct{})
+	resolveCrash = func(*crash.Report, string) {
+		close(naming)
+		<-release
+	}
+	t.Cleanup(func() { resolveCrash = resolveWithAtos })
+
+	f := newTarget(t, "exec sleep 30")
+	s, _, begun := started(t, f)
+	writeCrash(t, f, begun.PID)
+	<-naming
+
+	require.True(t, s.Run(testBoard))
+	next[Started](t, s, nil)
+	close(release)
+
+	quiet(t, s, 2*crashPoll)
 }
 
 func TestClosingEndsACrashedApp(t *testing.T) {
