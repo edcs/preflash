@@ -345,6 +345,20 @@ function(preflash_add_components config_dir)
   endforeach()
 endfunction()
 
+# The version esp_app_get_description reports, found as ESP-IDF finds it: PROJECT_VER, or else
+# the first line of version.txt. Git history is left out, because it changes with every commit.
+function(preflash_set_app_version)
+  set(version "${PROJECT_VER}")
+  if(NOT version AND EXISTS "${CMAKE_SOURCE_DIR}/version.txt")
+    file(STRINGS "${CMAKE_SOURCE_DIR}/version.txt" version LIMIT_COUNT 1)
+    string(STRIP "${version}" version)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/version.txt")
+  endif()
+  if(version)
+    target_compile_definitions(preflash_runtime PRIVATE "PREFLASH_APP_VERSION=\"${version}\"")
+  endif()
+endfunction()
+
 # Runs once every component exists, because a component can include headers from
 # one that the scan reaches after it.
 function(preflash_link_app config_dir)
@@ -425,5 +439,6 @@ macro(project name)
 
   preflash_add_components("${PREFLASH_CONFIG_DIR}")
   add_subdirectory("${PREFLASH_RUNTIME_DIR}" "${CMAKE_BINARY_DIR}/preflash_runtime")
+  preflash_set_app_version()
   preflash_link_app("${PREFLASH_CONFIG_DIR}")
 endmacro()

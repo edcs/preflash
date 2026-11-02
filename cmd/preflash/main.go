@@ -2,16 +2,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/edcs/preflash/internal/bench"
 	"github.com/edcs/preflash/internal/client"
 	"github.com/edcs/preflash/internal/crash"
 	"github.com/edcs/preflash/internal/project"
@@ -33,6 +37,7 @@ const usage = `usage: preflash [command] [--project dir]
   trace --save file                 save what the app has kept of that
   hardware [name value] [--json]    show or change the board's hardware and forced failures
   crash [--json]                    print the last crash report
+  bench [--board file]              time a build and a run on a copy of the project
   quit                              stop the running app
 `
 
@@ -51,6 +56,7 @@ func main() {
 		"trace":    trace,
 		"hardware": hardware,
 		"crash":    crashReport,
+		"bench":    benchmark,
 	}
 	command, args := chooseCommand(os.Args[1:], interactive())
 	if commands[command] == nil {
@@ -123,6 +129,31 @@ func crashReport(args []string) error {
 	}
 	fmt.Print(report.Text())
 	return nil
+}
+
+// benchmark prints JSON for a script and a table for whoever's watching.
+func benchmark(args []string) error {
+	flags, dir := newFlags("bench")
+	boardName := flags.String("board", "", "board file, or a stock board's name")
+	if err := noArguments(flags, args); err != nil {
+		return err
+	}
+	p, err := project.Find(*dir)
+	if err != nil {
+		return err
+	}
+	b, err := p.Board(*boardName)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	result, err := bench.Run(ctx, p, b)
+	if err != nil {
+		return err
+	}
+	result.WriteTable(os.Stderr)
+	return result.WriteJSON(os.Stdout)
 }
 
 // A line can hold words that look like flags, so flags come before it.

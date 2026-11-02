@@ -9,6 +9,8 @@
 #include <string>
 #include <thread>
 
+#include "esp_http_client.h"
+#include "esp_wifi.h"
 #include "esp_err.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -225,6 +227,9 @@ TEST(Timer, IsMonotonicMicroseconds) {
 TEST(Errors, NameKnownCodes) {
   EXPECT_STREQ(esp_err_to_name(ESP_ERR_NOT_FOUND), "ESP_ERR_NOT_FOUND");
   EXPECT_STREQ(esp_err_to_name(ESP_OK), "ESP_OK");
+  EXPECT_STREQ(esp_err_to_name(ESP_ERR_HTTP_CONNECT), "ESP_ERR_HTTP_CONNECT");
+  EXPECT_STREQ(esp_err_to_name(ESP_ERR_HTTP_FETCH_HEADER), "ESP_ERR_HTTP_FETCH_HEADER");
+  EXPECT_STREQ(esp_err_to_name(ESP_ERR_WIFI_NOT_CONNECT), "ESP_ERR_WIFI_NOT_CONNECT");
 }
 
 TEST(ErrorCheck, AbortsNamingTheCall) {
