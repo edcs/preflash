@@ -57,12 +57,17 @@ target_link_libraries(serial_helper PRIVATE runtime_objs)
 add_executable(port_helper helpers/port_helper.cpp)
 target_link_libraries(port_helper PRIVATE runtime_objs)
 
+# And a crash takes its process with it.
+add_executable(crash_helper helpers/crash_helper.cpp)
+target_link_libraries(crash_helper PRIVATE runtime_objs)
+
 add_executable(runtime_tests ${TEST_SOURCES})
 target_link_libraries(runtime_tests PRIVATE runtime_objs GTest::gtest_main)
 target_compile_definitions(runtime_tests PRIVATE RESTART_HELPER="$<TARGET_FILE:restart_helper>"
                            SERIAL_HELPER="$<TARGET_FILE:serial_helper>"
-                           PORT_HELPER="$<TARGET_FILE:port_helper>")
-add_dependencies(runtime_tests restart_helper serial_helper port_helper)
+                           PORT_HELPER="$<TARGET_FILE:port_helper>"
+                           CRASH_HELPER="$<TARGET_FILE:crash_helper>")
+add_dependencies(runtime_tests restart_helper serial_helper port_helper crash_helper)
 
 enable_testing()
 include(GoogleTest)

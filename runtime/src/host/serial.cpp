@@ -17,6 +17,7 @@
 #include <system_error>
 #include <thread>
 
+#include "preflash/crash.h"
 #include "preflash/port.h"
 
 namespace preflash::serial {
@@ -169,13 +170,6 @@ void pump(int from) {
   }
   close(from);
   g_pump_done = true;
-}
-
-// A process dying with output still in the pipe would lose the message that says why.
-void on_fatal_signal(int signal_number) {
-  release();
-  signal(signal_number, SIG_DFL);
-  raise(signal_number);
 }
 
 // Above the standard three, in case one of them was closed when the pipe was made.
@@ -422,7 +416,7 @@ bool start() {
   // macOS raises SIGPIPE for a pipe at the process, past any thread's mask, so a reader of
   // the real stdout going away would stop the firmware.
   signal(SIGPIPE, SIG_IGN);
-  for (const int fatal : {SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE}) signal(fatal, on_fatal_signal);
+  crash::install();
   return true;
 }
 

@@ -18,6 +18,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "preflash/chips.h"
+#include "preflash/crash.h"
 #include "preflash/fail.h"
 #include "preflash/port.h"
 #include "preflash/serial.h"
@@ -152,6 +153,13 @@ void esp_restart(void) {
   if (preflash::socket::quitting()) preflash::socket::quit();
   exec_clean(path, *_NSGetArgv());
   preflash_unsupported("esp_restart", "re-running the executable failed");
+}
+
+void esp_system_abort(const char* details) {
+  std::fprintf(stderr, "abort() was called: %s\n", details);
+  std::fflush(stderr);
+  preflash::crash::note("system_abort", details);
+  std::abort();
 }
 
 }  // extern "C"

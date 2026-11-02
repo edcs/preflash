@@ -12,6 +12,7 @@
 
 #include "esp_timer.h"
 #include "freertos/task.h"
+#include "preflash/crash.h"
 #include "preflash/fail.h"
 #include "preflash/tasks.h"
 #include "preflash/trace.h"
@@ -50,6 +51,7 @@ Registry& registry() {
 }
 
 void forget_task(tskTaskControlBlock* block) {
+  preflash::crash::leave_task();
   if (preflash::trace::on()) {
     preflash::trace::note(preflash::trace::Stream::Task, block->name.c_str(), "delete", "");
   }
@@ -107,6 +109,7 @@ BaseType_t xTaskCreatePinnedToCore(TaskFunction_t task, const char* name, uint32
   try {
     std::thread([task, parameter, block] {
       t_self = block;
+      preflash::crash::enter_task(block->name.c_str());
       task(parameter);
       forget_task(block);
     }).detach();

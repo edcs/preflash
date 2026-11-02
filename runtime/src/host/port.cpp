@@ -353,6 +353,13 @@ void remove_links() {
   }
 }
 
+void hang_up() {
+  g_holding = true;
+  for (const int fd : {g_master, g_slave}) {
+    if (fd >= 0) close(fd);
+  }
+}
+
 std::string path() { return g_path; }
 
 std::string device() { return g_device; }

@@ -14,6 +14,7 @@
 
 #include "preflash/board.h"
 #include "preflash/bus.h"
+#include "preflash/crash.h"
 #include "preflash/touch.h"
 
 namespace preflash::panel {
@@ -46,6 +47,17 @@ void forget_old_frames(Pixels& p, std::chrono::steady_clock::time_point now) {
   while (!p.recent.empty() && now - p.recent.front() >= std::chrono::seconds(1)) {
     p.recent.pop_front();
   }
+}
+
+// Firmware can fault inside draw, on a bad bitmap, with the lock held for good. Everything
+// that reads the pixels for the window or a client goes on after that, and the frame it reads
+// is as good as it will get.
+std::unique_lock<std::mutex> read_lock(Pixels& p) {
+  std::unique_lock<std::mutex> lock(p.mutex, std::defer_lock);
+  while (!lock.try_lock() && !crash::happened()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return lock;
 }
 
 void put_le(std::vector<char>* out, size_t at, uint32_t value, int bytes) {
@@ -82,13 +94,13 @@ void draw(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame
 
 uint64_t frames_drawn() {
   Pixels& p = pixels();
-  std::lock_guard<std::mutex> lock(p.mutex);
+  const auto lock = read_lock(p);
   return p.frames;
 }
 
 int fps() {
   Pixels& p = pixels();
-  std::lock_guard<std::mutex> lock(p.mutex);
+  const auto lock = read_lock(p);
   forget_old_frames(p, std::chrono::steady_clock::now());
   return static_cast<int>(p.recent.size());
 }
@@ -159,7 +171,7 @@ std::string window_title() {
 
 bool take_frame(std::vector<uint8_t>* out) {
   Pixels& p = pixels();
-  std::lock_guard<std::mutex> lock(p.mutex);
+  const auto lock = read_lock(p);
   if (!p.changed) return false;
   *out = p.data;
   p.changed = false;
@@ -168,7 +180,7 @@ bool take_frame(std::vector<uint8_t>* out) {
 
 std::vector<uint8_t> copy_frame() {
   Pixels& p = pixels();
-  std::lock_guard<std::mutex> lock(p.mutex);
+  const auto lock = read_lock(p);
   return p.data;
 }
 

@@ -9,6 +9,7 @@
 #include <thread>
 #include <utility>
 
+#include "preflash/crash.h"
 #include "esp_timer.h"
 
 namespace {
@@ -75,6 +76,7 @@ void arm(TimerTask& task, esp_timer* timer, int64_t alarm, int64_t period) {
 }
 
 void run_timers() {
+  preflash::crash::enter_task("esp_timer");
   TimerTask& task = timer_task();
   std::unique_lock<std::mutex> lock(task.mutex);
   for (;;) {
