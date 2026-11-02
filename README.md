@@ -53,7 +53,7 @@ Use it for quick development and debugging, then test on real hardware before yo
 | Storage | NVS, saved per checkout |
 | Console | The firmware's own serial console or its own USB serial driver, in your terminal, and a virtual serial port for a companion app |
 | Terminal app | A status bar over the serial console, shortcut buttons per project, a board picker, rebuilds that keep the old app on failure, debug views and a hardware panel |
-| Debugging | Live I2C, GPIO, task, NVS and network traces you can filter and save, plus forced hardware failures |
+| Debugging | Live I2C, GPIO, task, NVS and network traces you can filter and save, forced hardware failures, crash reports tied to source, and address and thread sanitizer builds |
 | Scripting | A control socket and command line for console lines, status, the serial stream, traces, hardware changes, screenshots and touch |
 | Chips | PCF85063 RTC, QMI8658 motion sensor, AXP2101 power chip, TCA9554 expander and AXS15231B touch at register level. ES8311, ES7210 and GT911 answer on the bus without a behaviour model |
 | Network | Simulated Wi-Fi, SNTP, and real HTTP and HTTPS through `esp_http_client` |
@@ -62,7 +62,6 @@ Use it for quick development and debugging, then test on real hardware before yo
 
 ### Coming soon
 
-- **Sanitizer builds.** Memory and thread sanitizers on your firmware.
 - **Hardware checks.** Chip models compared against captures from real boards.
 
 ## Install
@@ -97,7 +96,7 @@ preflash run --board ESP32-S3-Touch-LCD-4B
 The window opens with your firmware running, and your terminal becomes its serial console. Click the window to touch the panel. Preflash reads your project and doesn't change it. The one exception is a file you ask for, such as a `@sim shot` saved to a path inside it.
 
 ```sh
-preflash run [--project dir] [--board file] [--headless]
+preflash run [--project dir] [--board file] [--headless] [--sanitize address|thread]
 ```
 
 `--project` defaults to the current folder. Each checkout gets its own folders, so two copies of one project keep separate saved state:
@@ -121,8 +120,9 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 | `preflash trace --save file` | Saves what the app has kept as JSON lines |
 | `preflash hardware [name value] [--json]` | Shows the board's physical state and forced failures, or changes one |
 | `preflash quit` | Stops the app and returns once it has gone |
+| `preflash crash [--json]` | Prints the last crash report, and needs no running app |
 
-With no app running, each of these says so and exits 1. `preflash run` works as before, with the socket running underneath it, so you can drive a windowed run from a second terminal.
+With no app running, each of these but `preflash crash` says so and exits 1. `preflash run` works as before, with the socket running underneath it, so you can drive a windowed run from a second terminal.
 
 ```sh
 preflash run --headless < /dev/null &
@@ -182,6 +182,36 @@ A board shows only the rows its chips can act on, so the 3.49 V2 has no `usb` or
 Everything you set stays in `faults.json` in the state folder, across restarts, rebuilds and new runs, until you set it back. A boot with anything forced prints what it forced. A flat cell comes back on every boot, including after `esp_restart`, which a real cell wouldn't do.
 
 Firmware that writes the AXP2101's soft power-off bit stops the app, and the next run has USB plugged back in. Forced NACKs happen on the I2C bus, so `esp_io_expander` calls still reach the expander.
+
+### When firmware crashes
+
+Preflash catches a segfault, a bus error, an illegal instruction, an arithmetic fault, a trap and an abort, including `abort()`, a failed `ESP_ERROR_CHECK`, `esp_system_abort`, a watchdog panic and a call Preflash doesn't implement. The failed check prints as it does on a device.
+
+The app saves a report to `crash.json` in the build folder and prints a line on the serial stream. `preflash crash` turns the report into a title, a source line and a call stack, using `dsymutil` and `atos`. The first look at a crash takes a few seconds, while `dsymutil` gathers the debug information:
+
+```text
+Null pointer read in draw_card
+components/ui/cards.cpp:412
+memory error on the lvgl task, SIGSEGV at 0x0
+
+› draw_card     cards.cpp:412
+  update_clock  clock.cpp:731
+  lv_timer_handler   lvgl
+```
+
+With a window, the app stops in place. Firmware's tasks freeze where they were, the window keeps its last frame, and `preflash status`, `shot` and `quit` still work, so you can attach `lldb -p <pid>`. `preflash send` refuses, and ^C or `preflash quit` ends the app. A `--headless` `preflash run` has no frame to keep, so it exits with the signal and a script sees the failure. Under the terminal app, a headless run holds too, so `g` has something to attach to.
+
+Rebuilding replaces the app, so a report older than the build prints addresses in place of names. Only the newest report is kept for each kind of build, and a report stays until the next crash replaces it.
+
+### Run under a sanitizer
+
+`preflash run --sanitize address` finds memory errors and `--sanitize thread` finds data races. Each kind gets its own build folder, so switching costs one build and the plain one stays as it was. Saved state and the socket stay shared. In the terminal app, pass the same flag, or press `s` on the launch screen.
+
+The first report stops the firmware and counts as a crash, so you read it through `preflash crash` or the crash screen, with the sanitizer's full text at the end. It also goes to the serial stream. Your project's own `ASAN_OPTIONS` and `TSAN_OPTIONS` stay in force, with Preflash's added after them.
+
+A sanitizer build always uses `malloc` and libc's string calls for LVGL, whatever your `sdkconfig` chose, because LVGL's own allocator hides overflows inside its pool. Firmware tasks are real threads, so a race report describes your code running on your Mac, and its timing differs from the chip's.
+
+`runtime/tsan.supp` lists what the thread sanitizer ignores, with the reason beside each entry. Today that's one race in LVGL's software renderer, in `render_thread_cb`. Preflash's own code runs with no suppressions.
 
 ### Connect a companion app
 
@@ -260,6 +290,18 @@ The running screen has a toolbar, the serial console, your shortcuts and an inpu
 | `^L` | Clears the console |
 | `^C` | Quits and stops the app |
 
+The launch screen also takes `s`, which moves through a plain build and each sanitizer for the next run. `--sanitize` picks one from the start.
+
+When firmware crashes, the screen shows the console, the report and these keys:
+
+| Key | What it does |
+| --- | --- |
+| `g` | Opens `lldb` attached to the frozen app, in this terminal, and returns here when you quit it |
+| `e` | Opens `$EDITOR` at the crash's line |
+| `y` | Copies the report |
+| `^R` | Rebuilds and restarts. If the build fails, the crashed app stays frozen |
+| `^C` | Quits and stops the app |
+
 The debug views have a tab each for the console, I2C, GPIO, tasks, NVS and network. Tab moves between them, `/` filters, space pauses, `s` saves the trace to the state folder and esc returns to the console. Tasks and NVS also show a table of what's there now, and a task's stack is the size firmware declared, not what it uses. Rows a forced failure caused show in amber, such as `NACK (injected)`.
 
 The hardware panel changes what `preflash hardware` changes, with up and down to choose and left and right to change. It says whether a change applied now or waits for the next boot, and `^R` restarts from the panel.
@@ -318,7 +360,7 @@ A clean run doesn't prove the hardware will work. Preflash can't show you:
 
 OTA isn't simulated either. The running slot is always valid, and starting a download fails with a message saying so, so update code stays untested.
 
-With `CONFIG_ESP_TASK_WDT_INIT` set, the task watchdog watches subscribed tasks and stops the process on a panic, where a device would restart. It doesn't watch idle tasks, so an idle task starved of CPU won't trip it. A task can delete itself with `vTaskDelete`, but deleting another task stops the process.
+With `CONFIG_ESP_TASK_WDT_INIT` set, the task watchdog watches subscribed tasks and a panic counts as a crash, where a device would restart. It doesn't watch idle tasks, so an idle task starved of CPU won't trip it. A task can delete itself with `vTaskDelete`, but deleting another task stops the process.
 
 If your firmware stops on a call Preflash doesn't implement, that call needs a stand-in.
 
@@ -330,7 +372,7 @@ If your firmware stops on a call Preflash doesn't implement, that call needs a s
 make test
 ```
 
-That runs the Go tests, the runtime suite and the integration scripts. `tests/integration/debug.sh` checks traces and forced failures through a running project. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/lcd.sh` runs a project with no BSP from `tests/fixtures/lcd_project`. `tests/integration/snoozel.sh` runs a real project end to end and needs a checkout of it at `../snoozel`, or `SNOOZEL` pointing at one, with a current `sdkconfig`. `tests/integration/nyx.sh` does the same on the 3.49 V2 with `NYX` pointing at a checkout, and skips without it. Both are private projects, so without Snoozel run the steps before that script in the `Makefile`.
+That runs the Go tests, the runtime suite and the integration scripts. `tests/integration/debug.sh` checks traces and forced failures through a running project. `tests/integration/crash.sh` crashes a project each way, under each sanitizer too, and reads the reports back. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/lcd.sh` runs a project with no BSP from `tests/fixtures/lcd_project`. `tests/integration/snoozel.sh` runs a real project end to end and needs a checkout of it at `../snoozel`, or `SNOOZEL` pointing at one, with a current `sdkconfig`. `tests/integration/nyx.sh` does the same on the 3.49 V2 with `NYX` pointing at a checkout, and skips without it. Both are private projects, so without Snoozel run the steps before that script in the `Makefile`.
 
 ### Layout
 
@@ -339,6 +381,7 @@ cmd/preflash/     command line
 internal/app/     supervising a build and its app for the terminal app
 internal/board/   board files: extends, changes and validation
 internal/client/  talking to a running app over its socket
+internal/crash/   reading crash reports and tying them to source
 internal/project/ finding, building and running a project
 internal/rc/      reading .preflashrc
 internal/tui/     the terminal app's screens

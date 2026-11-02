@@ -33,7 +33,6 @@ go build -C "$root" -o "$scratch/preflash" ./cmd/preflash
 pf() { "$scratch/preflash" "$@"; }
 
 real_project="$(cd "$project" && pwd -P)"
-sum="$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-12)"
 build_dir="$HOME/.preflash/build/$(basename "$real_project")-$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-8)"
 rm -f "$build_dir"/crash.json "$build_dir"-address/crash.json "$build_dir"-thread/crash.json
 
@@ -98,6 +97,20 @@ SDL_VIDEODRIVER=dummy start_app "$scratch/preflash" run --project "$project"
 wait_for_output "ready, reset reason"
 sleep 1
 pf shot --project "$project" "$scratch/before.png"
+port="$(pf port --project "$project")"
+# A pseudo-terminal of the app's own, and it hangs up as a board does when unplugged.
+python3 -c '
+import os, sys
+fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NOCTTY)
+open(sys.argv[2], "w").close()
+try:
+    while os.read(fd, 4096):
+        pass
+except OSError:
+    pass
+' "$port" "$scratch/reading" &
+reader=$!
+until [ -e "$scratch/reading" ]; do sleep 0.05; done
 pf send --project "$project" null
 wait_for_output "crashed on console"
 sleep 0.5
@@ -106,6 +119,15 @@ expect_in '"crashed":true' "$(pf status --project "$project" --json)"
 expect_failure "the app has crashed" pf send --project "$project" ping
 pf shot --project "$project" "$scratch/after.png"
 cmp -s "$scratch/before.png" "$scratch/after.png" || fail "the last frame changed after the crash"
+[ ! -L "$port" ] || fail "a held crash left the port's link behind"
+for tenths in $(seq 1 50); do
+  kill -0 "$reader" 2>/dev/null || break
+  sleep 0.1
+done
+if kill -0 "$reader" 2>/dev/null; then
+  kill -9 "$reader"
+  fail "a held crash left the port open"
+fi
 pf quit --project "$project"
 finish_app
 
