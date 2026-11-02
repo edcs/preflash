@@ -1,0 +1,39 @@
+runtime/include/preflash/serial.h
+  s_82b4983a83db4b::t_5b5ec255120f17 1-109
+runtime/include/preflash/socket.h
+  s_82b4983a83db4b::t_6cd116f41a11fc 1-28
+runtime/src/host/main.cpp
+  s_82b4983a83db4b::t_6f813d74d5e3fa 21-22,36,88,91,104-106,111
+runtime/src/host/serial.cpp
+  s_82b4983a83db4b::t_89be89c6d706b4 1-356
+runtime/src/host/socket.cpp
+  s_82b4983a83db4b::t_8d5925fd0564bb 1-21
+runtime/src/host/window.cpp
+  s_82b4983a83db4b::t_ecaacfcecefa75 16,53
+runtime/src/os/fail.cpp
+  s_82b4983a83db4b::t_0adf84c70dfc50 8,12-13
+runtime/src/os/system.cpp
+  s_82b4983a83db4b::t_ef7e66ad175b76 22-23,125-128
+tests/runtime/CMakeLists.txt
+  s_82b4983a83db4b::t_d51e84e6a21b82 52-55,58-60
+tests/runtime/helpers/serial_helper.cpp
+  s_82b4983a83db4b::t_0cc3e9d2148bd8 1-108
+tests/runtime/serial_test.cpp
+  s_82b4983a83db4b::t_c09175c2a6758b 1-205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5e380f826f948e075b2cdf48e205d52bbd8af77c",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
