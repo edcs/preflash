@@ -38,6 +38,12 @@ type Backend interface {
 	Run(b board.Board) bool
 	Send(lines ...string)
 	Status()
+	Trace(on bool)
+	Tasks()
+	NVS()
+	Hardware()
+	SetHardware(name, value string)
+	SaveTrace()
 }
 
 // Options is what the app knows about a project before anything runs.
@@ -93,6 +99,9 @@ type Model struct {
 	draft     string
 	ask       *asking
 
+	debug *debugView     // the ^D screen, while it shows
+	panel *hardwarePanel // the ^H overlay, while it shows
+
 	pressed string // the zone a press began on
 }
 
@@ -111,16 +120,7 @@ type (
 
 // New makes the model. The launch screen shows unless opts names a board.
 func New(b Backend, opts Options) *Model {
-	in := textinput.New()
-	in.Prompt = ""
-	st := in.Styles()
-	st.Focused.Text = styleText
-	st.Blurred.Text = styleText
-	st.Focused.Placeholder = styleDim
-	st.Blurred.Placeholder = styleDim
-	st.Cursor.Color = colourText
-	st.Cursor.Blink = false
-	in.SetStyles(st)
+	in := newInput()
 	in.Focus()
 
 	m := &Model{
@@ -144,6 +144,20 @@ func New(b Backend, opts Options) *Model {
 	}
 	m.setPlaceholder()
 	return m
+}
+
+func newInput() textinput.Model {
+	in := textinput.New()
+	in.Prompt = ""
+	st := in.Styles()
+	st.Focused.Text = styleText
+	st.Blurred.Text = styleText
+	st.Focused.Placeholder = styleDim
+	st.Blurred.Placeholder = styleDim
+	st.Cursor.Color = colourText
+	st.Cursor.Blink = false
+	in.SetStyles(st)
+	return in
 }
 
 func (m *Model) setPlaceholder() {
@@ -186,6 +200,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		if m.appUp() {
 			m.b.Status()
+			if m.debug != nil {
+				m.pollDebug()
+			}
+			if m.panel != nil {
+				m.b.Hardware()
+			}
 		}
 		return m, tick()
 	case tea.KeyPressMsg:
@@ -204,9 +224,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		switch msg.Button {
 		case tea.MouseWheelUp:
-			m.scrollBy(wheelRows)
+			m.wheel(wheelRows)
 		case tea.MouseWheelDown:
-			m.scrollBy(-wheelRows)
+			m.wheel(-wheelRows)
 		}
 	default:
 		var cmd tea.Cmd
@@ -214,6 +234,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+// wheel scrolls whatever is showing.
+func (m *Model) wheel(rows int) {
+	switch {
+	case m.panel != nil:
+	case m.debug != nil:
+		m.scrollDebug(rows)
+	default:
+		m.scrollBy(rows)
+	}
 }
 
 // appUp says whether an app process is up, or will be in a moment.
@@ -265,6 +296,33 @@ func (m *Model) event(e app.Event) {
 			text = fmt.Sprintf("%s: %s", e.Line, text)
 		}
 		m.say(text, lineBad)
+		if m.debug != nil {
+			m.debug.say(text, styleBad)
+		}
+	case app.TraceRows:
+		if m.debug != nil {
+			m.debug.traceRows(e.Rows, e.Reset)
+		}
+	case app.Tasks:
+		if m.debug != nil {
+			m.debug.tasks = e.Tasks
+		}
+	case app.NVS:
+		if m.debug != nil {
+			m.debug.spaces = e.Namespaces
+		}
+	case app.TraceSaved:
+		if m.debug != nil {
+			m.debug.say(fmt.Sprintf("%d records saved to %s", e.Records, shortHome(e.Path)), styleDim)
+		}
+	case app.Hardware:
+		if m.panel != nil {
+			m.panel.receive(e.Items)
+		}
+	case app.HardwareFailed:
+		if m.panel != nil {
+			m.panel.failed = e.Err.Error()
+		}
 	}
 }
 
@@ -358,9 +416,20 @@ func (m *Model) key(k tea.KeyPressMsg) tea.Cmd {
 		m.launchKey(k)
 		return nil
 	}
+	if m.panel != nil {
+		m.panelKey(k.String())
+		return nil
+	}
+	if m.debug != nil {
+		return m.debugKey(k)
+	}
 	switch k.String() {
 	case "ctrl+r":
 		m.rebuild()
+	case "ctrl+d":
+		m.openDebug()
+	case "ctrl+h":
+		m.openPanel()
 	case "ctrl+b":
 		m.openPicker()
 	case "ctrl+l":
@@ -540,6 +609,10 @@ func (m *Model) content() string {
 		return tooSmall(m.width)
 	case m.picking:
 		return m.launchView()
+	case m.panel != nil:
+		return m.panelView()
+	case m.debug != nil:
+		return m.debugView()
 	}
 	return m.runningView()
 }

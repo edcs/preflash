@@ -292,6 +292,20 @@ func (m *Model) footerEntries() ([]footerEntry, footerEntry) {
 			left = append(left, footerEntry{key: "esc", label: "back", act: m.closePicker})
 		}
 		return left, quit
+	case m.panel != nil:
+		return []footerEntry{
+			{key: "↑↓", label: "choose"},
+			{key: "←→", label: "change"},
+			{key: "esc", label: "close", act: m.closePanel},
+		}, footerEntry{}
+	case m.debug != nil:
+		return []footerEntry{
+			{key: "tab", label: "next view", act: func() { m.setDebugTab(m.debug.tab + 1) }},
+			{key: "/", label: "filter", act: func() { m.startFilter() }},
+			{key: "space", label: "pause", act: m.togglePause},
+			{key: "s", label: "save trace", act: m.b.SaveTrace},
+			{key: "esc", label: "console", act: m.closeDebug},
+		}, quit
 	case m.ask != nil:
 		return []footerEntry{
 			{key: "enter", label: "send", act: m.enter},
@@ -300,6 +314,8 @@ func (m *Model) footerEntries() ([]footerEntry, footerEntry) {
 	}
 	return []footerEntry{
 		{key: "^R", label: "rebuild", act: m.rebuild},
+		{key: "^D", label: "debug", act: m.openDebug},
+		{key: "^H", label: "hardware", act: m.openPanel},
 		{key: "^B", label: "board", act: m.openPicker},
 		{key: "^L", label: "clear", act: m.clear},
 	}, quit
@@ -317,6 +333,9 @@ func (m *Model) footerRow() string {
 			left = append(left, seg{styleDim, footerGap})
 		}
 		left = append(left, seg{styleText, entry.key}, seg{styleDim, " " + entry.label})
+	}
+	if right.key == "" {
+		return bar(left, nil, m.width)
 	}
 	return bar(left, []seg{{styleText, right.key}, {styleDim, " " + right.label}}, m.width)
 }
