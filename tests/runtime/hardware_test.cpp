@@ -269,6 +269,19 @@ TEST_F(Hardware, WithNoStateFolderOnlyLiveChangesWork) {
   hardware::set("rotation", "0");
 }
 
+TEST_F(Hardware, AChangeThatCantBeSavedChangesNothing) {
+  const fs::path file = state_ / "a file";
+  std::ofstream(file) << "in the way";
+  const std::string blocked = (file / "state").string();
+  setenv("PREFLASH_STATE", blocked.c_str(), 1);
+  EXPECT_NE(hardware::set("internet", "offline"), "");
+  EXPECT_NE(hardware::set("rtc", "flat"), "");
+  EXPECT_EQ(item("internet")["value"], "real");
+  EXPECT_EQ(item("internet")["next"], "real");
+  EXPECT_EQ(item("rtc")["next"], "healthy");
+  EXPECT_TRUE(preflash::net_online());
+}
+
 TEST_F(Hardware, ForcedNacksCoverAChipOrAllAndSayTheyWereInjected) {
   EXPECT_FALSE(hardware::i2c_nacks(0, kRtc));
   EXPECT_EQ(hardware::set("i2c", "pcf85063"), "");

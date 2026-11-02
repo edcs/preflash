@@ -254,12 +254,16 @@ std::string set(const std::string& name, const std::string& value) {
   if (no_usb && no_battery) return "with no USB and no battery, the board has no power";
   if (!item->live && !faults_path()) return "this app has no state folder to keep that in";
 
+  const auto previous = g_next;
   store(&g_next, *item, value);
+  if (faults_path() && !save_faults()) {
+    g_next = previous;
+    return "couldn't save " + std::string(kFaultsFile);
+  }
   if (item->live) {
     store(&g_now, *item, value);
     apply();
   }
-  if (faults_path() && !save_faults()) return "couldn't save " + std::string(kFaultsFile);
   return "";
 }
 
