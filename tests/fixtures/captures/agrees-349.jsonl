@@ -1,0 +1,6 @@
+{"type":"capture","format":1,"source":"synthetic","board":"ESP32-S3-Touch-LCD-3.49-V2","note":"Written by hand for the replay tests. No chip was involved."}
+{"type":"tx","seq":1,"chip":"tca9554","bus":0,"addr":32,"write":"03","read_len":1,"read":"ff","err":"ESP_OK"}
+{"type":"tx","seq":2,"chip":"qmi8658","bus":0,"addr":107,"write":"00","read_len":1,"read":"05","err":"ESP_OK"}
+{"type":"tx","seq":3,"chip":"pcf85063","bus":0,"addr":81,"write":"0b","read_len":1,"read":"80","err":"ESP_OK"}
+{"type":"tx","seq":4,"chip":"axs15231b","bus":1,"addr":59,"write":"b5aba55a0000000e000000","read_len":14,"read":"0000000000000000000000000000","err":"ESP_OK"}
+{"type":"end","transactions":4}
