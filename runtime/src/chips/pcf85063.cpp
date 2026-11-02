@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "preflash/chips.h"
+#include "preflash/hardware.h"
 
 namespace preflash {
 namespace {
@@ -72,6 +73,7 @@ Pcf85063::Pcf85063(std::function<std::time_t()> clock)
     const std::string value = carried;
     unsetenv(kCarryEnv);
     restore(value);
+    if (hardware::rtc_flat()) lose_time();
     track(this);
     return;
   }
@@ -97,7 +99,20 @@ Pcf85063::Pcf85063(std::function<std::time_t()> clock)
   }
   set_fields(t);
   regs_[kWeekdays] = static_cast<uint8_t>(t.tm_wday);
+  if (hardware::rtc_flat()) lose_time();
   track(this);  // last, because a constructor that throws never runs the destructor
+}
+
+// What a cell gone flat leaves: table 8's reset values, and the flag that says so.
+void Pcf85063::lose_time() {
+  regs_[kSeconds] = 0;
+  regs_[kMinutes] = 0;
+  regs_[kHours] = 0;
+  regs_[kDays] = 1;
+  regs_[kWeekdays] = 6;
+  regs_[kMonths] = 1;
+  regs_[kYears] = 0;
+  oscillator_stopped_ = true;
 }
 
 Pcf85063::~Pcf85063() {

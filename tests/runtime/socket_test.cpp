@@ -20,7 +20,9 @@
 #include "freertos/task.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "preflash/board.h"
 #include "preflash/control.h"
+#include "preflash/hardware.h"
 #include "preflash/panel.h"
 #include "preflash/socket.h"
 #include "preflash/touch.h"
@@ -603,6 +605,30 @@ TEST_F(SocketServe, NvsListsNamespacesAndKeysAndNotValues) {
   fs::remove_all(state);
   unsetenv("PREFLASH_STATE");
   EXPECT_EQ(client.call({{"op", "nvs"}})["namespaces"].size(), 0u);
+}
+
+TEST_F(SocketServe, HardwareReadsAndChanges) {
+  preflash::Board board{};
+  board.i2c = {{"pcf85063", 0x51, 0}};
+  preflash::hardware::load(board);
+  Client client(path());
+  const json before = client.call({{"op", "hardware"}});
+  ASSERT_EQ(before["ok"], true);
+  EXPECT_GE(before["items"].size(), 2u);
+  const json changed =
+      client.call({{"op", "hardware_set"}, {"name", "internet"}, {"value", "offline"}});
+  EXPECT_EQ(changed["ok"], true);
+  bool offline = false;
+  for (const json& item : changed["items"]) {
+    offline = offline || (item["name"] == "internet" && item["value"] == "offline");
+  }
+  EXPECT_TRUE(offline);
+  client.call({{"op", "hardware_set"}, {"name", "internet"}, {"value", "real"}});
+  const json bad = client.call({{"op", "hardware_set"}, {"name", "toaster"}, {"value", "on"}});
+  EXPECT_EQ(bad["ok"], false);
+  EXPECT_EQ(bad["error"], "no hardware called toaster");
+  EXPECT_EQ(client.call({{"op", "hardware_set"}, {"name", "rtc"}})["ok"], false);
+  preflash::hardware::load(preflash::Board{});
 }
 
 TEST_F(SocketServe, ClientsComeAndGo) {

@@ -30,6 +30,7 @@
 #include "esp_timer.h"
 #include "preflash/board.h"
 #include "preflash/control.h"
+#include "preflash/hardware.h"
 #include "preflash/net.h"
 #include "preflash/panel.h"
 #include "preflash/port.h"
@@ -271,6 +272,25 @@ void op_shot(Connection& c, const json& request, const json& id) {
   reply_ok(c, id);
 }
 
+void op_hardware(Connection& c, const json&, const json& id) {
+  reply_ok(c, id, {{"items", hardware::describe()}});
+}
+
+void op_hardware_set(Connection& c, const json& request, const json& id) {
+  const auto name = text_field(request, "name");
+  const auto value = text_field(request, "value");
+  if (!name || !value) {
+    reply_error(c, id, "hardware_set needs a name and a value");
+    return;
+  }
+  const std::string error = hardware::set(*name, *value);
+  if (!error.empty()) {
+    reply_error(c, id, error);
+    return;
+  }
+  op_hardware(c, request, id);
+}
+
 void op_quit(Connection& c, const json&, const json& id) {
   reply_ok(c, id);
   note_quitting();
@@ -284,6 +304,7 @@ const std::map<std::string, Op> kOps = {
     {"hello", op_hello}, {"status", op_status}, {"send", op_send}, {"subscribe", op_subscribe},
     {"frame", op_frame}, {"touch", op_touch},   {"shot", op_shot}, {"quit", op_quit},
     {"tasks", op_tasks}, {"nvs", op_nvs},       {"trace_save", op_trace_save},
+    {"hardware", op_hardware}, {"hardware_set", op_hardware_set},
 };
 
 void handle_line(Connection& c, const std::string& line) {

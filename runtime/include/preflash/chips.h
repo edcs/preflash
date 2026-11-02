@@ -64,6 +64,7 @@ class Pcf85063 : public RegisterChip {
 
  private:
   void restore(const std::string& carried);
+  void lose_time();
   void set_fields(const std::tm& t);
   void count_time();
 
@@ -73,8 +74,8 @@ class Pcf85063 : public RegisterChip {
   std::atomic<bool> oscillator_stopped_{false};
 };
 
-// QST QMI8658, datasheet QMI8658C rev. 0.9. Stands still and upright, so the
-// accelerometer reads +1 g on Y. The gyroscope and everything built on it stop
+// QST QMI8658, datasheet QMI8658C rev. 0.9. Stands still, the way up hardware::rotation
+// says, so the accelerometer reads 1 g on Y or X. The gyroscope and everything built on it stop
 // the run if turned on.
 class Qmi8658 : public RegisterChip {
  public:
@@ -90,7 +91,8 @@ class Qmi8658 : public RegisterChip {
   void take_sample();
 };
 
-// X-Powers AXP2101, datasheet V1.0. USB is in and no battery is fitted.
+// X-Powers AXP2101, datasheet V1.0. USB and the battery are as hardware:: says, and its
+// soft power-off ends the process.
 class Axp2101 : public RegisterChip {
  public:
   Axp2101();

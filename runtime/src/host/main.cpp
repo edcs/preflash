@@ -16,11 +16,13 @@
 #include "preflash/board.h"
 #include "preflash/chips.h"
 #include "preflash/control.h"
+#include "preflash/hardware.h"
 #include "preflash/panel.h"
 #include "preflash/port.h"
 #include "preflash/serial.h"
 #include "preflash/socket.h"
 #include "preflash/touch.h"
+#include "preflash/trace.h"
 #include "window.h"
 
 extern "C" void app_main(void);
@@ -90,6 +92,8 @@ int main() {
   }
 
   try {
+    // Before the chips, which read it as they start.
+    preflash::hardware::load(preflash::board());
     preflash::attach_chips(preflash::board());
   } catch (const std::exception& e) {
     std::fprintf(stderr, "preflash: %s\n", e.what());
@@ -109,6 +113,11 @@ int main() {
 
   // After the window, whose failures print straight to the terminal.
   if (!preflash::serial::start()) preflash::socket::leave(1);
+  if (const std::string forced = preflash::hardware::forced_summary(); !forced.empty()) {
+    preflash::serial::notice("preflash: forced on this boot: " + forced + "\n");
+  }
+  // Tracing doesn't stop for a restart, so a client can see the boot it comes back to.
+  if (std::getenv("PREFLASH_TRACE")) preflash::trace::start_early();
   preflash::add_control("touch", control_touch);
   preflash::add_control("audio", control_audio);
   preflash::add_control("brightness", control_brightness);
