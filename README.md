@@ -47,21 +47,20 @@ Use it for quick development and debugging, then test on real hardware before yo
 
 | Area | Available now |
 | --- | --- |
-| Display | LVGL 9 through the board's BSP, rotation, backlight dimming on the window |
+| Display | LVGL 9 through the board's BSP, or `esp_lcd` directly for a project with no BSP, rotation, backlight dimming on the window |
 | Input | Mouse as touch, scripted taps |
 | Firmware | FreeRTOS tasks, queues and notifications on host threads, `esp_timer`, the task watchdog, restart |
 | Storage | NVS, saved per checkout |
-| Console | The firmware's own serial console, in your terminal, and a virtual serial port for a companion app |
+| Console | The firmware's own serial console or its own USB serial driver, in your terminal, and a virtual serial port for a companion app |
 | Terminal app | A status bar over the serial console, shortcut buttons per project, a board picker and rebuilds that keep the old app on failure |
 | Scripting | A control socket and command line for console lines, status, the serial stream, screenshots and touch |
-| Chips | PCF85063 RTC, QMI8658 motion sensor and AXP2101 power chip at register level. ES8311, ES7210, TCA9554 and GT911 answer on the bus without a behaviour model |
+| Chips | PCF85063 RTC, QMI8658 motion sensor, AXP2101 power chip, TCA9554 expander and AXS15231B touch at register level. ES8311, ES7210 and GT911 answer on the bus without a behaviour model |
 | Network | Simulated Wi-Fi, SNTP, and real HTTP and HTTPS through `esp_http_client` |
 | Audio | The speaker path through `esp_codec_dev`, played on your Mac |
-| Boards | ESP32-S3-Touch-LCD-4B, plus your own YAML |
+| Boards | ESP32-S3-Touch-LCD-4B and ESP32-S3-Touch-LCD-3.49-V2, plus your own YAML |
 
 ### Coming soon
 
-- **ESP32-S3-Touch-LCD-3.49 V2.** The second stock board, and direct `esp_lcd` use for projects with no BSP.
 - **Debug views.** Live I2C, GPIO, task, NVS and network traces, forced hardware failures, and sanitizer builds.
 - **Hardware checks.** Chip models compared against captures from real boards.
 
@@ -157,6 +156,8 @@ To boot firmware at a chosen moment, set `PREFLASH_RTC_START=2026-11-01T22:00:00
 
 `preflash port` prints a path for your app to open as it would a board's serial port, such as `~/Library/Caches/preflash/<hash>.tty`. The path is a link to a pseudo-terminal, and it stays the same from one run to the next. The port carries the serial stream, so your app reads what `preflash serial` shows, and each line it writes joins the console queue, ending in `\n`, `\r` or `\r\n`. Preflash doesn't read your protocol.
 
+If your firmware installs the USB serial driver, it owns the wire. Everything your app writes to the port reaches `usb_serial_jtag_read_bytes` byte for byte, `@sim ` lines and line endings included. Lines from stdin and `preflash send` reach it too, each with a `\n`, except `@sim ` lines, which stay with Preflash. Until the driver is in, these lines wait in the queue. Firmware reads serial input through that call, because stdin stays with Preflash.
+
 The port starts raw at 115200 with no echo. Your app keeps its connection through `esp_restart`, and sees the port hang up on quit, on a crash and on a rebuild, as it would when you unplug a board. Open the path again to reconnect.
 
 To put a link where your app's developer setting looks, add one to `.preflashrc`. Preflash removes both links when the app stops, and refuses to replace a file that isn't a link. Only `kill -9` leaves them behind, and the next run replaces them.
@@ -184,7 +185,7 @@ changes:
     enable: gpio43
 ```
 
-Or it can stand alone, for a custom PCB whose project uses the same BSP calls. Every chip it lists needs a model in `runtime/src/chips/`, and the run stops and names any that doesn't have one.
+Or it can stand alone, for a custom PCB whose project uses the same BSP calls or drives `esp_lcd` itself. Every chip it lists needs a model in `runtime/src/chips/`, and the run stops and names any that doesn't have one.
 
 ```yaml
 name: my-board
@@ -199,6 +200,17 @@ backlight:
   active_low: true
 audio_codec: es8311
 ```
+
+A few keys cover wiring that differs between boards. The stock `ESP32-S3-Touch-LCD-3.49-V2` uses all but the last:
+
+| Key | What it does |
+| --- | --- |
+| `display.byte_order` | How `esp_lcd_panel_draw_bitmap` reads RGB565: `le`, the default, or `be` |
+| `i2c[].bus` | The `i2c_port` a chip sits on, 0 by default. Firmware on the other bus gets no answer |
+| `backlight.enable` | What cuts the backlight when low: a pin, `gpio43`, or a TCA9554 bit, `exio1` |
+| `power_amp` | The expander bit behind `BSP_POWER_AMP_IO`, such as `exio3` |
+
+A channel set up with `ledc_channel_config` on the backlight pin sets the brightness, so firmware dims the panel through LEDC as it would on the board. On a stock 3.49 V2 the window shows the bare portrait panel, so firmware that draws in landscape appears on its side. `esp_lcd_new_panel_axs15231b` is the one panel driver Preflash has, and any other stops the build at the missing call.
 
 ## Terminal app
 
@@ -281,7 +293,7 @@ If your firmware stops on a call Preflash doesn't implement, that call needs a s
 make test
 ```
 
-That runs the Go tests, the runtime suite and the integration scripts. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/snoozel.sh` runs a real project end to end and needs a checkout of it at `../snoozel`, or `SNOOZEL` pointing at one, with a current `sdkconfig`. Snoozel is a private project, so without it run the steps before that script in the `Makefile`.
+That runs the Go tests, the runtime suite and the integration scripts. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/lcd.sh` runs a project with no BSP from `tests/fixtures/lcd_project`. `tests/integration/snoozel.sh` runs a real project end to end and needs a checkout of it at `../snoozel`, or `SNOOZEL` pointing at one, with a current `sdkconfig`. `tests/integration/nyx.sh` does the same on the 3.49 V2 with `NYX` pointing at a checkout, and skips without it. Both are private projects, so without Snoozel run the steps before that script in the `Makefile`.
 
 ### Layout
 
