@@ -88,7 +88,7 @@ func (m *Model) toolbarBottom() string {
 		if i > 0 {
 			left = append(left, seg{styleDim, fieldGap})
 		}
-		left = append(left, seg{styleDim, name + " "}, seg{styleText, m.fieldValue(name)})
+		left = append(left, seg{styleDim, cleanText(name) + " "}, seg{styleText, m.fieldValue(name)})
 	}
 	var right []seg
 	if m.reported {
@@ -267,7 +267,7 @@ func (m *Model) footerEntries() ([]footerEntry, footerEntry) {
 			{key: "↑↓", label: "choose"},
 			{key: "enter", label: "build and run", act: m.launchEnter},
 		}
-		if m.board.Name != "" {
+		if m.canGoBack {
 			left = append(left, footerEntry{key: "esc", label: "back", act: m.closePicker})
 		}
 		return left, quit

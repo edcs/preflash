@@ -65,7 +65,7 @@ func describeChange(change board.Change) string {
 func (m *Model) choiceLabel(i int) string {
 	choice := m.opts.Choices[i]
 	switch {
-	case choice.Err != nil:
+	case choice.Err != nil, choice.Board.Name == "":
 		return cleanText(choice.File)
 	case choice.Board.Base == "":
 		return cleanText(choice.Board.Name)
@@ -274,19 +274,23 @@ func (m *Model) launchKey(k tea.KeyPressMsg) {
 
 // closePicker goes back to the running screen, if there's one to go back to.
 func (m *Model) closePicker() {
-	if m.board.Name != "" {
+	if m.canGoBack {
 		m.picking = false
 	}
 }
 
 func (m *Model) launchEnter() {
-	if m.opts.Choices[m.chosen].Err != nil {
+	if file := m.opts.Choices[m.chosen].File; m.opts.Choices[m.chosen].Err != nil {
 		m.refreshChoices() // it may have been fixed since
+		if m.opts.Choices[m.chosen].File != file {
+			return // or deleted, which leaves another board chosen that nobody asked for
+		}
 	}
 	choice := m.opts.Choices[m.chosen]
 	if choice.Err != nil {
 		return
 	}
+	m.canGoBack = true
 	m.picking = false
 	if !m.appUp() {
 		m.board = choice.Board

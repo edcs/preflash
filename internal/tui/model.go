@@ -73,6 +73,7 @@ type Model struct {
 
 	width, height int
 	picking       bool // the launch screen is showing
+	canGoBack     bool // the running screen has been shown, so esc can return to it
 	chosen        int  // the row chosen there
 
 	board    board.Board
@@ -123,13 +124,14 @@ func New(b Backend, opts Options) *Model {
 	in.Focus()
 
 	m := &Model{
-		b:        b,
-		opts:     opts,
-		now:      time.Now,
-		picking:  opts.Board == nil,
-		console:  newConsole(),
-		input:    in,
-		captures: map[string]string{},
+		b:         b,
+		opts:      opts,
+		now:       time.Now,
+		picking:   opts.Board == nil,
+		canGoBack: opts.Board != nil,
+		console:   newConsole(),
+		input:     in,
+		captures:  map[string]string{},
 	}
 	if opts.Board != nil {
 		m.board = *opts.Board
@@ -239,10 +241,10 @@ func (m *Model) event(e app.Event) {
 		m.building = false
 		m.board = e.Board
 		m.state = stateStarting
-		m.reported = false
-		m.captures = map[string]string{}
+		m.newBoot()
 	case app.Connected:
 		m.state = stateRunning
+		m.newBoot()
 		m.b.Status()
 	case app.Serial:
 		m.serial(e.Data)
@@ -264,6 +266,14 @@ func (m *Model) event(e app.Event) {
 		}
 		m.say(text, lineBad)
 	}
+}
+
+// newBoot closes the last boot's output, which the stream can keep sending after it says
+// it's restarting, and forgets what it said.
+func (m *Model) newBoot() {
+	m.endLine()
+	m.reported = false
+	m.captures = map[string]string{}
 }
 
 func (m *Model) exited(e app.Exited) {

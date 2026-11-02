@@ -640,3 +640,29 @@ func TestAnUnfinishedLineStillCountsForStatusFields(t *testing.T) {
 	feed(m, app.Exited{Reason: "The app exited."})
 	assert.Equal(t, "last", m.captures["a"])
 }
+
+func TestANewBootStartsOnItsOwnLine(t *testing.T) {
+	m := running(t, newFake())
+	parsed, err := rc.Parse("rc", []byte("status:\n  - name: a\n    pattern: 'a=(\\w+)'\n"))
+	require.NoError(t, err)
+	m.opts.Config.Status = parsed.Status
+
+	serial(m, "half a li")
+	feed(m, app.Restarting{})
+	serial(m, "ne, a=old")
+	feed(m, app.Connected{})
+	serial(m, "E (1) first\n")
+
+	wantScreen(t, m, "half a line, a=old")
+	x, _ := find(t, m, "E (1) first")
+	assert.Equal(t, sidePad, x)
+	wantScreen(t, m, "a -")
+}
+
+func TestFieldNamesCantBreakTheLayout(t *testing.T) {
+	m := running(t, newFake())
+	parsed, err := rc.Parse("rc", []byte("status:\n  - name: \"a\\nb\"\n    pattern: x\n"))
+	require.NoError(t, err)
+	m.opts.Config.Status = parsed.Status
+	fills(t, m, 100, 30)
+}

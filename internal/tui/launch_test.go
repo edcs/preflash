@@ -240,3 +240,37 @@ func TestBoardTextCantBreakTheLayout(t *testing.T) {
 	resize(m, 100, 30)
 	fills(t, m, 100, 30)
 }
+
+func TestABoardWithNoNameStillWorksInThePicker(t *testing.T) {
+	nameless := modded
+	nameless.Name = ""
+	f := newFake()
+	opts := options()
+	opts.Choices[0] = project.Choice{Board: nameless, File: "sim/plain.yaml", FromProject: true}
+	m := New(f, opts)
+	resize(m, 100, 30)
+	wantScreen(t, m, "sim/plain.yaml")
+
+	press(m, "enter")
+	press(m, "ctrl+b")
+	wantScreen(t, m, "esc back")
+	press(m, "esc")
+	refuseScreen(t, m, "From this project")
+}
+
+func TestEnterOnADeletedBoardRunsNothing(t *testing.T) {
+	f := newFake()
+	opts := options()
+	broken := project.Choice{File: "sim/gone.yaml", FromProject: true, Err: errors.New("no")}
+	opts.Choices = []project.Choice{opts.Choices[1], broken}
+	rest := opts.Choices[:1]
+	opts.Boards = func() []project.Choice { return rest }
+	m := New(f, opts)
+	resize(m, 100, 30)
+	press(m, "down")
+
+	press(m, "enter")
+
+	assert.Empty(t, f.runs)
+	wantScreen(t, m, "› ESP32-S3-Touch-LCD-4B")
+}

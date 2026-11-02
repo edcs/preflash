@@ -116,8 +116,8 @@ func (p Project) Run(b board.Board, headless bool) error {
 // stopSignals are what end a build, leaving out any already ignored, as under nohup. Go's
 // signal package would otherwise replace that ignore with a handler.
 func stopSignals() []os.Signal {
-	stops := []os.Signal{os.Interrupt}
-	for _, stop := range []os.Signal{syscall.SIGTERM, syscall.SIGHUP} {
+	var stops []os.Signal
+	for _, stop := range []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP} {
 		if !signal.Ignored(stop) {
 			stops = append(stops, stop)
 		}

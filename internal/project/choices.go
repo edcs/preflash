@@ -29,9 +29,11 @@ type Choice struct {
 func (p Project) Boards() []Choice {
 	var files []string
 	for _, folder := range boardFolders {
-		for _, pattern := range []string{"*.yaml", "*.yml"} {
-			found, _ := filepath.Glob(filepath.Join(p.Dir, folder, pattern))
-			files = append(files, found...)
+		entries, _ := os.ReadDir(filepath.Join(p.Dir, folder)) // a missing folder has none
+		for _, entry := range entries {
+			if ext := filepath.Ext(entry.Name()); !entry.IsDir() && (ext == ".yaml" || ext == ".yml") {
+				files = append(files, filepath.Join(p.Dir, folder, entry.Name()))
+			}
 		}
 	}
 	files = slices.DeleteFunc(files, func(path string) bool { return !looksLikeBoard(path) })

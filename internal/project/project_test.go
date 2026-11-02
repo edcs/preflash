@@ -524,3 +524,17 @@ func TestAFailedInstallLeavesTheRunningBoardFileAlone(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "the old board", string(got))
 }
+
+func TestBoardsAreFoundUnderAPathWithGlobCharacters(t *testing.T) {
+	dir := idfProject(t, filepath.Join(t.TempDir(), "app [old]"))
+	writeFile(t, filepath.Join(dir, "sim", "mod.yaml"), "name: mod\nextends: ESP32-S3-Touch-LCD-4B\n")
+	p, err := Find(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "mod", p.Boards()[0].Board.Name)
+}
+
+func TestStopSignalsLeaveAnIgnoredInterruptAlone(t *testing.T) {
+	signal.Ignore(os.Interrupt)
+	defer signal.Reset(os.Interrupt)
+	assert.NotContains(t, stopSignals(), os.Interrupt)
+}
