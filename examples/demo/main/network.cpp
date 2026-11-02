@@ -1,6 +1,7 @@
 #include "network.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -32,7 +33,7 @@ constexpr int kQueueLength = 8;
 
 std::mutex g_mutex;
 Status g_status;
-int g_attempts = 0;
+std::atomic<int> g_attempts{0};
 QueueHandle_t g_work = nullptr;
 
 template <typename Change>
