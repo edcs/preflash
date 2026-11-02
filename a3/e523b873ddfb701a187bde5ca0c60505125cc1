@@ -1,0 +1,53 @@
+hardware/capture/CMakeLists.txt
+  s_82b4983a83db4b::t_0d285928381ab3 1-4
+hardware/capture/main/capture.cpp
+  s_82b4983a83db4b::t_0d285928381ab3 1-17,19-64,66-146
+  s_82b4983a83db4b::t_1c5db7cf57bffe 18,65
+hardware/capture/main/CMakeLists.txt
+  s_82b4983a83db4b::t_0d285928381ab3 1-10
+tests/integration/check.sh
+  s_82b4983a83db4b::t_0430046115c9b5 1-101
+hardware/capture/sdkconfig.defaults.349
+  s_82b4983a83db4b::t_0d285928381ab3 1
+hardware/capture/sdkconfig.defaults.4b
+  s_82b4983a83db4b::t_0d285928381ab3 1
+hardware/capture/main/board_4b.cpp
+  s_82b4983a83db4b::t_0d285928381ab3 1-36
+tests/fixtures/captures/differs-4b.jsonl
+  s_82b4983a83db4b::t_0430046115c9b5 1-10
+hardware/capture/main/Kconfig.projbuild
+  s_82b4983a83db4b::t_0d285928381ab3 1-13
+tests/fixtures/captures/agrees-349.jsonl
+  s_82b4983a83db4b::t_0430046115c9b5 1-6
+hardware/capture/sdkconfig.defaults
+  s_82b4983a83db4b::t_0d285928381ab3 1-7
+hardware/capture/main/board_349.cpp
+  s_82b4983a83db4b::t_0d285928381ab3 1-34
+tests/fixtures/captures/agrees-4b.jsonl
+  s_82b4983a83db4b::t_0430046115c9b5 1-11
+hardware/capture/main/steps.h
+  s_82b4983a83db4b::t_0d285928381ab3 1-75
+hardware/capture/main/chips.cpp
+  s_82b4983a83db4b::t_0d285928381ab3 1-80,82-123
+  s_82b4983a83db4b::t_5a59206e5b086c 81
+Makefile
+  s_82b4983a83db4b::t_0430046115c9b5 15
+hardware/capture/.gitignore
+  s_82b4983a83db4b::t_0d285928381ab3 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a3e523b873ddfb701a187bde5ca0c60505125cc1",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
