@@ -1,0 +1,17 @@
+# Values follow Waveshare's V2 examples. V1 boards swap LCD_BL with EXIO_INT and
+# LCD_TE with LCD_RST, so a V1 board needs a file of its own.
+name: ESP32-S3-Touch-LCD-3.49-V2
+display:
+  controller: axs15231b
+  width: 172
+  height: 640
+  byte_order: be
+i2c:
+  - {chip: tca9554, address: 0x20}
+  - {chip: qmi8658, address: 0x6b}
+  - {chip: pcf85063, address: 0x51}
+  - {chip: axs15231b, address: 0x3b, bus: 1}
+backlight:
+  pin: gpio42
+  active_low: true
+  enable: exio1

@@ -18,3 +18,4 @@ backlight:
   pin: gpio4
   active_low: true
 audio_codec: es8311
+power_amp: exio3

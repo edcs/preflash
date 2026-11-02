@@ -186,3 +186,113 @@ func TestReloadLeavesAStockBoardAlone(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, b, again)
 }
+
+func writeBoard(t *testing.T, src string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "board.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
+	return path
+}
+
+func TestThe349BoardFollowsItsV2Wiring(t *testing.T) {
+	b, err := LoadStock("ESP32-S3-Touch-LCD-3.49-V2")
+	require.NoError(t, err)
+	assert.Equal(t, "axs15231b", b.Display.Controller)
+	assert.Equal(t, 172, b.Display.Width)
+	assert.Equal(t, 640, b.Display.Height)
+	assert.Equal(t, "be", b.Display.ByteOrder)
+	assert.ElementsMatch(t, []Chip{
+		{Chip: "tca9554", Address: 0x20},
+		{Chip: "qmi8658", Address: 0x6b},
+		{Chip: "pcf85063", Address: 0x51},
+		{Chip: "axs15231b", Address: 0x3b, Bus: 1},
+	}, b.I2C)
+	assert.Equal(t, 42, b.Backlight.Pin)
+	assert.True(t, b.Backlight.ActiveLow)
+	assert.Nil(t, b.Backlight.Enable)
+	require.NotNil(t, b.Backlight.EnableExpander)
+	assert.Equal(t, 1, *b.Backlight.EnableExpander)
+	assert.Nil(t, b.PowerAmp)
+}
+
+func TestByteOrderDefaultsToLittleEndian(t *testing.T) {
+	b, err := Load(stock)
+	require.NoError(t, err)
+	assert.Equal(t, "le", b.Display.ByteOrder)
+}
+
+func TestABadByteOrderNamesIt(t *testing.T) {
+	path := writeBoard(t, "name: X\nextends: ESP32-S3-Touch-LCD-4B\nchanges:\n  display:\n    byte_order: middle\n")
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "display.byte_order")
+}
+
+func TestTheBusMustBeOneTheChipHas(t *testing.T) {
+	path := writeBoard(t, "name: X\ndisplay:\n  width: 480\n  height: 320\ni2c:\n  - {chip: gt911, address: 0x5d, bus: 2}\nbacklight:\n  pin: gpio4\n  active_low: true\naudio_codec: none\n")
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "i2c[0].bus")
+}
+
+func TestTheAmpSwitchComesFromTheBoard(t *testing.T) {
+	b, err := Load(stock)
+	require.NoError(t, err)
+	require.NotNil(t, b.PowerAmp)
+	assert.Equal(t, 3, *b.PowerAmp)
+}
+
+func TestExpanderBitsReachTheRuntime(t *testing.T) {
+	b, err := LoadStock("ESP32-S3-Touch-LCD-3.49-V2")
+	require.NoError(t, err)
+	out, err := Resolve(b)
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(out, &m))
+	assert.Equal(t, float64(1), m["backlight"].(map[string]any)["enable_expander_bit"])
+	assert.Equal(t, "be", m["display"].(map[string]any)["byte_order"])
+	assert.NotContains(t, m, "power_amp_bit")
+
+	chips := m["i2c"].([]any)
+	buses := map[float64]float64{}
+	for _, c := range chips {
+		chip := c.(map[string]any)
+		buses[chip["address"].(float64)] = chip["bus"].(float64)
+	}
+	assert.Equal(t, float64(1), buses[0x3b])
+	assert.Equal(t, float64(0), buses[0x20])
+
+	b, err = Load(stock)
+	require.NoError(t, err)
+	out, err = Resolve(b)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(out, &m))
+	assert.Equal(t, float64(3), m["power_amp_bit"])
+}
+
+func TestAPinCanReplaceAnExpanderEnable(t *testing.T) {
+	path := writeBoard(t, "name: X\nextends: ESP32-S3-Touch-LCD-3.49-V2\nchanges:\n  backlight:\n    enable: gpio43\n")
+	b, err := Load(path)
+	require.NoError(t, err)
+	require.NotNil(t, b.Backlight.Enable)
+	assert.Equal(t, 43, *b.Backlight.Enable)
+	assert.Nil(t, b.Backlight.EnableExpander)
+}
+
+func TestAnExpanderEnableNeedsAnExpander(t *testing.T) {
+	path := writeBoard(t, "name: X\ndisplay:\n  width: 480\n  height: 320\ni2c: []\nbacklight:\n  pin: gpio4\n  active_low: true\n  enable: exio1\naudio_codec: none\n")
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tca9554")
+}
+
+func TestExpanderBitsAreChecked(t *testing.T) {
+	for _, src := range []string{
+		"name: X\nextends: ESP32-S3-Touch-LCD-4B\nchanges:\n  backlight:\n    enable: exio8\n",
+		"name: X\nextends: ESP32-S3-Touch-LCD-4B\nchanges:\n  power_amp: gpio3\n",
+		"name: X\nextends: ESP32-S3-Touch-LCD-4B\nchanges:\n  backlight:\n    enable_expander: 1\n",
+	} {
+		_, err := Load(writeBoard(t, src))
+		assert.Error(t, err, src)
+	}
+}
