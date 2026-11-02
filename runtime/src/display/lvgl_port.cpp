@@ -46,7 +46,8 @@ void flush(lv_display_t* disp, const lv_area_t* area, uint8_t* px) {
     lv_draw_sw_rotate(px, packed.data(), w, h, source_stride, panel_stride, rotation,
                       LV_COLOR_FORMAT_RGB565);
   }
-  preflash::panel::draw(physical.x1, physical.y1, physical.x2 + 1, physical.y2 + 1, packed.data());
+  preflash::panel::draw(physical.x1, physical.y1, physical.x2 + 1, physical.y2 + 1, packed.data(),
+                       lv_display_flush_is_last(disp));
   lv_display_flush_ready(disp);
 }
 

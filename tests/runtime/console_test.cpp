@@ -189,7 +189,7 @@ class FedInput : public std::streambuf {
 
 }  // namespace
 
-// Runs last in this file: the reader and the REPL can each only start once.
+// Runs last in this file: the console tasks and the REPL can each only start once.
 // It covers the REPL task end to end: replaying what waited, then taking lines
 // as they arrive.
 TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
@@ -233,6 +233,91 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
   for (int i = 0; i < 200 && noted() < 5; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
+  // Quit lets lines already queued run first, slow ones included.
+  esp_console_cmd_t slow = {};
+  slow.command = "slow";
+  slow.func = [](int, char**) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::lock_guard<std::mutex> lock(g_order_mutex);
+    g_order.push_back("slow");
+    return 0;
+  };
+  ASSERT_EQ(esp_console_cmd_register(&slow), ESP_OK);
+  static std::atomic<size_t> noted_at_quit{0};
+  preflash::add_control("quit", [](std::vector<std::string>) {
+    noted_at_quit = noted();
+    quit_seen = true;
+  });
+  quit_seen = false;
+  input.feed("slow\n@sim note after-slow\n@sim quit\n");
+  for (int i = 0; i < 500 && !quit_seen; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_EQ(noted_at_quit, 7u);
+
+  // Quit waits for lines sent before it, not for ones that keep arriving behind it.
+  esp_console_cmd_t tick = {};
+  tick.command = "tick";
+  tick.func = [](int, char**) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    return 0;
+  };
+  ASSERT_EQ(esp_console_cmd_register(&tick), ESP_OK);
+  static std::atomic<bool> ticking{true};
+  std::thread ticker([] {
+    while (ticking) {
+      preflash::submit_line("tick");
+      std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    }
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  quit_seen = false;
+  input.feed("@sim quit\n");
+  for (int i = 0; i < 300 && !quit_seen; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_TRUE(quit_seen);
+  ticking = false;
+  ticker.join();
+
+  // A command that never returns holds up the lines behind it and nothing else: quit
+  // still gets through, and a line from another source joins the same queue.
+  static std::atomic<bool> stuck_entered{false};
+  static std::atomic<bool> let_go{false};
+  esp_console_cmd_t stuck = {};
+  stuck.command = "stuck";
+  stuck.func = [](int, char**) {
+    stuck_entered = true;
+    while (!let_go) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    return 0;
+  };
+  ASSERT_EQ(esp_console_cmd_register(&stuck), ESP_OK);
+  quit_seen = false;
+  input.feed("stuck\nnote sixth\n@sim quit\n");
+  for (int i = 0; i < 500 && !quit_seen; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_TRUE(stuck_entered);
+  EXPECT_TRUE(quit_seen);
+  // A quoted name is the same control, so it gets past a stuck command too.
+  quit_seen = false;
+  input.feed("@sim \"quit\"\n");
+  for (int i = 0; i < 500 && !quit_seen; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_TRUE(quit_seen);
+  EXPECT_TRUE(preflash::submit_line("note seventh"));
+  EXPECT_EQ(noted(), 7u);
+  // The queue has a limit, and quit doesn't count against it.
+  preflash::add_control("padding", [](std::vector<std::string>) {});
+  const std::string padding = "@sim padding " + std::string(64 * 1024, 'x');
+  int accepted = 0;
+  while (accepted < 1000 && preflash::submit_line(padding)) ++accepted;
+  EXPECT_LT(accepted, 1000);
+  let_go = true;
+  for (int i = 0; i < 200 && noted() < 9; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
   input.close();
   // The reader may still be inside getline; leave the buffer alone until it has hit EOF.
   for (int i = 0; i < 500 && !preflash::console_reader_done(); ++i) {
@@ -242,5 +327,6 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
   std::cin.rdbuf(original);
 
   std::lock_guard<std::mutex> lock(g_order_mutex);
-  EXPECT_EQ(g_order, (std::vector<std::string>{"first", "second", "third", "fourth", "fifth"}));
+  EXPECT_EQ(g_order, (std::vector<std::string>{"first", "second", "third", "fourth", "fifth",
+                                                "slow", "after-slow", "sixth", "seventh"}));
 }

@@ -2,12 +2,14 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <future>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "bsp/display.h"
@@ -349,4 +351,67 @@ TEST(Lock, IsRecursive) {
   EXPECT_FALSE(try_lock().get());
   bsp_display_unlock();
   EXPECT_TRUE(try_lock().get());
+}
+
+// LVGL splits a refresh into areas, and only the last one finishes a frame.
+TEST(Panel, CountsAFrameWhenItsLastAreaArrives) {
+  const uint16_t pixel = kRed;
+  const uint64_t before = panel::frames_drawn();
+  panel::draw(0, 0, 1, 1, &pixel, /*last_of_frame=*/false);
+  EXPECT_EQ(panel::frames_drawn(), before);
+  panel::draw(1, 0, 2, 1, &pixel);
+  EXPECT_EQ(panel::frames_drawn(), before + 1);
+  EXPECT_GE(panel::fps(), 1);
+}
+
+TEST(Panel, FpsFallsToZeroWhenDrawingStops) {
+  const uint16_t pixel = kRed;
+  panel::draw(0, 0, 1, 1, &pixel);
+  std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+  EXPECT_EQ(panel::fps(), 0);
+}
+
+TEST(Panel, CopyGivesTheWholePanelAtAnyTime) {
+  const uint16_t pixel = kRed;
+  panel::draw(0, 0, 1, 1, &pixel);
+  std::vector<uint8_t> frame = panel::copy_frame();
+  ASSERT_EQ(frame.size(), static_cast<size_t>(kWidth * kHeight * 2));
+  uint16_t first;
+  std::memcpy(&first, frame.data(), sizeof first);
+  EXPECT_EQ(first, kRed);
+  EXPECT_EQ(panel::copy_frame(), frame);
+}
+
+TEST(Touch, PressGoesDownThenUp) {
+  while (touch::pop()) {
+  }
+  EXPECT_TRUE(touch::press(2, 3, 0));
+  const auto down = touch::pop();
+  const auto up = touch::pop();
+  ASSERT_TRUE(down && up);
+  EXPECT_TRUE(down->down);
+  EXPECT_FALSE(up->down);
+}
+
+// Two clients at once mustn't let one's release end the other's hold.
+TEST(Touch, PressesFromTwoThreadsStayWhole) {
+  while (touch::pop()) {
+  }
+  std::thread first([] { EXPECT_TRUE(touch::press(1, 1, 100)); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  std::thread second([] { EXPECT_TRUE(touch::press(2, 2, 0)); });
+  first.join();
+  second.join();
+  std::vector<std::pair<int, bool>> order;
+  while (const auto event = touch::pop()) order.emplace_back(event->x, event->down);
+  const std::vector<std::pair<int, bool>> whole = {{1, true}, {1, false}, {2, true}, {2, false}};
+  EXPECT_EQ(order, whole);
+}
+
+TEST(Touch, PressRefusesAPointOffThePanel) {
+  EXPECT_FALSE(touch::press(kWidth, 0, 0));
+  EXPECT_FALSE(touch::press(0, kHeight, 0));
+  EXPECT_FALSE(touch::press(-1, 0, 0));
+  EXPECT_FALSE(touch::press(0, 0, -1));
+  EXPECT_FALSE(touch::pop());
 }

@@ -51,6 +51,7 @@ Use it for quick development and debugging, then test on real hardware before yo
 | Firmware | FreeRTOS tasks, queues and notifications on host threads, `esp_timer`, the task watchdog, restart |
 | Storage | NVS, saved per checkout |
 | Console | The firmware's own serial console, in your terminal |
+| Scripting | A control socket and command line for console lines, status, the serial stream, screenshots and touch |
 | Chips | PCF85063 RTC, QMI8658 motion sensor and AXP2101 power chip at register level. ES8311, ES7210, TCA9554 and GT911 answer on the bus without a behaviour model |
 | Network | Simulated Wi-Fi, SNTP, and real HTTP and HTTPS through `esp_http_client` |
 | Audio | The speaker path through `esp_codec_dev`, played on your Mac |
@@ -106,7 +107,38 @@ preflash run [--project dir] [--board file] [--headless]
 
 ### Drive it from a script
 
-Lines starting `@sim ` go to the simulator, and everything else goes to the firmware:
+A running app listens on a private Unix socket, and the `preflash` command talks to it. Run these from the project, or pass `--project dir` to any of them:
+
+| Command | What it does |
+| --- | --- |
+| `preflash send <line...>` | Sends a line to the firmware's console and returns without waiting for it to run. Put `--project` before the line |
+| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, frames, fps and Wi-Fi state |
+| `preflash serial` | Prints the serial stream, starting with what this boot has kept (up to 256 KiB), and follows it through restarts until the app stops |
+| `preflash shot <file.png\|file.bmp>` | Saves what the panel shows |
+| `preflash touch x y [ms]` | Presses the panel, in the panel's own coordinates, and returns after the release |
+| `preflash quit` | Stops the app and returns once it has gone |
+
+With no app running, each of these says so and exits 1. `preflash run` works as before, with the socket running underneath it, so you can drive a windowed run from a second terminal.
+
+```sh
+preflash run --headless < /dev/null &
+app=$!
+until preflash status > /dev/null 2>&1; do
+  kill -0 "$app" 2> /dev/null || exit 1  # the build failed
+  sleep 0.2
+done
+sleep 2  # status answers before the firmware has booted
+preflash touch 240 300
+sleep 0.5  # touch returns before the firmware has redrawn
+preflash shot after-tap.png
+preflash quit
+```
+
+The first run includes the build, so that loop waits for it. For a boot you can see, use a line your firmware prints in `preflash serial` in place of the `sleep`s. Only one app can run per checkout: a second one stops and says which project and pid hold the socket.
+
+Stdout and stderr are one stream, as a USB serial port is, so `preflash run` prints both to stdout. A client or terminal that stops reading loses its oldest output and hears how much it lost, and the firmware never waits for it. Lines from stdin and `preflash send` join one queue. A console command that never returns holds up the lines behind it, but `status`, `touch`, `shot` and `quit` still work. Quit lets queued lines run first, and stops waiting once a line has gone a second without finishing. The queue holds 1 MiB: past that, `preflash send` fails and a line from stdin is dropped with a message.
+
+Stdin takes the same console lines. Lines starting `@sim ` go to the simulator, and everything else goes to the firmware:
 
 | Line | What it does |
 | --- | --- |
@@ -116,20 +148,7 @@ Lines starting `@sim ` go to the simulator, and everything else goes to the firm
 | `@sim audio` | Prints how many sample frames firmware has written to the codec |
 | `@sim quit` | Stops the simulator |
 
-`--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked Mac. A headless run ends on `@sim quit`, not at the end of stdin:
-
-```sh
-{
-  sleep 3
-  echo "@sim touch 240 300"
-  sleep 1
-  echo "@sim shot after-tap.bmp"
-  sleep 1
-  echo "@sim quit"
-} | preflash run --headless
-```
-
-The `sleep`s count from the start of the pipeline, and that includes the build, so run the project once before you script against it.
+`--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked Mac. A headless run ends on `@sim quit` or `preflash quit`, not at the end of stdin.
 
 To boot firmware at a chosen moment, set `PREFLASH_RTC_START=2026-11-01T22:00:00Z`. The simulated RTC starts there and runs on, and it keeps the firmware's time across a restart.
 
@@ -196,13 +215,14 @@ If your firmware stops on a call Preflash doesn't implement, that call needs a s
 make test
 ```
 
-That runs the Go tests, the runtime suite and the three integration scripts. `tests/integration/snoozel.sh` runs a real project end to end and needs a checkout of it at `../snoozel`, or `SNOOZEL` pointing at one, with a current `sdkconfig`. Snoozel is a private project, so without it run the steps before that script in the `Makefile`.
+That runs the Go tests, the runtime suite and the integration scripts. `tests/integration/snoozel.sh` runs a real project end to end and needs a checkout of it at `../snoozel`, or `SNOOZEL` pointing at one, with a current `sdkconfig`. Snoozel is a private project, so without it run the steps before that script in the `Makefile`.
 
 ### Layout
 
 ```text
 cmd/preflash/     command line
 internal/board/   board files: extends, changes and validation
+internal/client/  talking to a running app over its socket
 internal/project/ finding, building and running a project
 boards/           stock boards
 runtime/idf/      the CMake layer that stands in for IDF_PATH

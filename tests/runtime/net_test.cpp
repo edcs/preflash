@@ -759,3 +759,16 @@ TEST(Ota, ReportsNoUpdateAvailable) {
   ASSERT_NE(first, std::string::npos) << logged;
   EXPECT_EQ(logged.find("not simulated", first + 1), std::string::npos) << "logged more than once";
 }
+
+TEST_F(Wifi, StateFollowsTheLink) {
+  EXPECT_STREQ(preflash::wifi_state(), "off");
+  ASSERT_EQ(esp_wifi_start(), ESP_OK);
+  EXPECT_STREQ(preflash::wifi_state(), "disconnected");
+  join("Preflash Fake Home");
+  EXPECT_STREQ(preflash::wifi_state(), "connecting");
+  Seen got_ip{};
+  ASSERT_TRUE(log_.wait_for(IP_EVENT, IP_EVENT_STA_GOT_IP, &got_ip));
+  EXPECT_STREQ(preflash::wifi_state(), "connected");
+  ASSERT_EQ(esp_wifi_stop(), ESP_OK);
+  EXPECT_STREQ(preflash::wifi_state(), "off");
+}

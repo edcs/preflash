@@ -19,6 +19,8 @@
 #include "esp_timer.h"
 #include "preflash/chips.h"
 #include "preflash/fail.h"
+#include "preflash/serial.h"
+#include "preflash/socket.h"
 
 namespace {
 
@@ -44,6 +46,14 @@ int exec_clean(const char* path, char* const argv[]) {
   sigset_t all;
   sigemptyset(&none);
   sigfillset(&all);
+  // main keeps these ignored only if they arrived that way, as under nohup, and the next
+  // run must inherit that, unlike any other ignored signal.
+  for (const int stop : {SIGTERM, SIGHUP}) {
+    struct sigaction current {};
+    if (sigaction(stop, nullptr, &current) == 0 && current.sa_handler == SIG_IGN) {
+      sigdelset(&all, stop);
+    }
+  }
   int err = posix_spawnattr_setsigmask(&attr, &none);
   if (!err) err = posix_spawnattr_setsigdefault(&attr, &all);
   if (!err) {
@@ -109,6 +119,7 @@ esp_reset_reason_t esp_reset_reason(void) {
 }
 
 void esp_restart(void) {
+  if (preflash::socket::quitting()) preflash::socket::quit();
   // Not fflush(nullptr): that also waits on stdin, which the console task keeps
   // locked for as long as it sits in a read.
   std::fflush(stdout);
@@ -120,6 +131,12 @@ void esp_restart(void) {
   }
   setenv(kRestartedEnv, "1", 1);
   preflash::carry_chips_across_restart();
+  // The stream's pipe ends with this process, and the next run needs the real fds.
+  preflash::serial::hand_back();
+  preflash::socket::announce_restart();
+  preflash::serial::wait_sent();
+  // Those waits take a while, and a quit that arrived meanwhile has been told yes.
+  if (preflash::socket::quitting()) preflash::socket::quit();
   exec_clean(path, *_NSGetArgv());
   preflash_unsupported("esp_restart", "re-running the executable failed");
 }

@@ -3,21 +3,27 @@
 #include <cstdio>
 #include <iostream>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <map>
 #include <mutex>
-#include <sstream>
 #include <string>
 #include <vector>
 
 #include "esp_console.h"
 #include "preflash/control.h"
 #include "preflash/fail.h"
+#include "preflash/socket.h"
 
 namespace {
 
 constexpr const char* kControlPrefix = "@sim ";
 constexpr const char* kDefaultPrompt = "esp>";
+// How long quit waits for the next queued line to finish before it stops waiting.
+constexpr std::chrono::seconds kQuitPatience{1};
+constexpr size_t kQueuedLineBytes = 1024 * 1024;
 
 struct Command {
   std::string help;
@@ -36,17 +42,19 @@ struct State {
   std::mutex mutex;
   std::map<std::string, Command> commands;
   std::map<std::string, std::function<void(std::vector<std::string>)>> controls;
-  // Set once firmware's REPL takes commands. Lines that arrive sooner wait for it,
-  // as they would in a device's UART buffer.
+  // Set once firmware's REPL takes commands.
   const Repl* open_repl = nullptr;
-  std::deque<std::string> early_lines;
-  // True while the REPL replays early_lines, so a line read meanwhile queues behind them.
-  bool replaying = false;
+  std::deque<std::string> lines;
+  size_t queued_bytes = 0;
+  std::condition_variable line_ready;
+  bool line_running = false;
+  uint64_t lines_finished = 0;
+  std::condition_variable line_finished;
 };
 
 State& state() {
-  static State s;
-  return s;
+  static State* s = new State;  // never destroyed: the console task outlives static destructors
+  return *s;
 }
 
 // Splits as ESP-IDF's esp_console_split_argv does. A quote opens a word only at
@@ -142,10 +150,13 @@ bool is_control(const std::string& line) { return line.rfind(kControlPrefix, 0) 
 // waiting for one can't hold it back.
 bool is_quit(const std::string& line) {
   if (!is_control(line)) return false;
-  std::istringstream words(line.substr(std::string(kControlPrefix).size()));
-  std::string name;
-  return (words >> name) && name == "quit";
+  const std::vector<std::string> words =
+      split_words(line.substr(std::char_traits<char>::length(kControlPrefix)));
+  return !words.empty() && words[0] == "quit";
 }
+
+// Counts the newline, so that empty lines can't fill memory for free.
+size_t queued_size(const std::string& line) { return line.size() + 1; }
 
 void print_prompt() {
   if (!isatty(STDIN_FILENO)) return;
@@ -161,43 +172,44 @@ void print_prompt() {
 
 std::atomic<bool> g_reader_done{false};
 
-// Read from the start, whether or not firmware ever starts a REPL, so that a
-// project without one still answers controls.
+// Runs the queue. A control can go ahead of any REPL, so a project without one still
+// answers it, but a firmware command waits for the REPL with every later line behind it,
+// as it would in a device's UART buffer.
+void line_task(void*) {
+  State& s = state();
+  for (;;) {
+    std::string line;
+    {
+      std::unique_lock<std::mutex> lock(s.mutex);
+      s.line_ready.wait(lock, [&] {
+        return !s.lines.empty() && (s.open_repl || is_control(s.lines.front()));
+      });
+      line = std::move(s.lines.front());
+      s.lines.pop_front();
+      s.queued_bytes -= queued_size(line);
+      s.line_running = true;
+    }
+    preflash::dispatch_line(line);
+    print_prompt();
+    {
+      std::lock_guard<std::mutex> lock(s.mutex);
+      s.line_running = false;
+      ++s.lines_finished;
+    }
+    s.line_finished.notify_all();
+  }
+}
+
 void reader_task(void*) {
   std::string line;
   // End of input stops the reading and nothing else: the firmware keeps running.
   while (std::getline(std::cin, line)) {
-    {
-      std::lock_guard<std::mutex> lock(state().mutex);
-      // Once one line waits, every later line waits behind it, controls included,
-      // except quit.
-      if (!state().open_repl && !is_quit(line) && (state().replaying || !state().early_lines.empty() || !is_control(line))) {
-        state().early_lines.push_back(line);
-        continue;
-      }
+    if (!preflash::submit_line(line)) {
+      std::printf("preflash: the console queue is full, so a line was dropped\n");
+      std::fflush(stdout);
     }
-    preflash::dispatch_line(line);
-    print_prompt();
   }
   g_reader_done = true;
-}
-
-void repl_task(void* arg) {
-  for (;;) {
-    std::deque<std::string> lines;
-    {
-      std::lock_guard<std::mutex> lock(state().mutex);
-      if (state().early_lines.empty()) {
-        state().open_repl = static_cast<Repl*>(arg);
-        state().replaying = false;
-        break;
-      }
-      state().replaying = true;
-      lines.swap(state().early_lines);
-    }
-    for (const std::string& line : lines) preflash::dispatch_line(line);
-  }
-  print_prompt();
 }
 
 // A device's REPL always has "help", so the simulator's does too.
@@ -232,14 +244,52 @@ void dispatch_line(const std::string& line) {
   }
 }
 
+bool is_quit_line(const std::string& line) { return is_quit(line); }
+
+void finish_queued_lines() {
+  State& s = state();
+  std::unique_lock<std::mutex> lock(s.mutex);
+  // Only the lines here now, or a steady stream behind them could hold quit off for good.
+  const uint64_t last = s.lines_finished + s.lines.size() + (s.line_running ? 1 : 0);
+  while (s.lines_finished < last) {
+    const uint64_t finished = s.lines_finished;
+    const bool moved = s.line_finished.wait_for(
+        lock, kQuitPatience, [&] { return s.lines_finished != finished; });
+    if (!moved) return;
+  }
+}
+
+bool submit_line(const std::string& line) {
+  if (is_quit(line)) {
+    socket::note_quitting();
+    finish_queued_lines();
+    dispatch_line(line);
+    return true;
+  }
+  {
+    std::lock_guard<std::mutex> lock(state().mutex);
+    if (state().queued_bytes + queued_size(line) > kQueuedLineBytes) return false;
+    state().queued_bytes += queued_size(line);
+    state().lines.push_back(line);
+  }
+  state().line_ready.notify_one();
+  return true;
+}
+
 bool console_reader_done() { return g_reader_done; }
 
 bool start_console_reader() {
   static std::mutex mutex;
-  static bool started = false;
+  static bool lines_started = false;
+  static bool reader_started = false;
   std::lock_guard<std::mutex> lock(mutex);
-  if (!started) started = xTaskCreate(reader_task, "console", 4096, nullptr, 2, nullptr) == pdPASS;
-  return started;
+  if (!lines_started) {
+    lines_started = xTaskCreate(line_task, "console", 4096, nullptr, 2, nullptr) == pdPASS;
+  }
+  if (lines_started && !reader_started) {
+    reader_started = xTaskCreate(reader_task, "stdin", 4096, nullptr, 2, nullptr) == pdPASS;
+  }
+  return reader_started;
 }
 
 }  // namespace preflash
@@ -280,12 +330,17 @@ esp_err_t esp_console_start_repl(esp_console_repl_t* handle) {
   auto* repl = static_cast<Repl*>(handle);
   if (repl->started) return ESP_ERR_INVALID_STATE;
   repl->started = true;
-  if (!preflash::start_console_reader() ||
-      xTaskCreate(repl_task, "repl", 4096, repl, 2, nullptr) != pdPASS) {
+  if (!preflash::start_console_reader()) {
     // Leave the repl startable so the caller can retry.
     repl->started = false;
     return ESP_FAIL;
   }
+  {
+    std::lock_guard<std::mutex> lock(state().mutex);
+    state().open_repl = repl;
+  }
+  state().line_ready.notify_one();
+  print_prompt();
   return ESP_OK;
 }
 

@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/edcs/preflash/internal/board"
+	"github.com/edcs/preflash/internal/client"
 )
 
 // Root finds the Preflash checkout that holds runtime/. The runtime isn't embedded
@@ -45,6 +46,7 @@ func (p Project) environment(base []string, root string, headless bool) []string
 		"PREFLASH_BOARD=" + filepath.Join(p.BuildDir(), "board.json"),
 		"PREFLASH_STATE=" + p.StateDir(),
 		"PREFLASH_PROJECT=" + filepath.Base(p.Dir),
+		"PREFLASH_SOCKET=" + p.SocketPath(),
 	}
 	if headless {
 		set = append(set, "PREFLASH_HEADLESS=1")
@@ -53,7 +55,7 @@ func (p Project) environment(base []string, root string, headless bool) []string
 	for _, entry := range base {
 		name, _, _ := strings.Cut(entry, "=")
 		switch name {
-		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_PROJECT", "PREFLASH_HEADLESS":
+		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_PROJECT", "PREFLASH_SOCKET", "PREFLASH_HEADLESS":
 		default:
 			env = append(env, entry)
 		}
@@ -66,6 +68,12 @@ func (p Project) environment(base []string, root string, headless bool) []string
 func (p Project) Run(b board.Board, headless bool) error {
 	root, err := Root()
 	if err != nil {
+		return err
+	}
+	if err := p.checkSocketPath(); err != nil {
+		return err
+	}
+	if err := p.checkNoApp(); err != nil {
 		return err
 	}
 	resolved, err := board.Resolve(b)
@@ -95,6 +103,21 @@ func (p Project) Run(b board.Board, headless bool) error {
 	return nil
 }
 
+// checkNoApp fails if an app answers on this checkout's socket. Building would change
+// what's under it, so this comes first. The app makes the same check when it starts, which
+// settles any race.
+func (p Project) checkNoApp() error {
+	c, err := client.Dial(p.SocketPath())
+	if errors.Is(err, client.ErrNotRunning) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	return fmt.Errorf("%s (pid %d) already holds the socket at %s", c.Hello.Project, c.Hello.PID, p.SocketPath())
+}
+
 func (p Project) makeDirs() error {
 	if err := os.MkdirAll(p.BuildDir(), 0o755); err != nil {
 		return err
@@ -103,7 +126,10 @@ func (p Project) makeDirs() error {
 	if err := os.MkdirAll(p.StateDir(), 0o700); err != nil {
 		return err
 	}
-	return os.Chmod(p.StateDir(), 0o700)
+	if err := os.Chmod(p.StateDir(), 0o700); err != nil {
+		return err
+	}
+	return os.MkdirAll(filepath.Dir(p.SocketPath()), 0o755)
 }
 
 func (p Project) build(env []string) error {

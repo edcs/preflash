@@ -10,8 +10,14 @@
 // the board's size. Pixels are little-endian RGB565.
 namespace preflash::panel {
 
-// Panel coordinates, exclusive end. Pixels past the panel's edge are dropped.
-void draw(int x1, int y1, int x2, int y2, const void* rgb565);
+// Panel coordinates, exclusive end. Pixels past the panel's edge are dropped. A caller
+// that splits a frame into areas says which area ends it, so frames count once.
+void draw(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame = true);
+
+uint64_t frames_drawn();
+
+// Frames finished in the last second.
+int fps();
 
 // A percentage, clamped to 0-100.
 void set_brightness(int pct);
@@ -26,6 +32,9 @@ std::string window_title();
 
 // Copies the whole panel. False, leaving out alone, if nothing changed since the last call.
 bool take_frame(std::vector<uint8_t>* out);
+
+// Copies the whole panel without touching what take_frame reports, which is the window's.
+std::vector<uint8_t> copy_frame();
 
 // Writes the panel as a 24-bit BMP. Throws std::runtime_error if it can't.
 void save_bmp(const char* path);

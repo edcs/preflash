@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
@@ -9,6 +10,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #include "preflash/board.h"
 #include "preflash/bus.h"
@@ -29,11 +31,20 @@ struct Pixels {
   int height = board().height;
   std::vector<uint8_t> data = std::vector<uint8_t>(width * height * kBytesPerPixel);
   bool changed = true;
+  uint64_t frames = 0;
+  std::deque<std::chrono::steady_clock::time_point> recent;  // frames in the last second
 };
 
 Pixels& pixels() {
   static Pixels p;
   return p;
+}
+
+// With the mutex held.
+void forget_old_frames(Pixels& p, std::chrono::steady_clock::time_point now) {
+  while (!p.recent.empty() && now - p.recent.front() >= std::chrono::seconds(1)) {
+    p.recent.pop_front();
+  }
 }
 
 void put_le(std::vector<char>* out, size_t at, uint32_t value, int bytes) {
@@ -42,23 +53,43 @@ void put_le(std::vector<char>* out, size_t at, uint32_t value, int bytes) {
 
 }  // namespace
 
-void draw(int x1, int y1, int x2, int y2, const void* rgb565) {
+void draw(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame) {
   Pixels& p = pixels();
   const int source_stride = (x2 - x1) * kBytesPerPixel;
   const int left = std::max(x1, 0);
   const int right = std::min(x2, p.width);
   const int top = std::max(y1, 0);
   const int bottom = std::min(y2, p.height);
-  if (left >= right || top >= bottom) return;
 
   const auto* source = static_cast<const uint8_t*>(rgb565);
+  // One lock for the pixels and the count, so that a frame counted can also be read.
   std::lock_guard<std::mutex> lock(p.mutex);
+  if (last_of_frame) {
+    const auto now = std::chrono::steady_clock::now();
+    ++p.frames;
+    forget_old_frames(p, now);
+    p.recent.push_back(now);
+  }
+  if (left >= right || top >= bottom) return;
   for (int y = top; y < bottom; ++y) {
     const uint8_t* from = source + (y - y1) * source_stride + (left - x1) * kBytesPerPixel;
     uint8_t* to = p.data.data() + (y * p.width + left) * kBytesPerPixel;
     std::memcpy(to, from, (right - left) * kBytesPerPixel);
   }
   p.changed = true;
+}
+
+uint64_t frames_drawn() {
+  Pixels& p = pixels();
+  std::lock_guard<std::mutex> lock(p.mutex);
+  return p.frames;
+}
+
+int fps() {
+  Pixels& p = pixels();
+  std::lock_guard<std::mutex> lock(p.mutex);
+  forget_old_frames(p, std::chrono::steady_clock::now());
+  return static_cast<int>(p.recent.size());
 }
 
 // Once firmware sets a level, the PWM peripheral owns the backlight pin, so a plain
@@ -126,13 +157,15 @@ bool take_frame(std::vector<uint8_t>* out) {
   return true;
 }
 
+std::vector<uint8_t> copy_frame() {
+  Pixels& p = pixels();
+  std::lock_guard<std::mutex> lock(p.mutex);
+  return p.data;
+}
+
 void save_bmp(const char* path) {
   Pixels& p = pixels();
-  std::vector<uint8_t> frame;
-  {
-    std::lock_guard<std::mutex> lock(p.mutex);
-    frame = p.data;
-  }
+  const std::vector<uint8_t> frame = copy_frame();
 
   const int row_size = (p.width * kBmpBytesPerPixel + 3) & ~3;
   const size_t image_size = static_cast<size_t>(row_size) * p.height;
@@ -188,6 +221,16 @@ std::optional<Event> pop() {
   const Event e = g_events.front();
   g_events.pop_front();
   return e;
+}
+
+bool press(int x, int y, int ms) {
+  if (ms < 0 || x < 0 || y < 0 || x >= board().width || y >= board().height) return false;
+  static std::mutex gesture;
+  std::lock_guard<std::mutex> one_at_a_time(gesture);
+  push({x, y, true});
+  std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+  push({x, y, false});
+  return true;
 }
 
 }  // namespace preflash::touch
