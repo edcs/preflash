@@ -1,0 +1,22 @@
+tests/integration/crash.sh
+  s_82b4983a83db4b::t_93137c884de16d 100-113,122-128
+  s_82b4983a83db4b::t_2ec4a7768ec73c 129-130
+README.md
+  s_82b4983a83db4b::t_93137c884de16d 56,99,123,125,186-215,293-304,363,375,384
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0a3276f02e3d66f7dd2a21fd13ed6cbfce1c2c6",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
