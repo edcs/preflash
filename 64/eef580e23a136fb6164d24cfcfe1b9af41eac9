@@ -1,0 +1,24 @@
+tests/runtime/port_test.cpp
+  s_82b4983a83db4b::t_19c698f17b6dcd 192-200
+tests/runtime/helpers/port_helper.cpp
+  s_82b4983a83db4b::t_19c698f17b6dcd 192,202,204-206
+  s_82b4983a83db4b::t_f3d759575ce844 5,177-190,203
+runtime/src/host/port.cpp
+  s_82b4983a83db4b::t_c48df2a6e59e0a 290,292-295
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "64eef580e23a136fb6164d24cfcfe1b9af41eac9",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
