@@ -23,6 +23,9 @@ void dispatch_line(const std::string& line);
 // calling thread, after finish_queued_lines, so a stuck command can't stop it.
 void submit_line(const std::string& line);
 
+// True for a line that submit_line runs as "@sim quit", which doesn't come back.
+bool is_quit_line(const std::string& line);
+
 // Waits for the queue to run dry, so that quitting doesn't lose lines sent before it. Gives
 // up once a line has run for a second without finishing, or one is waiting for a REPL.
 void finish_queued_lines();

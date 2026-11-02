@@ -233,6 +233,8 @@ void dispatch_line(const std::string& line) {
   }
 }
 
+bool is_quit_line(const std::string& line) { return is_quit(line); }
+
 void finish_queued_lines() {
   State& s = state();
   std::unique_lock<std::mutex> lock(s.mutex);

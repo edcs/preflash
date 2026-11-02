@@ -278,11 +278,20 @@ func Follow(path string, out io.Writer, warn func(string)) error {
 	for {
 		restarting, err := followOne(c, out, warn)
 		c.Close()
-		if err != nil || !restarting {
+		if err != nil {
 			return err
 		}
-		if c, err = dialWithin(path, restartGrace, true); err != nil {
-			return ErrStopped
+		if restarting {
+			if c, err = dialWithin(path, restartGrace, true); err != nil {
+				return ErrStopped
+			}
+			continue
+		}
+		// A reader far enough behind loses the restarting event with the rest of its
+		// queue, so a hang-up may still be a restart. A quit removes the socket, which
+		// ends this at once.
+		if c, err = dialWithin(path, refusedGrace, false); err != nil {
+			return nil
 		}
 	}
 }

@@ -275,6 +275,47 @@ func TestFollowReconnectsAcrossARestart(t *testing.T) {
 	assert.Equal(t, "first boot\nsecond boot\n", out.String())
 }
 
+// A reader too far behind can lose the restarting event with the rest of its queue, so
+// a hang-up on its own gets a short try at reconnecting.
+func TestFollowComesBackFromAHangUpWithNoWarning(t *testing.T) {
+	path := shortPath(t)
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	listener.(*net.UnixListener).SetUnlinkOnClose(false)
+	go func() {
+		conn, err := listener.Accept()
+		require.NoError(t, err)
+		reader := bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		fmt.Fprintln(conn, `{"event":"serial","data":"`+base64.StdEncoding.EncodeToString([]byte("first boot\n"))+`"}`)
+		conn.Close()
+		listener.Close()
+
+		// The old socket file refuses until the new boot replaces it.
+		time.Sleep(100 * time.Millisecond)
+		os.Remove(path)
+		next, err := net.Listen("unix", path)
+		require.NoError(t, err)
+		conn, err = next.Accept()
+		require.NoError(t, err)
+		reader = bufio.NewReader(conn)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
+		reader.ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":2,"ok":true}`)
+		fmt.Fprintln(conn, `{"event":"serial","data":"`+base64.StdEncoding.EncodeToString([]byte("second boot\n"))+`"}`)
+		conn.Close()
+		next.Close()
+	}()
+
+	var out syncBuffer
+	require.NoError(t, Follow(path, &out, func(string) {}))
+	assert.Equal(t, "first boot\nsecond boot\n", out.String())
+}
+
 func TestFollowPassesOnDrops(t *testing.T) {
 	path := shortPath(t)
 	listener, err := net.Listen("unix", path)

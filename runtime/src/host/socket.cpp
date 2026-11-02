@@ -132,7 +132,12 @@ void op_send(Connection& c, const json& request, const json& id) {
   } else if (line->find_first_of("\r\n") != std::string::npos) {
     reply_error(c, id, "send takes one line, with no newline in it");
   } else {
-    // First, because "@sim quit" doesn't come back.
+    // Queued before the reply, so that a quit sent after the reply finds the line there.
+    if (!is_quit_line(*line)) {
+      submit_line(*line);
+      reply_ok(c, id);
+      return;
+    }
     reply_ok(c, id);
     submit_line(*line);
   }
