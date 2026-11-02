@@ -1,0 +1,21 @@
+runtime/src/host/trace.cpp
+  s_f2a8ab99cec735::t_8e1c21e5872ef4 235-241,248,250-251,256-260
+tests/runtime/trace_test.cpp
+  s_f2a8ab99cec735::t_a969d13658ab4c 3-4,179-202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "925268b320cc3e53547a46c6447a39dba2bac093",
+  "prompts": {},
+  "sessions": {
+    "s_f2a8ab99cec735": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aec0fe498c4b32ccb",
+        "model": "unknown"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
