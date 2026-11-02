@@ -1,0 +1,42 @@
+internal/check/capture.go
+  s_82b4983a83db4b::t_b6f4a67df8baf2 1-181
+internal/check/report.go
+  s_82b4983a83db4b::t_b6f4a67df8baf2 1-73
+internal/project/project.go
+  s_82b4983a83db4b::t_b6f4a67df8baf2 279-280
+  s_82b4983a83db4b::t_b659308ed3e182 171,176,178,229-230
+  s_82b4983a83db4b::t_ad849e516435cb 281
+cmd/preflash/check.go
+  s_82b4983a83db4b::t_b6f4a67df8baf2 1-55
+cmd/preflash/main.go
+  s_82b4983a83db4b::t_b6f4a67df8baf2 41-42,62
+internal/check/replay.go
+  s_82b4983a83db4b::t_b6f4a67df8baf2 1-125
+internal/check/expected.go
+  s_82b4983a83db4b::t_b6f4a67df8baf2 1-51
+internal/check/check_test.go
+  s_82b4983a83db4b::t_0430046115c9b5 306
+  s_82b4983a83db4b::t_b659308ed3e182 1-305,307-341
+internal/project/components.go
+  s_82b4983a83db4b::t_b659308ed3e182 103
+internal/check/compare.go
+  s_82b4983a83db4b::t_b6f4a67df8baf2 1-185
+internal/check/replay_test.go
+  s_82b4983a83db4b::t_b659308ed3e182 1-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a6b7cc5c0f5df7969077aafb805b9cbc84e6e287",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
