@@ -4,6 +4,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -41,13 +42,14 @@ type Backend interface {
 
 // Options is what the app knows about a project before anything runs.
 type Options struct {
-	Name      string           // the project's folder name
-	Path      string           // its folder, as shown
-	Config    rc.Config        // its .preflashrc
-	HasConfig bool             // whether it has one
-	LVGL      string           // its LVGL version, if any
-	Choices   []project.Choice // the boards it can run on
-	Board     *board.Board     // run this straight away, skipping the launch screen
+	Name      string                  // the project's folder name
+	Path      string                  // its folder, as shown
+	Config    rc.Config               // its .preflashrc
+	HasConfig bool                    // whether it has one
+	LVGL      string                  // its LVGL version, if any
+	Choices   []project.Choice        // the boards it can run on
+	Board     *board.Board            // run this straight away, skipping the launch screen
+	Boards    func() []project.Choice // reads the choices again, as files can change meanwhile
 }
 
 // appState is how the app stands, apart from any build.
@@ -377,7 +379,20 @@ func (m *Model) clear() {
 
 func (m *Model) openPicker() {
 	m.cancelAsk()
+	m.refreshChoices()
 	m.picking = true
+}
+
+// refreshChoices reads the boards again, staying on the same one.
+func (m *Model) refreshChoices() {
+	if m.opts.Boards == nil {
+		return
+	}
+	was := m.opts.Choices[m.chosen]
+	m.opts.Choices = m.opts.Boards()
+	m.chosen = max(slices.IndexFunc(m.opts.Choices, func(c project.Choice) bool {
+		return c.File == was.File && (c.File != "" || c.Board.Name == was.Board.Name)
+	}), 0)
 }
 
 // shortcutKey says which shortcut a key runs. Number keys are only that while the input is

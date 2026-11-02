@@ -219,16 +219,17 @@ func (p Project) Install(b board.Board, env []string) (string, []string, error) 
 	if err != nil {
 		return "", nil, err
 	}
-	boardFile := filepath.Join(p.BuildDir(), "board.running.json")
-	if err := os.WriteFile(boardFile, resolved, 0o644); err != nil {
-		return "", nil, err
-	}
 	app := filepath.Join(p.BuildDir(), "app")
 	running := filepath.Join(p.BuildDir(), "app.running")
 	if err := copyExecutable(app, running); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return "", nil, fmt.Errorf("the build made no app at %s", app)
 		}
+		return "", nil, err
+	}
+	// Last, so that a failure above leaves a running app's board where it was.
+	boardFile := filepath.Join(p.BuildDir(), "board.running.json")
+	if err := os.WriteFile(boardFile, resolved, 0o644); err != nil {
 		return "", nil, err
 	}
 	runEnv := make([]string, 0, len(env))

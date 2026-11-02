@@ -279,6 +279,9 @@ func (m *Model) closePicker() {
 }
 
 func (m *Model) launchEnter() {
+	if m.opts.Choices[m.chosen].Err != nil {
+		m.refreshChoices() // it may have been fixed since
+	}
 	choice := m.opts.Choices[m.chosen]
 	if choice.Err != nil {
 		return

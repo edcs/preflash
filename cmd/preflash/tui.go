@@ -74,6 +74,7 @@ func appOptions(p project.Project, boardName string) (tui.Options, error) {
 		HasConfig: hasConfig,
 		LVGL:      p.LVGLVersion(),
 		Choices:   p.Boards(),
+		Boards:    p.Boards,
 	}
 	// A named board goes straight to running, so a bad one stops here, as it would for run.
 	if boardName != "" || config.Board != "" {

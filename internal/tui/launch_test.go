@@ -166,3 +166,39 @@ func TestManyBoardsScrollToKeepTheChoiceInView(t *testing.T) {
 	click(m, x, y)
 	assert.Len(t, m.b.(*fakeBackend).runs, 1)
 }
+
+func TestAFixedBoardFileRunsWithoutRestarting(t *testing.T) {
+	f := newFake()
+	opts := options()
+	broken := project.Choice{File: "sim/mod.yaml", FromProject: true, Err: errors.New("no")}
+	fixed := project.Choice{Board: modded, File: "sim/mod.yaml", FromProject: true}
+	opts.Choices = []project.Choice{broken}
+	current := []project.Choice{broken}
+	opts.Boards = func() []project.Choice { return current }
+	m := New(f, opts)
+	resize(m, 100, 30)
+
+	press(m, "enter")
+	assert.Empty(t, f.runs)
+	wantScreen(t, m, "This board file won't load")
+
+	current = []project.Choice{fixed}
+	press(m, "enter")
+	require.Len(t, f.runs, 1)
+	assert.Equal(t, modded.Name, f.runs[0].Name)
+}
+
+func TestOpeningThePickerRereadsTheBoardsAndKeepsTheChoice(t *testing.T) {
+	f := newFake()
+	opts := options()
+	opts.Board = &stock
+	extra := project.Choice{Board: modded, File: "sim/new.yaml", FromProject: true}
+	opts.Boards = func() []project.Choice { return append([]project.Choice{extra}, options().Choices...) }
+	m := New(f, opts)
+	resize(m, 100, 30)
+
+	press(m, "ctrl+b")
+
+	assert.Len(t, m.opts.Choices, 3)
+	wantScreen(t, m, "› ESP32-S3-Touch-LCD-4B")
+}

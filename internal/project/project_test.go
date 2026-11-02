@@ -506,3 +506,21 @@ func TestABoardFileWithASyntaxErrorStaysOnTheList(t *testing.T) {
 	assert.Equal(t, filepath.Join("sim", "mod.yaml"), choices[0].File)
 	assert.Error(t, choices[0].Err)
 }
+
+func TestAFailedInstallLeavesTheRunningBoardFileAlone(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Find(idfProject(t, t.TempDir()))
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(p.BuildDir(), 0o755))
+	boardFile := filepath.Join(p.BuildDir(), "board.running.json")
+	writeFile(t, boardFile, "the old board")
+	b, err := board.LoadStock("ESP32-S3-Touch-LCD-4B")
+	require.NoError(t, err)
+
+	_, _, err = p.Install(b, nil)
+
+	require.ErrorContains(t, err, "the build made no app")
+	got, err := os.ReadFile(boardFile)
+	require.NoError(t, err)
+	assert.Equal(t, "the old board", string(got))
+}
