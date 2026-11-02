@@ -1,4 +1,4 @@
-.PHONY: test
+.PHONY: test bench
 
 test:
 	go test ./...
@@ -13,5 +13,9 @@ test:
 	tests/integration/debug.sh
 	tests/integration/crash.sh
 	tests/integration/tui.sh
+	tests/integration/demo.sh
 	tests/integration/snoozel.sh
 	tests/integration/nyx.sh
+
+bench:
+	go run ./cmd/preflash bench --project examples/demo

@@ -4,6 +4,8 @@
 #include <cstdlib>
 
 #include "esp_err.h"
+#include "esp_http_client.h"
+#include "esp_wifi.h"
 #include "nvs.h"
 #include "preflash/crash.h"
 #include "preflash/serial.h"
@@ -46,6 +48,21 @@ const char* esp_err_to_name(esp_err_t code) {
     case ESP_ERR_NVS_INVALID_LENGTH: return "ESP_ERR_NVS_INVALID_LENGTH";
     case ESP_ERR_NVS_NO_FREE_PAGES: return "ESP_ERR_NVS_NO_FREE_PAGES";
     case ESP_ERR_NVS_NEW_VERSION_FOUND: return "ESP_ERR_NVS_NEW_VERSION_FOUND";
+    case ESP_ERR_WIFI_NOT_INIT: return "ESP_ERR_WIFI_NOT_INIT";
+    case ESP_ERR_WIFI_NOT_STARTED: return "ESP_ERR_WIFI_NOT_STARTED";
+    case ESP_ERR_WIFI_CONN: return "ESP_ERR_WIFI_CONN";
+    case ESP_ERR_WIFI_SSID: return "ESP_ERR_WIFI_SSID";
+    case ESP_ERR_WIFI_PASSWORD: return "ESP_ERR_WIFI_PASSWORD";
+    case ESP_ERR_WIFI_TIMEOUT: return "ESP_ERR_WIFI_TIMEOUT";
+    case ESP_ERR_WIFI_NOT_CONNECT: return "ESP_ERR_WIFI_NOT_CONNECT";
+    case ESP_ERR_HTTP_MAX_REDIRECT: return "ESP_ERR_HTTP_MAX_REDIRECT";
+    case ESP_ERR_HTTP_CONNECT: return "ESP_ERR_HTTP_CONNECT";
+    case ESP_ERR_HTTP_WRITE_DATA: return "ESP_ERR_HTTP_WRITE_DATA";
+    case ESP_ERR_HTTP_FETCH_HEADER: return "ESP_ERR_HTTP_FETCH_HEADER";
+    case ESP_ERR_HTTP_INVALID_TRANSPORT: return "ESP_ERR_HTTP_INVALID_TRANSPORT";
+    case ESP_ERR_HTTP_CONNECTING: return "ESP_ERR_HTTP_CONNECTING";
+    case ESP_ERR_HTTP_EAGAIN: return "ESP_ERR_HTTP_EAGAIN";
+    case ESP_ERR_HTTP_CONNECTION_CLOSED: return "ESP_ERR_HTTP_CONNECTION_CLOSED";
     default: return "UNKNOWN ERROR";
   }
 }

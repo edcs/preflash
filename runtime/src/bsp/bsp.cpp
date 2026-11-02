@@ -62,6 +62,10 @@ esp_err_t bsp_display_backlight_off(void) { return bsp_display_brightness_set(0)
 
 int preflash_backlight_pin(void) { return preflash::board().backlight.pin; }
 
+int preflash_lcd_width(void) { return preflash::board().width; }
+
+int preflash_lcd_height(void) { return preflash::board().height; }
+
 esp_err_t bsp_i2c_init(void) {
   bsp_i2c_get_handle();
   return ESP_OK;

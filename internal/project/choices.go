@@ -104,10 +104,17 @@ func looksLikeBoard(path string) bool {
 
 var lvglVersionPart = regexp.MustCompile(`(?m)^#define\s+LVGL_VERSION_(MAJOR|MINOR|PATCH)\s+(\d+)`)
 
-// LVGLVersion is the version of the project's LVGL, or empty if it has none.
+// LVGLVersion is the version of the project's LVGL, or empty if it has none. With no
+// managed_components/, the lock says what a build will fetch.
 func (p Project) LVGLVersion() string {
-	data, err := os.ReadFile(filepath.Join(p.Dir, "managed_components", "lvgl__lvgl", "lv_version.h"))
+	data, err := os.ReadFile(filepath.Join(p.Dir, managedName, "lvgl__lvgl", "lv_version.h"))
 	if err != nil {
+		locked, _ := p.lockedComponents() // no lock has no LVGL
+		for _, c := range locked {
+			if c.Name == "lvgl/lvgl" {
+				return c.Version
+			}
+		}
 		return ""
 	}
 	parts := map[string]string{}

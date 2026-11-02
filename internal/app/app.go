@@ -125,7 +125,7 @@ type (
 
 // Target is the project as the supervisor needs it. project.Project is one.
 type Target interface {
-	Environment(headless bool) ([]string, error)
+	Environment(b board.Board, headless bool) ([]string, error)
 	CheckNoApp() error
 	Build(ctx context.Context, env []string, output io.Writer) error
 	Install(b board.Board, env []string) (string, []string, error)
@@ -245,7 +245,7 @@ func (s *Supervisor) run(b board.Board) {
 	sanitizer := s.sanitizer
 	s.mu.Unlock()
 	target := s.target.Sanitized(sanitizer)
-	env, err := target.Environment(s.headless)
+	env, err := target.Environment(b, s.headless)
 	if err == nil && s.running() == nil {
 		err = s.target.CheckNoApp()
 	}

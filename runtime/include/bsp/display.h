@@ -3,9 +3,16 @@
 #include "esp_err.h"
 #include "esp_lcd_types.h"
 
+// Calls, because the size comes from the board file rather than the compile.
+#define BSP_LCD_H_RES (preflash_lcd_width())
+#define BSP_LCD_V_RES (preflash_lcd_height())
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+int preflash_lcd_width(void);
+int preflash_lcd_height(void);
 
 typedef struct {
   int max_transfer_sz;

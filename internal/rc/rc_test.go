@@ -177,3 +177,17 @@ func TestPortIsABuiltInField(t *testing.T) {
 	require.Len(t, c.Status, 1)
 	assert.Nil(t, c.Status[0].Pattern)
 }
+
+func TestSdkconfigsMapBoardsToFiles(t *testing.T) {
+	c, err := Parse("rc", []byte("sdkconfig:\n  ESP32-S3-Touch-LCD-3.49-V2: sdkconfig.349\n"))
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"ESP32-S3-Touch-LCD-3.49-V2": "sdkconfig.349"}, c.Sdkconfigs)
+}
+
+func TestSdkconfigsMustBeAMapOfText(t *testing.T) {
+	for _, source := range []string{"sdkconfig: sdkconfig.349\n", "sdkconfig:\n  a: [b]\n", "sdkconfig:\n  a: ''\n"} {
+		_, err := Parse("rc", []byte(source))
+		assert.ErrorContains(t, err, "sdkconfig", source)
+	}
+}

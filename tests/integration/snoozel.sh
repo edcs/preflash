@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # Runs a real product, Snoozel, on its own drivers from a clean copy of its main
-# branch: nothing here may change the firmware or write inside the copy. Point
-# SNOOZEL at a checkout that has run idf.py once, for sdkconfig and
-# managed_components.
+# branch: nothing here may change the firmware or write inside the copy. It's a private
+# project, so this only runs with SNOOZEL pointing at a checkout that has run idf.py once,
+# for sdkconfig and managed_components. tests/integration/demo.sh is the end-to-end test
+# everyone can run.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-snoozel="${SNOOZEL:-$root/../snoozel}"
+if [ -z "${SNOOZEL:-}" ]; then
+  echo "SKIP: snoozel: set SNOOZEL to a checkout of it"
+  exit 0
+fi
+snoozel="$SNOOZEL"
 mod_board="$root/tests/fixtures/snoozel-4b.yaml"
 source "$root/tests/integration/app.sh"
 
@@ -164,7 +169,8 @@ wait_for_output "desert: "
 
 # The update client runs on its timers, and refuses a dev build.
 send "update status"
-wait_for_output "version simulator (dev build)"
+# The version is the project's own, so only the build type is pinned here.
+wait_for_output "(dev build)"
 send "update check"
 wait_for_output "updates aren't available: this is a dev build"
 send "phase"

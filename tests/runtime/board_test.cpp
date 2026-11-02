@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "bsp/display.h"
 #include "preflash/board.h"
 
 namespace {
@@ -161,4 +162,9 @@ TEST(Board, AnExpanderBitMustBeOnTheExpander) {
   std::string json = kBoard;
   json.replace(json.find(", \"enable_pin\": 43"), 18, ", \"enable_expander_bit\": 8");
   EXPECT_THROW(preflash::parse_board(json), std::runtime_error);
+}
+
+TEST(Board, BspResolutionComesFromTheBoard) {
+  EXPECT_EQ(BSP_LCD_H_RES, preflash::board().width);
+  EXPECT_EQ(BSP_LCD_V_RES, preflash::board().height);
 }

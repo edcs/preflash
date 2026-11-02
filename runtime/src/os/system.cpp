@@ -111,11 +111,16 @@ void heap_caps_free(void* ptr) { std::free(ptr); }
 
 size_t heap_caps_get_free_size(uint32_t) { return kReportedFreeBytes; }
 
+// The project's version where it has one, as ESP-IDF finds it.
+#ifndef PREFLASH_APP_VERSION
+#define PREFLASH_APP_VERSION "simulator"
+#endif
+
 const esp_app_desc_t* esp_app_get_description(void) {
   static const esp_app_desc_t desc = [] {
     esp_app_desc_t d{};
     d.magic_word = ESP_APP_DESC_MAGIC_WORD;
-    std::strncpy(d.version, "simulator", sizeof d.version - 1);
+    std::strncpy(d.version, PREFLASH_APP_VERSION, sizeof d.version - 1);
     std::strncpy(d.project_name, "preflash", sizeof d.project_name - 1);
     return d;
   }();
