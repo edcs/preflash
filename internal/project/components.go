@@ -170,6 +170,7 @@ func (c component) fetch(ctx context.Context, to string) error {
 	if err != nil {
 		return err
 	}
+	defer os.Remove(download.Name())
 	defer download.Close()
 	if err := get(ctx, url, func(body io.Reader) error {
 		_, err := io.Copy(download, body)
