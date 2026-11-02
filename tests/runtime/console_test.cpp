@@ -189,7 +189,7 @@ class FedInput : public std::streambuf {
 
 }  // namespace
 
-// Runs last in this file: the reader and the REPL can each only start once.
+// Runs last in this file: the console tasks and the REPL can each only start once.
 // It covers the REPL task end to end: replaying what waited, then taking lines
 // as they arrive.
 TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
@@ -233,6 +233,31 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
   for (int i = 0; i < 200 && noted() < 5; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
+  // A command that never returns holds up the lines behind it and nothing else: quit
+  // still gets through, and a line from another source joins the same queue.
+  static std::atomic<bool> stuck_entered{false};
+  static std::atomic<bool> let_go{false};
+  esp_console_cmd_t stuck = {};
+  stuck.command = "stuck";
+  stuck.func = [](int, char**) {
+    stuck_entered = true;
+    while (!let_go) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    return 0;
+  };
+  ASSERT_EQ(esp_console_cmd_register(&stuck), ESP_OK);
+  quit_seen = false;
+  input.feed("stuck\nnote sixth\n@sim quit\n");
+  for (int i = 0; i < 500 && !quit_seen; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_TRUE(stuck_entered);
+  EXPECT_TRUE(quit_seen);
+  preflash::submit_line("note seventh");
+  EXPECT_EQ(noted(), 5u);
+  let_go = true;
+  for (int i = 0; i < 200 && noted() < 7; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
   input.close();
   // The reader may still be inside getline; leave the buffer alone until it has hit EOF.
   for (int i = 0; i < 500 && !preflash::console_reader_done(); ++i) {
@@ -242,5 +267,6 @@ TEST(Console, EarlyLinesKeepStdinOrderEvenForControls) {
   std::cin.rdbuf(original);
 
   std::lock_guard<std::mutex> lock(g_order_mutex);
-  EXPECT_EQ(g_order, (std::vector<std::string>{"first", "second", "third", "fourth", "fifth"}));
+  EXPECT_EQ(g_order, (std::vector<std::string>{"first", "second", "third", "fourth", "fifth",
+                                                "sixth", "seventh"}));
 }
