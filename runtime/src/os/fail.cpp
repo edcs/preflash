@@ -1,5 +1,6 @@
 #include "preflash/fail.h"
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 
@@ -10,7 +11,16 @@
 #include "preflash/crash.h"
 #include "preflash/serial.h"
 
+namespace {
+
+std::atomic<preflash::UnsupportedHandler> g_handler{nullptr};
+
+}  // namespace
+
+void preflash::set_unsupported_handler(UnsupportedHandler handler) { g_handler = handler; }
+
 [[noreturn]] void preflash_unsupported(const char* call, const char* why) {
+  if (const preflash::UnsupportedHandler handler = g_handler) handler(call, why);
   std::fprintf(stderr, "preflash: %s is not supported in the simulator: %s\n", call, why);
   preflash::serial::flush_stdio();
   char message[512];
