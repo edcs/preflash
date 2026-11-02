@@ -59,10 +59,7 @@ Use it for quick development and debugging, then test on real hardware before yo
 | Network | Simulated Wi-Fi, SNTP, and real HTTP and HTTPS through `esp_http_client` |
 | Audio | The speaker path through `esp_codec_dev`, played on your Mac |
 | Boards | ESP32-S3-Touch-LCD-4B and ESP32-S3-Touch-LCD-3.49-V2, plus your own YAML |
-
-### Coming soon
-
-- **Hardware checks.** Chip models compared against captures from real boards.
+| Hardware checks | Capture firmware and `preflash check`, which replays a capture against the chip models. No chip has yet been compared with a real board |
 
 ## Install
 
@@ -124,8 +121,9 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 | `preflash quit` | Stops the app and returns once it has gone |
 | `preflash crash [--json]` | Prints the last crash report, and needs no running app |
 | `preflash bench [--board file]` | Times a clean build, a rebuild, the boot and the socket on a copy of the project |
+| `preflash check <capture.jsonl> --board name` | Compares a capture from a real board with the chip models, and needs no running app |
 
-With no app running, each of these but `preflash crash` and `preflash bench` says so and exits 1. `preflash run` works as before, with the socket running underneath it, so you can drive a windowed run from a second terminal.
+With no app running, each of these but `preflash crash`, `preflash bench` and `preflash check` says so and exits 1. `preflash run` works as before, with the socket running underneath it, so you can drive a windowed run from a second terminal.
 
 ```sh
 preflash run --headless < /dev/null &
@@ -366,13 +364,21 @@ A clean run doesn't prove the hardware will work. Preflash can't show you:
 - Stack limits and memory limits, such as internal RAM running out under TLS.
 - Tearing, frame rate and real colour on the panel.
 - How touch feels.
-- A driver bug hidden by a chip model that's wrong. Chip models need checking against the real board.
+- A driver bug hidden by a chip model that's wrong. See [Check the models against a board](#check-the-models-against-a-board): no chip has yet been compared with a real board.
 
 OTA isn't simulated either. The running slot is always valid, and starting a download fails with a message saying so, so update code stays untested.
 
 With `CONFIG_ESP_TASK_WDT_INIT` set, the task watchdog watches subscribed tasks and a panic counts as a crash, where a device would restart. It doesn't watch idle tasks, so an idle task starved of CPU won't trip it. A task can delete itself with `vTaskDelete`, but deleting another task stops the process.
 
 If your firmware stops on a call Preflash doesn't implement, that call needs a stand-in.
+
+### Check the models against a board
+
+No chip has yet been compared with a real board. The comparison tools exist, and nobody has run them on a chip, so `hardware/captures/` stays empty until someone with the boards does. Everything Preflash has checked so far comes from datasheets, Waveshare's material and synthetic captures, and none of those say a model matches its chip.
+
+[`hardware/capture`](hardware/capture) is an ESP-IDF project with a config for each stock board. It runs a fixed list of driver calls against each chip and prints JSON lines. Its README has the steps to build, flash and save a capture. `preflash check` then sends the same transactions to the models and marks each difference as expected, such as the time or sensor noise, or as a mismatch, and exits 1 on a mismatch. A capture that didn't come from a real chip says `synthetic` in the file, and `preflash check` says so at both ends of its output.
+
+The ES8311, ES7210 and GT911 models answer on the bus and hold no behaviour. Each stays that way until real captures show what it needs, so expect mismatches from them.
 
 ## Development
 
@@ -384,7 +390,7 @@ make test
 
 That runs the Go tests, the runtime suite and the integration scripts, and it needs no other project and no ESP-IDF. `tests/integration/demo.sh` is the main end-to-end test: it runs [`examples/demo`](examples/demo) on both stock boards, drives each page, shortcut, forced failure and crash through the socket, and compares the panel with the frames in `tests/integration/golden/demo/`. Its first lines say how to regenerate them. The test holds the internet offline, so it never reaches a public site, though a clean checkout downloads its dependencies once.
 
-`tests/integration/debug.sh` checks traces and forced failures through a running project. `tests/integration/crash.sh` crashes a project each way, under each sanitizer too, and reads the reports back. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/lcd.sh` runs a project with no BSP from `tests/fixtures/lcd_project`. `tests/integration/snoozel.sh` and `tests/integration/nyx.sh` run two private projects end to end, and each skips unless `SNOOZEL` or `NYX` points at a checkout with a current `sdkconfig`.
+`tests/integration/debug.sh` checks traces and forced failures through a running project. `tests/integration/crash.sh` crashes a project each way, under each sanitizer too, and reads the reports back. `tests/integration/check.sh` runs `preflash check` on hand-written captures and runs the capture firmware under Preflash on both stock boards, so all of it is synthetic. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/lcd.sh` runs a project with no BSP from `tests/fixtures/lcd_project`. `tests/integration/snoozel.sh` and `tests/integration/nyx.sh` run two private projects end to end, and each skips unless `SNOOZEL` or `NYX` points at a checkout with a current `sdkconfig`.
 
 `make bench` times the demo on a copy of it. `preflash bench --project dir` does the same for a project whose console answers `spew <bytes>` by printing that many bytes and then `spew done`, and prints a table on stderr and JSON on stdout.
 
@@ -394,6 +400,7 @@ That runs the Go tests, the runtime suite and the integration scripts, and it ne
 cmd/preflash/     command line
 internal/app/     supervising a build and its app for the terminal app
 internal/board/   board files: extends, changes and validation
+internal/check/   reading captures and comparing them with the chip models
 internal/client/  talking to a running app over its socket
 internal/crash/   reading crash reports and tying them to source
 internal/project/ finding, building and running a project
@@ -402,9 +409,11 @@ internal/tui/     the terminal app's screens
 internal/bench/   timing a project for preflash bench
 boards/           stock boards
 examples/demo/    a reference ESP-IDF project for both stock boards
+hardware/capture/ firmware that records what real chips answer
 runtime/idf/      the CMake layer that stands in for IDF_PATH
 runtime/include/  ESP-IDF headers the firmware compiles against
 runtime/src/      stand-ins, chip models, the window and the host
+runtime/replay/   the chip models with a main of their own, for preflash check
 tests/            runtime suite, fixtures, integration scripts and terminal tests
 .github/assets/   README images, redrawn by render.sh
 ```
