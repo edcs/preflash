@@ -6,6 +6,7 @@ test:
 	cmake --build build/tests --parallel
 	ctest --test-dir build/tests --output-on-failure
 	tests/integration/build_fixture.sh
+	tests/integration/install.sh
 	tests/integration/display.sh
 	tests/integration/control.sh
 	tests/integration/port.sh

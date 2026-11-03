@@ -41,7 +41,11 @@ const usage = `usage: preflash [command] [--project dir]
   check <capture.jsonl> --board name
                                     compare a capture from a real board with the chip models
   quit                              stop the running app
+  version                           print Preflash's version
 `
+
+// version is set by release builds.
+var version = "dev"
 
 func main() {
 	commands := map[string]func([]string) error{
@@ -60,6 +64,7 @@ func main() {
 		"crash":    crashReport,
 		"bench":    benchmark,
 		"check":    checkCapture,
+		"version":  printVersion,
 	}
 	command, args := chooseCommand(os.Args[1:], interactive())
 	if commands[command] == nil {
@@ -79,6 +84,9 @@ func main() {
 // chooseCommand splits the arguments into a command and its own. No command means the
 // terminal app, where there's a terminal for it, and that goes for a flag first too.
 func chooseCommand(args []string, inTerminal bool) (string, []string) {
+	if len(args) > 0 && args[0] == "--version" {
+		return "version", args[1:]
+	}
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		return args[0], args[1:]
 	}
@@ -86,6 +94,14 @@ func chooseCommand(args []string, inTerminal bool) (string, []string) {
 		return "", nil
 	}
 	return "tui", args
+}
+
+func printVersion(args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("version takes no arguments")
+	}
+	fmt.Println("preflash", version)
+	return nil
 }
 
 func run(args []string) error {
