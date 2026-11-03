@@ -38,11 +38,16 @@ main() {
 	tar -xzf "$work/$name.tar.gz" -C "$work"
 
 	mkdir -p "$prefix/bin" "$prefix/share"
-	# The new runtime goes in beside the old one, so a failed copy leaves the old one whole.
-	rm -rf "$prefix/share/preflash.new"
-	cp -R "$work/$name/share/preflash" "$prefix/share/preflash.new"
-	rm -rf "$prefix/share/preflash"
-	mv "$prefix/share/preflash.new" "$prefix/share/preflash"
+	# The new runtime goes in beside the old one, which stays until the new one is in place.
+	share="$prefix/share/preflash"
+	rm -rf "$share.new" "$share.old"
+	cp -R "$work/$name/share/preflash" "$share.new" || die "couldn't copy the runtime to $share.new"
+	[ ! -e "$share" ] || mv "$share" "$share.old" || die "couldn't move the old runtime aside"
+	if ! mv "$share.new" "$share"; then
+		[ ! -e "$share.old" ] || mv "$share.old" "$share"
+		die "couldn't put the runtime in $share"
+	fi
+	rm -rf "$share.old"
 	cp "$work/$name/bin/preflash" "$prefix/bin/preflash.new"
 	chmod 755 "$prefix/bin/preflash.new"
 	mv "$prefix/bin/preflash.new" "$prefix/bin/preflash"

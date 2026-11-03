@@ -15,8 +15,9 @@ trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/$name/bin" "$stage/$name/share/preflash" "$out"
 
 go build -C "$root" -trimpath -ldflags "-s -w -X main.version=$version" -o "$stage/$name/bin/preflash" ./cmd/preflash
-# Only what's committed, so a local build folder can't end up in a release.
-git -C "$root" archive --format=tar HEAD runtime | tar -x -C "$stage/$name/share/preflash"
+# Only the files git tracks, so a local build folder can't end up in a release, read from
+# the same tree the binary came from.
+(cd "$root" && git ls-files -z runtime | xargs -0 tar -cf -) | tar -x -C "$stage/$name/share/preflash"
 
 tar -C "$stage" -czf "$out/$name.tar.gz" "$name"
 (cd "$out" && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
