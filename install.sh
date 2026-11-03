@@ -38,6 +38,9 @@ main() {
 	tar -xzf "$work/$name.tar.gz" -C "$work"
 
 	mkdir -p "$prefix/bin" "$prefix/share"
+	# Both halves are copied before either replaces what's there.
+	cp "$work/$name/bin/preflash" "$prefix/bin/preflash.new" || die "couldn't copy preflash to $prefix/bin"
+	chmod 755 "$prefix/bin/preflash.new"
 	# The new runtime goes in beside the old one, which stays until the new one is in place.
 	share="$prefix/share/preflash"
 	rm -rf "$share.new" "$share.old"
@@ -48,8 +51,6 @@ main() {
 		die "couldn't put the runtime in $share"
 	fi
 	rm -rf "$share.old"
-	cp "$work/$name/bin/preflash" "$prefix/bin/preflash.new"
-	chmod 755 "$prefix/bin/preflash.new"
 	mv "$prefix/bin/preflash.new" "$prefix/bin/preflash"
 
 	say "installed $("$prefix/bin/preflash" version | cut -d' ' -f2) in $prefix/bin/preflash"
