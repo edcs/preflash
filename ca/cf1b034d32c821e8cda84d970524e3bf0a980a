@@ -1,0 +1,29 @@
+README.md
+  s_5f19298ebf0709::t_33dd3977e0ea80 58
+runtime/include/esp_flash.h
+  s_5f19298ebf0709::t_6281de1368b3a1 1-22
+runtime/include/esp_partition.h
+  s_5f19298ebf0709::t_dcdc85b6bf1309 4,7-9,24,28,39-49
+runtime/src/net/ota.cpp
+  s_5f19298ebf0709::t_ce379b2f325fca 15,17
+runtime/src/storage/flash.cpp
+  s_5f19298ebf0709::t_12668cb4f85fcf 1-203
+tests/runtime/flash_test.cpp
+  s_5f19298ebf0709::t_e9e104f75325bb 1-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cacf1b034d32c821e8cda84d970524e3bf0a980a",
+  "prompts": {},
+  "sessions": {
+    "s_5f19298ebf0709": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "757e5dd3-7449-416d-b6db-3fae2142b55c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
