@@ -12,6 +12,7 @@
 </p>
 
 <p align="center">
+  <a href="#install">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#terminal-app">Terminal app</a> ·
   <a href="#drive-it-from-a-script">Scripting</a> ·
@@ -67,16 +68,57 @@ Every capture here comes from [`examples/demo`](examples/demo), an ordinary ESP-
 
 ## Install
 
-You need an Apple Silicon Mac with CMake, Python 3 and SDL2:
+Preflash runs on Apple Silicon Macs. It builds your firmware with CMake and Python 3 and draws the window with SDL2, so install those first:
 
 ```sh
 brew install cmake sdl2
+```
+
+Then install Preflash:
+
+```sh
 curl -fsSL https://raw.githubusercontent.com/edcs/preflash/main/install.sh | sh
 ```
 
-The script downloads the latest release, checks its SHA-256, and puts `preflash` in `~/.local/bin` with its runtime in `~/.local/share/preflash`. Set `PREFLASH_PREFIX` to install somewhere else, or `PREFLASH_VERSION=0.1.0` to pick a release. Run the script again to upgrade. `preflash version` prints what you have.
+The script downloads the latest release from GitHub and checks its SHA-256. It puts `preflash` in `~/.local/bin` and the runtime it builds firmware against in `~/.local/share/preflash`. If `~/.local/bin` isn't on your `PATH`, add it to your shell's profile:
 
-The quick start below uses the demo in this repo, so clone it too:
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Check it worked:
+
+```sh
+preflash version
+```
+
+### Install options
+
+Set these on the `sh` side of the pipe:
+
+| Variable | Default | Sets |
+| --- | --- | --- |
+| `PREFLASH_VERSION` | the latest release | which release to install, such as `0.1.0` |
+| `PREFLASH_PREFIX` | `~/.local` | where `bin/preflash` and `share/preflash` go |
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/edcs/preflash/main/install.sh | PREFLASH_VERSION=0.1.0 sh
+```
+
+### Upgrade or uninstall
+
+Run the install command again to upgrade. It replaces the binary and runtime together. Your builds, each project's saved state, such as NVS, and downloaded components stay in `~/.preflash`.
+
+To uninstall, delete what the script installed, and `~/.preflash` too if you want those gone:
+
+```sh
+rm -rf ~/.local/bin/preflash ~/.local/share/preflash
+rm -rf ~/.preflash
+```
+
+### Get the demo
+
+The [quick start](#quick-start) runs the demo app in this repo, so clone it:
 
 ```sh
 git clone https://github.com/edcs/preflash
