@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <vector>
@@ -69,6 +70,33 @@ TEST_F(Flash, OverlapIsRejected) {
                                             "dup", ESP_PARTITION_TYPE_DATA,
                                             ESP_PARTITION_SUBTYPE_DATA_UNDEFINED, &other),
             ESP_ERR_INVALID_ARG);
+}
+
+TEST_F(Flash, WrappingSizeIsRejected) {
+  const esp_partition_t* other = nullptr;
+  EXPECT_EQ(esp_partition_register_external(esp_flash_default_chip, 0x1000, SIZE_MAX - 0x800, "wrap",
+                                            ESP_PARTITION_TYPE_DATA,
+                                            ESP_PARTITION_SUBTYPE_DATA_UNDEFINED, &other),
+            ESP_ERR_INVALID_SIZE);
+  EXPECT_EQ(other, nullptr);
+  // Nothing was registered, so the same span is still free.
+  EXPECT_NE(add(0x1000, 0x1000), nullptr);
+}
+
+TEST_F(Flash, ZeroLengthReadNeedsNoImage) {
+  const esp_partition_t* p = add();
+  fs::remove_all(dir_);
+  setenv("PREFLASH_STATE", (dir_ / "missing" / "nowhere").c_str(), 1);
+  EXPECT_EQ(esp_partition_read(p, 0, nullptr, 0), ESP_OK);
+  EXPECT_FALSE(fs::exists(dir_));
+}
+
+TEST_F(Flash, ZeroLengthWriteNeedsNoImage) {
+  const esp_partition_t* p = add();
+  fs::remove_all(dir_);
+  setenv("PREFLASH_STATE", (dir_ / "missing" / "nowhere").c_str(), 1);
+  EXPECT_EQ(esp_partition_write(p, 0, nullptr, 0), ESP_OK);
+  EXPECT_FALSE(fs::exists(dir_));
 }
 
 TEST_F(Flash, ErasedReadsFF) {
