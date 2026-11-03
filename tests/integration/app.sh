@@ -16,10 +16,11 @@ send() {
   printf '%s\n' "$1" >&3
 }
 
-# Waits for the app to print something, as many times as asked.
+# Waits for the app to print something, as many times as asked. The first wait covers the
+# build too, so a slow machine can allow more than 10 s with PREFLASH_TEST_WAIT, in seconds.
 wait_for_output() {
   local text="$1" times="${2:-1}" tenths
-  for tenths in $(seq 1 100); do
+  for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
     [ "$(grep -cF -- "$text" "$app_log" || true)" -ge "$times" ] && return 0
     kill -0 "$app_pid" 2>/dev/null || fail "the app stopped before printing: $text" "$(cat "$app_log")"
     sleep 0.1

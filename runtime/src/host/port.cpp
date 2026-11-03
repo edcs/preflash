@@ -69,6 +69,13 @@ Queue& queue() {
   return *q;
 }
 
+// Milliseconds on the monotonic clock, which a signal handler can read.
+int64_t now_ms() {
+  timespec now {};
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  return int64_t(now.tv_sec) * 1000 + now.tv_nsec / 1000000;
+}
+
 void sleep_ms(int ms) {
   const timespec wait = {ms / 1000, (ms % 1000) * 1000000L};
   nanosleep(&wait, nullptr);
@@ -334,14 +341,19 @@ void write(const char* data, size_t size) {
   q.ready.notify_one();
 }
 
+// Both limits are measured on the clock: a 1 ms sleep can last far longer on a busy machine.
 void wait_sent() {
+  const int64_t start = now_ms();
+  int64_t last_move = start;
   uint64_t moved = g_moved;
-  int still = 0;
-  for (int ms = 0; ms < kSendWaitMs && g_unsent > 0 && still < kStallMs; ++ms) {
+  while (g_unsent > 0) {
+    const int64_t now = now_ms();
+    if (now - start >= kSendWaitMs || now - last_move >= kStallMs) return;
     sleep_ms(1);
-    const uint64_t now = g_moved;
-    still = now == moved ? still + 1 : 0;
-    moved = now;
+    if (g_moved != moved) {
+      moved = g_moved;
+      last_move = now_ms();
+    }
   }
 }
 

@@ -1,6 +1,11 @@
-.PHONY: test bench
+.PHONY: test bench bash
 
-test:
+# macOS's own bash 3.2 exits 0 after an unbound variable when a script has an EXIT trap,
+# which would pass a failing integration script.
+bash:
+	@bash -c '[ "$${BASH_VERSINFO[0]}" -ge 4 ]' || { echo "make test needs bash 4 or later first on PATH: brew install bash" >&2; exit 1; }
+
+test: bash
 	go test ./...
 	cmake -S tests/runtime -B build/tests
 	cmake --build build/tests --parallel
