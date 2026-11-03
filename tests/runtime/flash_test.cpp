@@ -99,13 +99,16 @@ TEST_F(Flash, EraseSetsFF) {
 TEST_F(Flash, EraseNeedsSectorAlignment) {
   const esp_partition_t* p = add();
   EXPECT_EQ(esp_partition_erase_range(p, 100, 4096), ESP_ERR_INVALID_ARG);
-  EXPECT_EQ(esp_partition_erase_range(p, 4096, 100), ESP_ERR_INVALID_ARG);
+  EXPECT_EQ(esp_partition_erase_range(p, 4096, 100), ESP_ERR_INVALID_SIZE);
 }
 
 TEST_F(Flash, BeyondThePartitionIsInvalidSize) {
   const esp_partition_t* p = add();
   uint8_t b = 0;
   EXPECT_EQ(esp_partition_read(p, kLogSize, &b, 1), ESP_ERR_INVALID_SIZE);
+  EXPECT_EQ(esp_partition_read(p, kLogSize + 1, &b, 1), ESP_ERR_INVALID_ARG);
+  EXPECT_EQ(esp_partition_write(p, kLogSize + 1, &b, 1), ESP_ERR_INVALID_ARG);
+  EXPECT_EQ(esp_partition_erase_range(p, kLogSize + 4096, 4096), ESP_ERR_INVALID_ARG);
   EXPECT_EQ(esp_partition_write(p, kLogSize - 1, "ab", 2), ESP_ERR_INVALID_SIZE);
   EXPECT_EQ(esp_partition_erase_range(p, kLogSize, 4096), ESP_ERR_INVALID_SIZE);
 }

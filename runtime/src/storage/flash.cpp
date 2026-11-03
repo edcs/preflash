@@ -57,9 +57,11 @@ bool known(const esp_partition_t* p) {
   return false;
 }
 
-// Checks that [offset, offset + size) lies inside the partition without overflowing.
-bool inside(const esp_partition_t* p, size_t offset, size_t size) {
-  return offset <= p->size && size <= p->size - offset;
+// As IDF does: an offset past the end is a bad argument, a span running past it a bad size.
+esp_err_t check_span(const esp_partition_t* p, size_t offset, size_t size) {
+  if (offset > p->size) return ESP_ERR_INVALID_ARG;
+  if (size > p->size - offset) return ESP_ERR_INVALID_SIZE;
+  return ESP_OK;
 }
 
 // Reads are left out: a log scan would bury everything else.
@@ -126,7 +128,7 @@ esp_err_t esp_partition_read(const esp_partition_t* partition, size_t src_offset
   if (!partition || (!dst && size > 0)) return ESP_ERR_INVALID_ARG;
   std::lock_guard<std::mutex> lock(g_mutex);
   if (!known(partition)) return ESP_ERR_INVALID_ARG;
-  if (!inside(partition, src_offset, size)) return ESP_ERR_INVALID_SIZE;
+  if (esp_err_t err = check_span(partition, src_offset, size)) return err;
   const int fd = open_image(true);
   if (fd < 0) return ESP_FAIL;
   auto* out = static_cast<uint8_t*>(dst);
@@ -149,7 +151,7 @@ esp_err_t esp_partition_write(const esp_partition_t* partition, size_t dst_offse
   std::lock_guard<std::mutex> lock(g_mutex);
   if (!known(partition)) return ESP_ERR_INVALID_ARG;
   if (partition->readonly) return ESP_ERR_NOT_ALLOWED;
-  if (!inside(partition, dst_offset, size)) return ESP_ERR_INVALID_SIZE;
+  if (esp_err_t err = check_span(partition, dst_offset, size)) return err;
   const int fd = open_image(true);
   if (fd < 0) return ESP_FAIL;
   const off_t base = static_cast<off_t>(partition->address) + static_cast<off_t>(dst_offset);
@@ -181,11 +183,12 @@ esp_err_t esp_partition_write(const esp_partition_t* partition, size_t dst_offse
 
 esp_err_t esp_partition_erase_range(const esp_partition_t* partition, size_t offset, size_t size) {
   if (!partition) return ESP_ERR_INVALID_ARG;
-  if (offset % kSectorSize != 0 || size % kSectorSize != 0) return ESP_ERR_INVALID_ARG;
   std::lock_guard<std::mutex> lock(g_mutex);
   if (!known(partition)) return ESP_ERR_INVALID_ARG;
   if (partition->readonly) return ESP_ERR_NOT_ALLOWED;
-  if (!inside(partition, offset, size)) return ESP_ERR_INVALID_SIZE;
+  if (esp_err_t err = check_span(partition, offset, size)) return err;
+  if (size % kSectorSize != 0) return ESP_ERR_INVALID_SIZE;
+  if (offset % kSectorSize != 0) return ESP_ERR_INVALID_ARG;
   const int fd = open_image(true);
   if (fd < 0) return ESP_FAIL;
   const std::vector<uint8_t> zeros(kSectorSize, 0);
