@@ -1,0 +1,23 @@
+.github/workflows/test.yml
+  s_82b4983a83db4b::t_79e6f0fa31f942 24
+Makefile
+  s_82b4983a83db4b::t_728210043f0915 1,3-8
+README.md
+  s_82b4983a83db4b::t_23d378533d3b4b 491
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4b94262296f41b2808ca17aa8609c1cbb0f1a475",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
