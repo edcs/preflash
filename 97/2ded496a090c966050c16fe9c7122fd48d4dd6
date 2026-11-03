@@ -1,0 +1,23 @@
+tests/integration/app.sh
+  s_82b4983a83db4b::t_63594388afc4f1 19-20,23
+.github/workflows/test.yml
+  s_82b4983a83db4b::t_63594388afc4f1 26-28
+README.md
+  s_82b4983a83db4b::t_70ece84197af77 495-496
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "972ded496a090c966050c16fe9c7122fd48d4dd6",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
