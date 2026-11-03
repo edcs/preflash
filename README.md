@@ -521,3 +521,7 @@ tests/            runtime suite, fixtures, integration scripts and terminal test
 ### Contributing
 
 Commits use conventional commit titles. A new chip means a new model in `runtime/src/chips/`, and a new ESP-IDF call means a stand-in that follows the device's return codes, or that stops and names the call.
+
+## License
+
+Preflash is under the [MIT License](LICENSE), and so are the demo and capture firmware, so you can copy from them into your own projects.

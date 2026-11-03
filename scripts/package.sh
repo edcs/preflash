@@ -19,6 +19,8 @@ go build -C "$root" -trimpath -ldflags "-s -w -X main.version=$version" -o "$sta
 # the same tree the binary came from.
 (cd "$root" && git ls-files -z runtime | xargs -0 tar -cf -) | tar -x -C "$stage/$name/share/preflash"
 
+cp "$root/LICENSE" "$stage/$name/share/preflash/"
+
 tar -C "$stage" -czf "$out/$name.tar.gz" "$name"
 (cd "$out" && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
 echo "$out/$name.tar.gz"

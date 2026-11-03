@@ -24,6 +24,7 @@ log="$(PREFLASH_PREFIX="$prefix" PREFLASH_DOWNLOAD_URL="file://$scratch/release"
   fail "install.sh failed" "$log"
 case "$log" in *"installed 9.9.9"*) ;; *) fail "install.sh didn't report the version" "$log" ;; esac
 [ "$("$prefix/bin/preflash" version)" = "preflash 9.9.9" ] || fail "the installed binary has the wrong version"
+[ -f "$prefix/share/preflash/LICENSE" ] || fail "the release lacks the license"
 
 # A second install replaces the first, and a bad checksum leaves it alone.
 PREFLASH_PREFIX="$prefix" PREFLASH_DOWNLOAD_URL="file://$scratch/release" sh "$root/install.sh" >/dev/null 2>&1 ||
