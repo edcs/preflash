@@ -1,0 +1,21 @@
+runtime/src/storage/flash.cpp
+  s_82b4983a83db4b::t_60a9e973ada6aa 60-64,131,154,189-191
+tests/runtime/flash_test.cpp
+  s_82b4983a83db4b::t_de8358c06e5804 102,109-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b13ae910cace149b40cb7eaff2879e8c131924ad",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
