@@ -1,0 +1,44 @@
+Makefile
+  s_82b4983a83db4b::t_d25e2a2052e697 9
+tests/integration/install.sh
+  s_82b4983a83db4b::t_f3ea3d1ad5980a 1-51
+README.md
+  s_82b4983a83db4b::t_1830aa571f443d 70-79,84-91,96
+internal/project/project_test.go
+  s_82b4983a83db4b::t_d77fef6cca0e09 362-388
+.github/workflows/release.yml
+  s_82b4983a83db4b::t_d25e2a2052e697 1-39
+install.sh
+  s_82b4983a83db4b::t_56e3b7534d2e4c 1-52,55-67
+  s_82b4983a83db4b::t_da76b8b3a10839 53-54
+release-please-config.json
+  s_82b4983a83db4b::t_d25e2a2052e697 1-11
+internal/project/run.go
+  s_82b4983a83db4b::t_d77fef6cca0e09 28-30,32-39,42-62,65-68,74
+  s_82b4983a83db4b::t_d25e2a2052e697 40-41
+cmd/preflash/main.go
+  s_82b4983a83db4b::t_d2e6988fa46004 44,47-49,67,87-89,99-104
+  s_82b4983a83db4b::t_3a053e4d12dc59 105-106
+cmd/preflash/main_test.go
+  s_82b4983a83db4b::t_d2e6988fa46004 22
+.release-please-manifest.json
+  s_82b4983a83db4b::t_d25e2a2052e697 1
+scripts/package.sh
+  s_82b4983a83db4b::t_bb026cd7baa7a1 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cb9586dea5f091ce2fa4d26fb4e5bcf7ef45a9b3",
+  "prompts": {},
+  "sessions": {
+    "s_82b4983a83db4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08b19a6f-464e-4dc1-9980-35480a438146",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Edward Coleridge Smith <edcoleridgesmith@gmail.com>"
+    }
+  }
+}
