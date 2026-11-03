@@ -19,6 +19,7 @@ func TestChooseCommand(t *testing.T) {
 		"a flag in a pipe":      {[]string{"--project", "x"}, false, "tui", []string{"--project", "x"}},
 		"a command":             {[]string{"run", "--headless"}, true, "run", []string{"--headless"}},
 		"an unknown word":       {[]string{"frob"}, true, "frob", []string{}},
+		"--version":             {[]string{"--version"}, false, "version", nil},
 		"tui by name":           {[]string{"tui", "--headless"}, false, "tui", []string{"--headless"}},
 	} {
 		t.Run(name, func(t *testing.T) {

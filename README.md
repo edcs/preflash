@@ -67,17 +67,33 @@ Every capture here comes from [`examples/demo`](examples/demo), an ordinary ESP-
 
 ## Install
 
-You need a Mac on Apple Silicon, Go, CMake, Python 3 and SDL2.
+You need an Apple Silicon Mac with CMake, Python 3 and SDL2:
 
 ```sh
-brew install go cmake sdl2
+brew install cmake sdl2
+curl -fsSL https://raw.githubusercontent.com/edcs/preflash/main/install.sh | sh
+```
+
+The script downloads the latest release, checks its SHA-256, and puts `preflash` in `~/.local/bin` with its runtime in `~/.local/share/preflash`. Set `PREFLASH_PREFIX` to install somewhere else, or `PREFLASH_VERSION=0.1.0` to pick a release. Run the script again to upgrade. `preflash version` prints what you have.
+
+The quick start below uses the demo in this repo, so clone it too:
+
+```sh
 git clone https://github.com/edcs/preflash
 cd preflash
+```
+
+### Build from source
+
+Building needs Go as well:
+
+```sh
+brew install go
 go build -o preflash ./cmd/preflash
 export PATH="$PWD:$PATH"
 ```
 
-Keep the checkout where it is, because the binary finds `runtime/` by the path it was built from. If you move the checkout, rebuild or set `PREFLASH_ROOT` to its new path. There are no packaged releases yet.
+A binary built this way finds `runtime/` in the checkout it came from. If you move the checkout, rebuild or set `PREFLASH_ROOT` to its new path.
 
 ## Quick start
 

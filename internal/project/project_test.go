@@ -359,6 +359,33 @@ func TestRootDefaultsToThisCheckout(t *testing.T) {
 	assert.FileExists(t, filepath.Join(got, "boards.go"))
 }
 
+func TestRootPrefersAnInstalledRuntime(t *testing.T) {
+	prefix := t.TempDir()
+	installed := filepath.Join(prefix, "share", "preflash")
+	writeFile(t, filepath.Join(installed, "runtime", "idf", "tools", "cmake", "project.cmake"), "")
+	source := t.TempDir()
+	writeFile(t, filepath.Join(source, "runtime", "idf", "tools", "cmake", "project.cmake"), "")
+
+	got, err := findRoot("", filepath.Join(prefix, "bin", "preflash"), source)
+	require.NoError(t, err)
+	assert.Equal(t, installed, got)
+}
+
+func TestRootFallsBackToTheSource(t *testing.T) {
+	source := t.TempDir()
+	writeFile(t, filepath.Join(source, "runtime", "idf", "tools", "cmake", "project.cmake"), "")
+
+	got, err := findRoot("", filepath.Join(t.TempDir(), "preflash"), source)
+	require.NoError(t, err)
+	assert.Equal(t, source, got)
+}
+
+func TestRootWithNoRuntimeAnywhereSaysSo(t *testing.T) {
+	_, err := findRoot("", filepath.Join(t.TempDir(), "bin", "preflash"), t.TempDir())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "PREFLASH_ROOT")
+}
+
 func TestStateDirIsPrivate(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	p, err := Find(idfProject(t, t.TempDir()))

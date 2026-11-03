@@ -25,23 +25,53 @@ import (
 // buildGrace is how long a cancelled build's tools get to stop.
 const buildGrace = 3 * time.Second
 
-// Root finds the Preflash checkout that holds runtime/. The runtime isn't embedded
-// yet, so a binary works only beside its source unless PREFLASH_ROOT says otherwise.
+// Root finds the folder that holds runtime/. PREFLASH_ROOT comes first. An installed binary
+// keeps it in share/preflash beside its bin folder, and one built from source uses the
+// checkout it was built from.
 func Root() (string, error) {
-	root := os.Getenv("PREFLASH_ROOT")
-	if root == "" {
-		_, file, _, ok := runtime.Caller(0)
-		if !ok {
-			return "", errors.New("can't tell where the runtime is: set PREFLASH_ROOT to the Preflash folder")
-		}
-		root = filepath.Join(filepath.Dir(file), "..", "..")
+	executable, err := os.Executable()
+	if err == nil {
+		executable, err = filepath.EvalSymlinks(executable)
 	}
+	if err != nil {
+		executable = ""
+	}
+	source := ""
+	// A release is built with -trimpath, which leaves a path that isn't on this Mac.
+	if _, file, _, ok := runtime.Caller(0); ok && filepath.IsAbs(file) {
+		source = filepath.Join(filepath.Dir(file), "..", "..")
+	}
+	return findRoot(os.Getenv("PREFLASH_ROOT"), executable, source)
+}
+
+const rootHint = "set PREFLASH_ROOT to the folder that holds runtime/"
+
+func findRoot(fromEnvironment, executable, source string) (string, error) {
+	if fromEnvironment != "" {
+		return checkRoot(fromEnvironment)
+	}
+	var candidates []string
+	if executable != "" {
+		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "..", "share", "preflash"))
+	}
+	if source != "" {
+		candidates = append(candidates, source)
+	}
+	for _, candidate := range candidates {
+		if root, err := checkRoot(candidate); err == nil {
+			return root, nil
+		}
+	}
+	return "", errors.New("can't find the runtime: " + rootHint)
+}
+
+func checkRoot(root string) (string, error) {
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return "", err
 	}
 	if _, err := os.Stat(filepath.Join(root, "runtime", "idf", "tools", "cmake", "project.cmake")); err != nil {
-		return "", fmt.Errorf("no runtime in %s: set PREFLASH_ROOT to the Preflash folder", root)
+		return "", fmt.Errorf("no runtime in %s: %s", root, rootHint)
 	}
 	return root, nil
 }
