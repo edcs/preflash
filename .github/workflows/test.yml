@@ -23,3 +23,6 @@ jobs:
           go-version-file: go.mod
       - run: brew install sdl2
       - run: make test
+        env:
+          # A runner builds each fixture cold, slower than the 10 s a warm Mac needs.
+          PREFLASH_TEST_WAIT: "300"

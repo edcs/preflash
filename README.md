@@ -492,6 +492,8 @@ That runs the Go tests, the runtime suite and the integration scripts, and it ne
 
 `tests/integration/debug.sh` checks traces and forced failures through a running project. `tests/integration/crash.sh` crashes a project each way, under each sanitizer too, and reads the reports back. `tests/integration/check.sh` runs `preflash check` on hand-written captures and runs the capture firmware under Preflash on both stock boards, so all of it is synthetic. `tests/integration/tui.sh` runs the terminal app in a pseudo-terminal and reads its screen through a virtual terminal, including a mouse click on a shortcut. `tests/integration/lcd.sh` runs a project with no BSP from `tests/fixtures/lcd_project`. The suite also has optional scripts for private projects, and each skips unless its variable points at a checkout.
 
+GitHub Actions runs `make test` on each pull request and each push to `main`. An integration script gives the app 10 seconds to start, and that includes a build. On a slow or cold machine, set `PREFLASH_TEST_WAIT` to allow more, in seconds, as CI does.
+
 `make bench` times the demo on a copy of it. `preflash bench --project dir` does the same for a project whose console answers `spew <bytes>` by printing that many bytes and then `spew done`, and prints a table on stderr and JSON on stdout.
 
 ### Layout
