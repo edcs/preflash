@@ -397,6 +397,10 @@ A relative path starts at the project, and `~/` at your home folder. The link's 
 
 The port doesn't appear as a USB device, so an app that finds boards by USB identity needs that developer setting. Firmware never waits for the port. It holds about 65 KiB, and past that it loses the oldest output, with no notice in the stream, because a notice would land in your protocol. An app that opens the port late reads what it's holding first, so expect old lines ahead of live ones, with a gap between them.
 
+The port has no DTR or RTS lines, so nothing your app does with them resets the firmware, and setting them fails with `ENOTTY`. If your app drops DTR and RTS to keep a real board from resetting, have it ignore that error, as pyserial does when it opens a port.
+
+A link that `kill -9` left behind points at a pseudo-terminal number macOS can give to a new Terminal tab. Before your app opens a link on its own, such as on a timer, check that Preflash is running: the control socket beside the default link, `<hash>.sock`, accepts a connection only while the app runs.
+
 ## Describe your board
 
 A board comes from `--board`, then from `board:` in the project's `.preflashrc`, then the default, `ESP32-S3-Touch-LCD-4B`. Each can be a stock board's name or a YAML file. A path in `.preflashrc` is relative to the project.
