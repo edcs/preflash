@@ -12,9 +12,9 @@ namespace {
 constexpr const char* kTag = "ota";
 
 // Two app slots, laid out as a project's partition table usually has them.
-const esp_partition_t kSlot0 = {ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0,
+const esp_partition_t kSlot0 = {nullptr, ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0,
                                 0x10000, 0x300000, 0x1000, "ota_0", false, false};
-const esp_partition_t kSlot1 = {ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1,
+const esp_partition_t kSlot1 = {nullptr, ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1,
                                 0x310000, 0x300000, 0x1000, "ota_1", false, false};
 
 // Says why an update can't happen, once, and only when firmware actually tries one:

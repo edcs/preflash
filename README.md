@@ -55,7 +55,7 @@ Every capture here comes from [`examples/demo`](examples/demo), an ordinary ESP-
 | Display | LVGL 9 through the board's BSP, or `esp_lcd` directly for a project with no BSP, rotation, backlight dimming on the window |
 | Input | Mouse as touch, scripted taps |
 | Firmware | FreeRTOS tasks, queues and notifications on host threads, `esp_timer`, the task watchdog, restart |
-| Storage | NVS, saved per checkout |
+| Storage | NVS, saved per checkout. Flash partitions registered at run time are kept in the board's state folder |
 | Network | Simulated Wi-Fi, SNTP, and real HTTP and HTTPS through `esp_http_client` |
 | Audio | The speaker path through `esp_codec_dev`, played on your Mac |
 | Chips | PCF85063 RTC, QMI8658 motion sensor, AXP2101 power chip, TCA9554 expander and AXS15231B touch at register level. ES8311, ES7210 and GT911 answer on the bus without a behaviour model |
