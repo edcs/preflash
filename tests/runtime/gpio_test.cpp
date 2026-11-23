@@ -232,7 +232,7 @@ TEST(GpioIsr, FromIsrCallsWorkInAHandler) {
   install_service();
   button_pin(GPIO_NUM_11, GPIO_INTR_NEGEDGE);
   static QueueHandle_t queue = xQueueCreate(4, sizeof(int));
-  static TaskHandle_t waiter = nullptr;
+  static std::atomic<TaskHandle_t> waiter{nullptr};
   static std::atomic<int> notified{0};
   waiter = nullptr;
   std::thread([] {
@@ -246,7 +246,7 @@ TEST(GpioIsr, FromIsrCallsWorkInAHandler) {
                   BaseType_t woken = pdFALSE;
                   int pin = 11;
                   xQueueSendFromISR(queue, &pin, &woken);
-                  vTaskNotifyGiveFromISR(waiter, &woken);
+                  vTaskNotifyGiveFromISR(waiter.load(), &woken);
                   portYIELD_FROM_ISR(woken);
                 },
                 nullptr),

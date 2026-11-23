@@ -384,7 +384,7 @@ func TestStockBoardsListTheirButtons(t *testing.T) {
 	assert.Equal(t, []string{"PWR", "BOOT", "RST"}, names(b))
 	b, err = LoadStock("ESP32-S3-Touch-LCD-3.49-V2")
 	require.NoError(t, err)
-	assert.Equal(t, []string{"PWR", "BOOT"}, names(b)[:2])
+	assert.Equal(t, []string{"PWR", "BOOT", "RST"}, names(b))
 	p := b.Buttons[0].Power
 	require.NotNil(t, p)
 	assert.Equal(t, 16, p.Key)
