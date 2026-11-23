@@ -74,8 +74,10 @@ std::vector<Line> wrap_words(const std::string& text, int window_w) {
     size_t end = text.find(' ', i);
     if (end == std::string::npos) end = text.size();
     const int glyphs = glyphs_in(text, i, end);
-    if (open && used + 1 + glyphs <= per_line) {
-      used += 1 + glyphs;
+    // The line keeps every space between its words, each a byte and a glyph.
+    const int gap = static_cast<int>(i - line_end);
+    if (open && used + gap + glyphs <= per_line) {
+      used += gap + glyphs;
       line_end = end;
     } else {
       if (open) lines.push_back({line_start, line_end - line_start});

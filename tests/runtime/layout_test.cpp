@@ -132,4 +132,13 @@ TEST(StatusLines, WrapKeepsWholeWords) {
   EXPECT_EQ(lines[1].length, 4u);  // "cccc"
 }
 
+TEST(StatusLines, WrapCountsEverySpaceKept) {
+  // A line keeps the whole gap between its words, so two spaces take two glyphs.
+  const auto lines = wrap_words("aaaa  bbbb", 9 * 8 + 28);
+  ASSERT_EQ(lines.size(), 2u);
+  EXPECT_EQ(lines[0].length, 4u);  // "aaaa"
+  EXPECT_EQ(lines[1].start, 6u);
+  EXPECT_EQ(lines[1].length, 4u);  // "bbbb"
+}
+
 }  // namespace
