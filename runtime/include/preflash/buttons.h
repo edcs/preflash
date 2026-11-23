@@ -50,9 +50,9 @@ nlohmann::json describe();
 std::string press_until(const std::string& name, Owner owner, int64_t release_at);
 
 // Presses the button, holds it for ms and lets go, returning once it has. A button the owner
-// already holds is left as it is, and the tap returns at once. A tap that cut_taps wakes
-// returns at once, empty and still down: the exec under way leaves the release to the next
-// run, at the same moment.
+// already holds is left down: the tap still waits ms, then lets go of nothing. A tap that
+// cut_taps wakes returns at once, empty and still down: the exec under way leaves the release
+// to the next run, at the same moment.
 std::string tap(const std::string& name, int ms, Owner owner = Owner::Script);
 
 // Wakes every tap under way, and any that starts after, without letting go: the run is ending,

@@ -198,9 +198,6 @@ std::string tap(const std::string& name, int ms, Owner owner) {
       !error.empty()) {
     return error;
   }
-  // The owner already held it down, by a press or a tap under way: that hold isn't this tap's
-  // to let go of.
-  if (!pressed) return "";
   {
     std::unique_lock<std::mutex> lock(g_mutex);
     // Cut off: the next run lets go at the deadline held_env() gave it, and this one answers.
@@ -208,6 +205,9 @@ std::string tap(const std::string& name, int ms, Owner owner) {
       return "";
     }
   }
+  // The owner already held it down, by a press or a tap under way: the tap takes its time, but
+  // that hold isn't this tap's to let go of.
+  if (!pressed) return "";
   return set(name, false, owner);
 }
 

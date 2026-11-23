@@ -236,12 +236,12 @@ TEST_F(Buttons, ATapPressesAndLetsGo) {
   EXPECT_NE(buttons::tap("NOPE", 20, Owner::Script), "");
 }
 
-// A tap of a button its owner already holds does nothing, so it can't let go of that press.
+// A tap of a button its owner already holds takes its time, but can't let go of that press.
 TEST_F(Buttons, ATapLeavesTheOwnersEarlierPressDown) {
   ASSERT_EQ(buttons::set("BOOT", true, Owner::Script), "");
   const auto start = std::chrono::steady_clock::now();
   EXPECT_EQ(buttons::tap("BOOT", 200, Owner::Script), "");
-  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100));
+  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(190));
   EXPECT_TRUE(buttons::down("BOOT"));
   EXPECT_EQ(buttons::held_by(Owner::Script), std::vector<std::string>{"BOOT"});
 }
