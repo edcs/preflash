@@ -166,9 +166,10 @@ void unsubscribe_frames(int subscription) {
   l.count.store(static_cast<int>(l.by_number.size()), std::memory_order_release);
 }
 
-void share_frames(const std::string& path) {
+void share_frames(const std::string& path, bool black) {
   Pixels& p = pixels();
   auto shared = winlink::FrameBuffer::create(path, p.width, p.height);
+  if (black) shared.write(std::vector<uint8_t>(p.data.size(), 0).data());
   std::lock_guard<std::mutex> lock(p.mutex);
   p.shared.emplace(std::move(shared));
 }
@@ -258,12 +259,6 @@ std::string backlight_status() {
       "brightness: " + std::to_string(shown(level)) + " (pwm " + std::to_string(g_brightness);
   if (level) status += ", enable " + enable_name() + (*level ? " high" : " low");
   return status + ")";
-}
-
-std::string window_title() {
-  const char* project = std::getenv("PREFLASH_PROJECT");
-  return (project ? std::string(project) : board().name) + " - backlight " +
-         std::to_string(brightness()) + "%";
 }
 
 bool take_frame(std::vector<uint8_t>* out) {

@@ -41,14 +41,13 @@ int brightness_level();  // what firmware last set
 // One line saying how the backlight stands, naming the enable pin if the board has one.
 std::string backlight_status();
 
-// The project, or the board if nothing names it, and what the screen shows.
-std::string window_title();
-
 // From now on, writes finished frames into the frame file at path, for the window process to
 // show, at most one every few milliseconds from firmware's thread, with share_pending catching
-// up a frame held back. A file a window still maps from an earlier run keeps its last frame until then.
+// up a frame held back. A file a window still maps from an earlier run keeps its last frame until then,
+// unless black, which writes a black frame into it at once: a run with no firmware, off or in
+// download mode, leaves the next run starting from black, as the hardware's panel would.
 // Throws std::runtime_error if it can't make the file.
-void share_frames(const std::string& path);
+void share_frames(const std::string& path, bool black = false);
 
 // Writes a finished frame that was held back from the frame file. Call it on the main thread.
 void share_pending();

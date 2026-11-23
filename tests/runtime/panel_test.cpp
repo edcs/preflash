@@ -161,15 +161,6 @@ TEST(Panel, BacklightStatusWithNoEnablePin) {
   EXPECT_EQ(panel::backlight_status(), "brightness: 37 (pwm 37)");
 }
 
-TEST(Panel, WindowTitleShowsTheProjectAndBacklight) {
-  bsp_display_brightness_set(37);
-  unsetenv("PREFLASH_PROJECT");
-  EXPECT_EQ(panel::window_title(), "Test - backlight 37%");
-  setenv("PREFLASH_PROJECT", "demo", 1);
-  EXPECT_EQ(panel::window_title(), "demo - backlight 37%");
-  unsetenv("PREFLASH_PROJECT");
-}
-
 TEST(Panel, RotatedFlushKeepsPhysicalOrientation) {
   bsp_display_cfg_t cfg = {.lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG()};
   lv_display_t* disp = bsp_display_start_with_config(&cfg);
@@ -488,4 +479,28 @@ TEST(Panel, StripsReachTheWindowAtThePanelsRateNotEachOne) {
   std::vector<uint8_t> shown;
   ASSERT_TRUE(window->read_if_newer(&seq, &shown));
   EXPECT_EQ(shown, panel::copy_frame()) << "the window was left without the last picture";
+}
+
+// A run with no firmware, off or in download mode, blacks out the frame the last run left in
+// the file, so that the run after it starts from black. One that runs firmware keeps it.
+TEST(Panel, ARunWithNoFirmwareLeavesTheWindowABlackFrame) {
+  FrameFolder dir;
+  panel::share_frames(dir.file());
+  const std::vector<uint16_t> red(kWidth * kHeight, kRed);
+  panel::draw(0, 0, kWidth, kHeight, red.data(), true);
+  panel::share_pending();
+  panel::stop_sharing();
+
+  panel::share_frames(dir.file());
+  auto window = preflash::winlink::FrameBuffer::open(dir.file());
+  ASSERT_TRUE(window);
+  uint64_t seq = 0;
+  std::vector<uint8_t> shown;
+  ASSERT_TRUE(window->read_if_newer(&seq, &shown));
+  EXPECT_EQ(pixel(shown, 0, 0), kRed) << "a run with firmware lost the last frame";
+  panel::stop_sharing();
+
+  panel::share_frames(dir.file(), true);
+  ASSERT_TRUE(window->read_if_newer(&seq, &shown)) << "the window wasn't sent a new frame";
+  EXPECT_EQ(shown, std::vector<uint8_t>(shown.size(), 0)) << "the old frame stayed";
 }
