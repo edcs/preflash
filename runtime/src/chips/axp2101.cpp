@@ -158,15 +158,22 @@ void Axp2101::pwron(bool down) {
   }
   // The press that powered the board on began before this chip did, and raised nothing.
   if (!pressed_at_) return;
+  // The key may have passed a level since the last tick, and that tick won't see it now.
+  const int64_t held = clock_() - *pressed_at_;
+  if (!long_raised_ && held < irq_level_ms(regs_[kLevels])) raise(kShortPress);
+  if (auto next = reach(held)) named_at_release_ = next;
   raise(kPositiveEdge);
-  if (!long_raised_ && clock_() - *pressed_at_ < irq_level_ms(regs_[kLevels])) raise(kShortPress);
   pressed_at_.reset();
 }
 
 std::optional<power::Mode> Axp2101::tick() {
   std::lock_guard<std::mutex> lock(mutex_);
+  if (named_at_release_) return std::exchange(named_at_release_, std::nullopt);
   if (!pressed_at_) return std::nullopt;
-  const int64_t held = clock_() - *pressed_at_;
+  return reach(clock_() - *pressed_at_);
+}
+
+std::optional<power::Mode> Axp2101::reach(int64_t held) {
   if (!long_raised_ && held >= irq_level_ms(regs_[kLevels])) {
     long_raised_ = true;
     raise(kLongPress);

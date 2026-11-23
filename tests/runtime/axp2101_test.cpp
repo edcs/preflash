@@ -157,3 +157,23 @@ TEST(Axp2101, AReleaseWithNoPressRaisesNothing) {
   rig.pmu.pwron(false);
   EXPECT_EQ(reg(rig.pmu, kIrqStatus1), 0x00);
 }
+
+// A key let go between two ticks still counts for as long as it was held: a tap as long as
+// IRQLEVEL is a long press, and one as long as OFFLEVEL switches off at the next tick.
+TEST(Axp2101, AReleaseBeforeTheTickStillReachesTheLevels) {
+  Rig rig;
+  rig.pmu.pwron(true);
+  rig.now = 1500;  // IRQLEVEL, and no tick saw it
+  rig.pmu.pwron(false);
+  EXPECT_EQ(reg(rig.pmu, kIrqStatus1), kLongPress);
+  EXPECT_EQ(rig.pmu.tick(), std::nullopt);
+
+  put(rig.pmu, kIrqStatus1, 0xff);
+  rig.now = 10000;
+  rig.pmu.pwron(true);
+  rig.now = 16000;  // OFFLEVEL, and no tick saw it
+  rig.pmu.pwron(false);
+  EXPECT_EQ(reg(rig.pmu, kIrqStatus1), kLongPress);
+  EXPECT_EQ(rig.pmu.tick(), Mode::Off);
+  EXPECT_EQ(rig.pmu.tick(), std::nullopt);  // once
+}

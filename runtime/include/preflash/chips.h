@@ -109,7 +109,9 @@ class Axp2101 : public RegisterChip {
   void pwron(bool down);
 
   // Looks at a key held down: past IRQLEVEL it raises the long-press interrupt, and past
-  // OFFLEVEL it names the mode the PMU takes the board to, once. Nothing otherwise.
+  // OFFLEVEL it names the mode the PMU takes the board to, once. A key let go since the last
+  // tick is timed as it comes up, so a hold that reached OFFLEVEL between ticks is named here.
+  // Nothing otherwise.
   std::optional<power::Mode> tick();
 
  protected:
@@ -118,12 +120,16 @@ class Axp2101 : public RegisterChip {
 
  private:
   void raise(uint8_t bits);
+  // What a key held this long has reached: the long press raised, and past OFFLEVEL the mode
+  // to name, once a press.
+  std::optional<power::Mode> reach(int64_t held);
 
   std::function<int64_t()> clock_;
   std::mutex mutex_;  // the key's thread and firmware's both reach the registers
   std::optional<int64_t> pressed_at_;
   bool long_raised_ = false;
   bool off_named_ = false;
+  std::optional<power::Mode> named_at_release_;  // for the next tick to return
   bool soft_off_ = false;
 };
 
