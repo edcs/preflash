@@ -323,6 +323,7 @@ void open() {
 void run() {
   for (;;) {
     sdl_audio::open_if_asked();
+    panel::share_pending();
     if (!g_closed) {
       if (g_dropped) {
         forget_connection();

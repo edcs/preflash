@@ -35,10 +35,17 @@ std::string backlight_status();
 // The project, or the board if nothing names it, and what the screen shows.
 std::string window_title();
 
-// From now on, writes each finished frame into the frame file at path, for the window process
-// to show. A file a window still maps from an earlier run keeps its last frame until then.
+// From now on, writes finished frames into the frame file at path, for the window process to
+// show, at most one every few milliseconds from firmware's thread, with share_pending catching
+// up a frame held back. A file a window still maps from an earlier run keeps its last frame until then.
 // Throws std::runtime_error if it can't make the file.
 void share_frames(const std::string& path);
+
+// Writes a finished frame that was held back from the frame file. Call it on the main thread.
+void share_pending();
+
+// Stops writing the frame file, for tests.
+void stop_sharing();
 
 // Copies the whole panel. False, leaving out alone, if nothing changed since the last call.
 bool take_frame(std::vector<uint8_t>* out);
