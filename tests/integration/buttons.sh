@@ -154,7 +154,7 @@ pf hardware --project "$project" battery 50 > /dev/null
 pf hardware --project "$project" usb unplugged > /dev/null
 power_becomes off
 [ "$(field serial_port)" = '""' ] || fail "off kept the serial port" "$(status_json)"
-expect_in "power      off" "$(pf status --project "$project")"
+expect_in "power          off" "$(pf status --project "$project")"
 quit
 
 # Battery launch: the board starts off, waiting for PWR, with no firmware and no serial port.
@@ -269,7 +269,7 @@ button RST tap
 saw "waiting for download"
 [ "$(field power)" = '"download"' ] || fail "status doesn't say download mode" "$(status_json)"
 [ "$(field serial_port)" = '""' ] || fail "download mode kept the serial port" "$(status_json)"
-expect_in "power      download" "$(pf status --project "$project")"
+expect_in "power          download" "$(pf status --project "$project")"
 button BOOT release
 sleep 1
 if tail -n "+$((marked + 1))" "$app_log" | grep -qF "ready on"; then

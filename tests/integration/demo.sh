@@ -225,11 +225,11 @@ buttons_field() {
 wait_power() {
   local tenths
   for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
-    pf status --project "$project" 2>/dev/null | grep -qF "power      $1" && break
+    pf status --project "$project" 2>/dev/null | grep -qF "power          $1" && break
     kill -0 "$app_pid" 2>/dev/null || fail "the app ended while waiting for power $1" "$(cat "$app_log")"
     sleep 0.1
   done
-  expect_in "power      $1" "$(pf status --project "$project")"
+  expect_in "power          $1" "$(pf status --project "$project")"
 }
 
 # Waits until no script is still holding PWR.
@@ -464,7 +464,7 @@ wait_pwr_up
 mark
 pf hardware --project "$project" button PWR tap || fail "a tap that powered the board on failed"
 saw "ready on"
-expect_in "power      on" "$(pf status --project "$project")"
+expect_in "power          on" "$(pf status --project "$project")"
 wait_pwr_up
 
 # Turning off through the power chip leaves the board off and the app up, and PWR turns it on.
@@ -476,7 +476,7 @@ kill -0 "$app_pid" 2>/dev/null || fail "poweroff ended the app" "$(cat "$app_log
 mark
 pf hardware --project "$project" button PWR tap 1000 || fail "a tap that powered the board on failed"
 saw "ready on"
-expect_in "power      on" "$(pf status --project "$project")"
+expect_in "power          on" "$(pf status --project "$project")"
 # The first tap's release lands in the new boot, a second after it began. Until then the script
 # still holds PWR, and pressing it again would do nothing.
 wait_pwr_up
