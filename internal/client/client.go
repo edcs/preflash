@@ -84,6 +84,18 @@ type Status struct {
 	SerialPort string `json:"serial_port"`
 	// Crashed says firmware has crashed and the app is held where it stopped.
 	Crashed bool `json:"crashed"`
+	// Buttons are the board's buttons in the board file's order, which is the window's strip.
+	Buttons []ButtonState `json:"buttons"`
+	// Power is "on", "off" or "download", or empty from an app that doesn't say.
+	Power string `json:"power"`
+}
+
+// ButtonState is one of the board's buttons. Wiring says what it's wired to, as the window's
+// tooltip does.
+type ButtonState struct {
+	Name   string `json:"name"`
+	Wiring string `json:"wiring"`
+	Down   bool   `json:"down"`
 }
 
 // Event is a message from the app that answers no request.
@@ -308,6 +320,16 @@ func (c *Client) TouchDefault(x, y int) error {
 // own coordinates. Points off the panel land on its nearest edge.
 func (c *Client) Pointer(x, y int, down bool) error {
 	return c.Call("pointer", map[string]any{"x": x, "y": y, "down": down}, nil)
+}
+
+// Button presses ("press"), lets go of ("release") or taps ("tap") one of the board's
+// buttons by name. A tap holds the button for ms and returns after the release.
+func (c *Client) Button(name, action string, ms int) error {
+	fields := map[string]any{"name": name, "action": action}
+	if action == "tap" {
+		fields["ms"] = ms
+	}
+	return c.Call("button", fields, nil)
 }
 
 // Quit stops the app and returns once it has gone. A quit that lands just as a restart

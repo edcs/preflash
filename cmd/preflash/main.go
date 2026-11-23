@@ -36,6 +36,8 @@ const usage = `usage: preflash [command] [--project dir]
   trace [--stream x] [--json]       print what firmware does to the hardware and follow it
   trace --save file                 save what the app has kept of that
   hardware [name value] [--json]    show or change the board's hardware and forced failures
+  hardware button <name> press|release|tap [ms]
+                                    press, let go of or tap one of the board's buttons
   crash [--json]                    print the last crash report
   bench [--board file]              time a build and a run on a copy of the project
   check <capture.jsonl> --board name
@@ -213,6 +215,12 @@ func status(args []string) error {
 		fmt.Printf("board rotation %d°\n", s.BoardRotation)
 		fmt.Printf("frames     %d (%d fps)\n", s.Frames, s.FPS)
 		fmt.Printf("wifi       %s\n", s.WiFi)
+		if s.Power != "" {
+			fmt.Printf("power      %s\n", s.Power)
+		}
+		if len(s.Buttons) > 0 {
+			fmt.Printf("buttons    %s\n", buttonsLine(s.Buttons))
+		}
 		if s.SerialPort != "" {
 			fmt.Printf("port       %s\n", s.SerialPort)
 		}
@@ -221,6 +229,18 @@ func status(args []string) error {
 		}
 		return nil
 	})
+}
+
+// buttonsLine names the board's buttons in strip order and says which are down.
+func buttonsLine(buttons []client.ButtonState) string {
+	names := make([]string, len(buttons))
+	for i, b := range buttons {
+		names[i] = b.Name
+		if b.Down {
+			names[i] += " (down)"
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 func serial(args []string) error {

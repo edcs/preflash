@@ -7,17 +7,18 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/edcs/preflash/internal/client"
 )
 
-var traceStreams = []string{"i2c", "gpio", "task", "nvs", "net"}
+var traceStreams = []string{"i2c", "gpio", "task", "nvs", "net", "button"}
 
 func trace(args []string) error {
 	flags, dir := newFlags("trace")
-	stream := flags.String("stream", "", "show one stream: i2c, gpio, task, nvs or net")
+	stream := flags.String("stream", "", "show one stream: i2c, gpio, task, nvs, net or button")
 	asJSON := flags.Bool("json", false, "print JSON")
 	save := flags.String("save", "", "save what the app has kept to this file and stop")
 	if err := noArguments(flags, args); err != nil {
@@ -91,6 +92,9 @@ func hardware(args []string) error {
 	if err != nil {
 		return err
 	}
+	if len(words) > 0 && words[0] == "button" {
+		return pressButton(*dir, words[1:])
+	}
 	if len(words) != 0 && len(words) != 2 {
 		return errors.New("hardware needs a name and a value, or neither")
 	}
@@ -113,6 +117,30 @@ func hardware(args []string) error {
 		}
 		return printHardware(items)
 	})
+}
+
+// pressButton presses, lets go of or taps one of the board's buttons: words are the name, the
+// action and, for a tap, how many milliseconds to hold it, 100 unless given.
+func pressButton(dir string, words []string) error {
+	const usage = "hardware button needs a name and press, release or tap [ms]"
+	if len(words) < 2 || len(words) > 3 {
+		return errors.New(usage)
+	}
+	name, action, ms := words[0], words[1], 100
+	if !slices.Contains([]string{"press", "release", "tap"}, action) {
+		return errors.New(usage)
+	}
+	if len(words) == 3 {
+		if action != "tap" {
+			return fmt.Errorf("only a tap takes a time: %s %s holds until told", name, action)
+		}
+		n, err := strconv.Atoi(words[2])
+		if err != nil || n < 0 {
+			return fmt.Errorf("a tap's ms is a whole number, 0 or more, not %q", words[2])
+		}
+		ms = n
+	}
+	return withApp(dir, func(c *client.Client) error { return c.Button(name, action, ms) })
 }
 
 // appliedLine says whether a change is in force yet.

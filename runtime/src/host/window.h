@@ -6,8 +6,8 @@
 
 // The app's end of the link to its window, which is a process of its own (runtime/window) so
 // that it stays put while the app restarts. The app writes frames into a shared file and tells
-// the window the board and how the device stands. The window sends back touches, turns and a
-// quit.
+// the window the board and how the device stands. The window sends back touches, button
+// presses, turns and a quit.
 namespace preflash {
 struct Board;
 }
@@ -20,8 +20,9 @@ nlohmann::json board_message(const Board& board, const std::string& project,
                              const std::string& frame_path);
 
 // What the app does with one message from the window: a touch goes to touch::pointer, a
-// rotate steps hardware's rotation a quarter, and a quit ends the app. The link's reader
-// thread calls it for each message, and tests can too.
+// button to buttons::set, a hello's held buttons replace what's held, a rotate steps
+// hardware's rotation a quarter, and a quit ends the app. The link's reader thread calls it
+// for each message, and tests can too.
 void handle(const nlohmann::json& message);
 
 // Call on the main thread. Shares the panel's frames and connects to the window at

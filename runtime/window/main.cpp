@@ -319,9 +319,14 @@ int main(int argc, char** argv) {
       greeted = link.connections();
       // The new app never saw the press, so it gets nothing of this drag, not even its end.
       // The app that saw it lets go of it itself when the link drops. Buttons stay held, and
-      // the new app hears which.
+      // the new app hears which: those held here and those the last app said were held, as
+      // by a script, which the strip still shows.
       mouse_held = false;
-      link.send({{"op", "hello"}, {"held", pad.held()}});
+      std::vector<std::string> held = pad.held();
+      for (const std::string& name : device.app_held) {
+        if (std::find(held.begin(), held.end(), name) == held.end()) held.push_back(name);
+      }
+      link.send({{"op", "hello"}, {"held", held}});
     }
 
     if (win.open()) {
