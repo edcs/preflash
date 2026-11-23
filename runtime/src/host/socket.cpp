@@ -307,7 +307,7 @@ void op_button(Connection& c, const json& request, const json& id) {
     reply_error(c, id, "a button's ms is 0 or more");
     return;
   }
-  // A script's hold, so a tap lets go of its own press and leaves the window's alone. A tap
+  // A script's hold, so a tap lets go only of the press it made and leaves the window's alone. A tap
   // whose press restarts the app lets go in the new run, when it would have here.
   const std::string error =
       *action == "tap" ? buttons::tap(*name, *ms, buttons::Owner::Script)

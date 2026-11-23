@@ -323,8 +323,9 @@ func (c *Client) Pointer(x, y int, down bool) error {
 }
 
 // Button presses ("press"), lets go of ("release") or taps ("tap") one of the board's
-// buttons by name. A tap holds the button for ms and returns after the release. Letting go of
-// RST resets the app, which answers before it goes.
+// buttons by name. A tap holds the button for ms and returns after ms, letting go unless the
+// button was already held or the run was cut off. Letting go of RST resets the app, which
+// answers before it goes.
 func (c *Client) Button(name, action string, ms int) error {
 	fields := map[string]any{"name": name, "action": action}
 	if action == "tap" {
