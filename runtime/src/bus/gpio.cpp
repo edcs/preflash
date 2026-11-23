@@ -83,6 +83,17 @@ void settle(int num, Pin* pin) {
   }
 }
 
+// Arming a level interrupt while the pad is already at its level fires at once, as the
+// hardware does: a key held through a restart still reaches firmware that waits on LOW_LEVEL.
+void arm(int num, Pin* pin) {
+  pin->intr_enabled = true;
+  const bool level_type = pin->intr_type == GPIO_INTR_LOW_LEVEL || pin->intr_type == GPIO_INTR_HIGH_LEVEL;
+  if (g_service && pin->handler && level_type && triggers(pin->intr_type, pin->level)) {
+    g_events.push_back(num);
+    g_wake.notify_one();
+  }
+}
+
 void run_isr() {
   preflash::crash::enter_task("gpio_isr");
   std::unique_lock<std::mutex> lock(g_mutex);
@@ -273,7 +284,7 @@ esp_err_t gpio_set_intr_type(gpio_num_t gpio_num, gpio_int_type_t intr_type) {
 esp_err_t gpio_intr_enable(gpio_num_t gpio_num) {
   if (!exists(gpio_num)) return ESP_ERR_INVALID_ARG;
   std::lock_guard<std::mutex> lock(g_mutex);
-  g_pins[gpio_num].intr_enabled = true;
+  arm(gpio_num, &g_pins[gpio_num]);
   return ESP_OK;
 }
 
@@ -316,7 +327,7 @@ esp_err_t gpio_isr_handler_add(gpio_num_t gpio_num, gpio_isr_t isr_handler, void
   Pin& pin = g_pins[gpio_num];
   pin.handler = isr_handler;
   pin.handler_arg = args;
-  pin.intr_enabled = true;
+  arm(gpio_num, &pin);
   return ESP_OK;
 }
 

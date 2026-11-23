@@ -258,3 +258,47 @@ TEST(GpioIsr, FromIsrCallsWorkInAHandler) {
   ASSERT_TRUE(wait_for([] { return notified == 1; }));
   gpio_isr_handler_remove(GPIO_NUM_11);
 }
+
+TEST(GpioIsr, ALowLevelArmedWhileLowFiresOnce) {
+  install_service();
+  button_pin(GPIO_NUM_12, GPIO_INTR_DISABLE);
+  preflash::gpio_write(12, false);  // held before firmware configures it
+  Seen seen;
+  gpio_config_t config = {};
+  config.pin_bit_mask = 1ULL << GPIO_NUM_12;
+  config.mode = GPIO_MODE_INPUT;
+  config.pull_up_en = GPIO_PULLUP_ENABLE;
+  config.intr_type = GPIO_INTR_LOW_LEVEL;
+  ASSERT_EQ(gpio_config(&config), ESP_OK);
+  ASSERT_EQ(gpio_isr_handler_add(GPIO_NUM_12, count_only, &seen), ESP_OK);
+  ASSERT_TRUE(wait_for([&] { return seen.calls == 1; }));
+  settle_quiet();
+  EXPECT_EQ(seen.calls, 1);
+  gpio_isr_handler_remove(GPIO_NUM_12);
+}
+
+TEST(GpioIsr, AnEdgeArmedAtItsLevelStaysQuiet) {
+  install_service();
+  button_pin(GPIO_NUM_13, GPIO_INTR_NEGEDGE);
+  preflash::gpio_write(13, false);
+  Seen seen;
+  ASSERT_EQ(gpio_isr_handler_add(GPIO_NUM_13, count_only, &seen), ESP_OK);
+  settle_quiet();
+  EXPECT_EQ(seen.calls, 0);
+  gpio_isr_handler_remove(GPIO_NUM_13);
+}
+
+TEST(GpioIsr, ReArmingWhileHeldFiresAgain) {
+  install_service();
+  button_pin(GPIO_NUM_14, GPIO_INTR_LOW_LEVEL);
+  preflash::gpio_write(14, false);
+  Seen seen;
+  ASSERT_EQ(gpio_isr_handler_add(GPIO_NUM_14, count_only, &seen), ESP_OK);
+  ASSERT_TRUE(wait_for([&] { return seen.calls == 1; }));
+  ASSERT_EQ(gpio_intr_disable(GPIO_NUM_14), ESP_OK);
+  ASSERT_EQ(gpio_intr_enable(GPIO_NUM_14), ESP_OK);
+  ASSERT_TRUE(wait_for([&] { return seen.calls == 2; }));
+  settle_quiet();
+  EXPECT_EQ(seen.calls, 2);
+  gpio_isr_handler_remove(GPIO_NUM_14);
+}
