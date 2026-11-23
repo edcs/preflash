@@ -236,6 +236,16 @@ TEST_F(Buttons, ATapPressesAndLetsGo) {
   EXPECT_NE(buttons::tap("NOPE", 20, Owner::Script), "");
 }
 
+// A tap of a button its owner already holds does nothing, so it can't let go of that press.
+TEST_F(Buttons, ATapLeavesTheOwnersEarlierPressDown) {
+  ASSERT_EQ(buttons::set("BOOT", true, Owner::Script), "");
+  const auto start = std::chrono::steady_clock::now();
+  EXPECT_EQ(buttons::tap("BOOT", 200, Owner::Script), "");
+  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100));
+  EXPECT_TRUE(buttons::down("BOOT"));
+  EXPECT_EQ(buttons::held_by(Owner::Script), std::vector<std::string>{"BOOT"});
+}
+
 namespace {
 
 // Stands in for power::enter, which cuts taps off once it has the next run's environment.
@@ -287,9 +297,13 @@ TEST_F(Buttons, CuttingTapsWakesOneAlreadyWaiting) {
   for (int i = 0; i < 100 && !buttons::down("BOOT"); ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
+  const bool pressed = buttons::down("BOOT");
+  // Long enough for the tap to be waiting, so that only the wake can end it early.
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
   const auto start = std::chrono::steady_clock::now();
   buttons::cut_taps();
   tapping.join();
+  ASSERT_TRUE(pressed);
   EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(1000));
   EXPECT_EQ(error, "");
   EXPECT_TRUE(buttons::down("BOOT"));
