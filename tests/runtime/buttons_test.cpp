@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -233,4 +234,63 @@ TEST_F(Buttons, ATapPressesAndLetsGo) {
   ASSERT_EQ(buttons::tap("BOOT", 20, Owner::Script), "");
   EXPECT_FALSE(buttons::down("BOOT"));
   EXPECT_NE(buttons::tap("NOPE", 20, Owner::Script), "");
+}
+
+namespace {
+
+// Stands in for power::enter, which cuts taps off once it has the next run's environment.
+// Registered once, as listeners can't be taken away, and on only for the test that wants it.
+std::atomic<bool> g_cut_on_press{false};
+std::string g_env_at_cut;
+
+void cut_on_press() {
+  static const bool registered = [] {
+    buttons::on_change([](const std::string&, bool down) {
+      if (!down || !g_cut_on_press) return;
+      g_env_at_cut = buttons::held_env();
+      buttons::cut_taps();
+    });
+    return true;
+  }();
+  (void)registered;
+}
+
+}  // namespace
+
+// A tap whose press restarts the app answers before the exec, still down, and leaves its
+// release to the next run.
+TEST_F(Buttons, ATapCutOffByARestartAnswersStraightAway) {
+  cut_on_press();
+  g_cut_on_press = true;
+  const auto start = std::chrono::steady_clock::now();
+  const std::string error = buttons::tap("BOOT", 5000, Owner::Script);
+  const auto took = std::chrono::steady_clock::now() - start;
+  g_cut_on_press = false;
+  EXPECT_EQ(error, "");
+  EXPECT_LT(took, std::chrono::milliseconds(1000));
+  EXPECT_TRUE(buttons::down("BOOT"));
+  EXPECT_EQ(g_env_at_cut.rfind("BOOT:script@", 0), 0u) << g_env_at_cut;
+  EXPECT_EQ(buttons::held_env(), g_env_at_cut);
+  // A new run waits out its taps again.
+  unsetenv("PREFLASH_HELD");
+  buttons::load(board_with_buttons());
+  const auto again = std::chrono::steady_clock::now();
+  EXPECT_EQ(buttons::tap("BOOT", 100, Owner::Script), "");
+  EXPECT_GE(std::chrono::steady_clock::now() - again, std::chrono::milliseconds(100));
+  EXPECT_FALSE(buttons::down("BOOT"));
+}
+
+// A tap under way when the run is cut off wakes too.
+TEST_F(Buttons, CuttingTapsWakesOneAlreadyWaiting) {
+  std::string error = "unset";
+  std::thread tapping([&error] { error = buttons::tap("BOOT", 5000, Owner::Script); });
+  for (int i = 0; i < 100 && !buttons::down("BOOT"); ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  const auto start = std::chrono::steady_clock::now();
+  buttons::cut_taps();
+  tapping.join();
+  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(1000));
+  EXPECT_EQ(error, "");
+  EXPECT_TRUE(buttons::down("BOOT"));
 }

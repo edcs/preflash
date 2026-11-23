@@ -49,9 +49,15 @@ nlohmann::json describe();
 // an exec cuts the caller off, and travels in held_env().
 std::string press_until(const std::string& name, Owner owner, int64_t release_at);
 
-// Presses the button, holds it for ms and lets go, returning once it has. An exec part way
-// through leaves the release to the next run, at the same moment.
+// Presses the button, holds it for ms and lets go, returning once it has. A tap that
+// cut_taps wakes returns at once, empty and still down: the exec under way leaves the release
+// to the next run, at the same moment.
 std::string tap(const std::string& name, int ms, Owner owner = Owner::Script);
+
+// Wakes every tap under way, and any that starts after, without letting go: the run is ending,
+// and held_env() has already said when each lets go. power::enter calls it once it has built
+// the next run's environment, so that a tap's caller can still answer. load() puts it back.
+void cut_taps();
 
 // Called after each change, on the thread that made it.
 void on_change(std::function<void(const std::string& name, bool down)> listener);

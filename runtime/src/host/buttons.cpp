@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <mutex>
 #include <optional>
@@ -31,6 +32,9 @@ std::vector<Hold> g_holds;        // each owner's holds, in the order they were 
 std::vector<std::function<void(const std::string&, bool)>> g_listeners;
 // Counts loads, so that a release a load scheduled doesn't outlive the next load.
 uint64_t g_loads = 0;
+// Set by cut_taps, as the run ends, and cleared by load. Taps wait on it, under g_mutex.
+bool g_taps_cut = false;
+std::condition_variable g_taps_wake;
 
 int64_t realtime_ms() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -79,6 +83,7 @@ void load(const Board& board) {
   g_buttons = board.buttons;
   g_held.clear();
   g_holds.clear();
+  g_taps_cut = false;
   const uint64_t this_load = ++g_loads;
   std::vector<Hold> timed;
   const char* env = std::getenv("PREFLASH_HELD");
@@ -187,8 +192,22 @@ std::string tap(const std::string& name, int ms, Owner owner) {
   if (std::string error = press_until(name, owner, realtime_ms() + ms); !error.empty()) {
     return error;
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+  {
+    std::unique_lock<std::mutex> lock(g_mutex);
+    // Cut off: the next run lets go at the deadline held_env() gave it, and this one answers.
+    if (g_taps_wake.wait_for(lock, std::chrono::milliseconds(ms), [] { return g_taps_cut; })) {
+      return "";
+    }
+  }
   return set(name, false, owner);
+}
+
+void cut_taps() {
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_taps_cut = true;
+  }
+  g_taps_wake.notify_all();
 }
 
 bool down(const std::string& name) {

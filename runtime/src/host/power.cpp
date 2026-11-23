@@ -63,8 +63,8 @@ bool has_button(const Board& board, const std::string& name, Button::Kind kind) 
 // What the expander's registers should be in the next run, if it keeps any: the chip's own
 // while the board runs, what download mode was handed, and nothing once the power goes,
 // because a chip with no power starts afresh.
-std::optional<std::string> expander_for(Mode next) {
-  if (next == Mode::Off) return std::nullopt;
+std::optional<std::string> expander_for(Mode next, Reset reason) {
+  if (next == Mode::Off || reason == Reset::PowerCycle) return std::nullopt;
   switch (mode()) {
     case Mode::On:
       return expander_carry();
@@ -132,7 +132,7 @@ std::vector<std::string> env_for(Mode next, Reset reason) {
     env.push_back(std::string(kHeldEnv) + "=" + held);
   }
   env.push_back(std::string(kResetEnv) + "=" + (reason == Reset::Software ? "sw" : "poweron"));
-  if (const std::optional<std::string> expander = expander_for(next)) {
+  if (const std::optional<std::string> expander = expander_for(next, reason)) {
     env.push_back(std::string(kExpanderEnv) + "=" + *expander);
   }
   return env;
@@ -164,6 +164,8 @@ void enter(Mode next, Reset reason) {
   }
   // After everything above has had its say in the environment.
   const std::vector<std::string> env = env_for(next, reason);
+  // Now that held_env() has had its say: a tap under way answers its client before the exec.
+  buttons::cut_taps();
   std::vector<char*> envp;
   for (const std::string& entry : env) envp.push_back(const_cast<char*>(entry.c_str()));
   envp.push_back(nullptr);

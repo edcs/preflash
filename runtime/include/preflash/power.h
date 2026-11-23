@@ -15,8 +15,10 @@ namespace preflash::power {
 
 enum class Mode { On, Off, Download };
 
-// Why the chip last came out of reset, as esp_reset_reason tells firmware.
-enum class Reset { PowerOn, Software };
+// Why the chip last came out of reset, as esp_reset_reason tells firmware. PowerCycle is a
+// power-on reset too, but the power went and came back, as when the AXP2101 restarts the
+// board, so the board's other chips start afresh as well.
+enum class Reset { PowerOn, Software, PowerCycle };
 
 // This run's mode, from PREFLASH_POWER: "off", "download", or anything else for on.
 Mode mode();

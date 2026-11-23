@@ -417,10 +417,26 @@ for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
   sleep 0.1
 done
 expect_in "power      off" "$(pf status --project "$project")"
+# A tap that boots the board, or holds PWR past the AXP2101's 6 s OFFLEVEL, is answered as
+# done, though the app restarts part way through it.
 mark
-pf hardware --project "$project" button PWR tap
+pf hardware --project "$project" button PWR tap 1000 || fail "a tap that powered the board on failed"
 saw "ready on"
 expect_in "power      on" "$(pf status --project "$project")"
+# The first tap's release lands in the new boot, a second after it began. Until then the script
+# still holds PWR, and pressing it again would do nothing.
+for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
+  pf status --project "$project" --json | python3 -I -c '
+import json, sys
+sys.exit(any(b["name"] == "PWR" and b["down"] for b in json.load(sys.stdin)["buttons"]))' && break
+  sleep 0.1
+done
+pf hardware --project "$project" button PWR tap 7000 || fail "a tap that powered the board off failed"
+for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
+  pf status --project "$project" 2>/dev/null | grep -qF "power      off" && break
+  sleep 0.1
+done
+expect_in "power      off" "$(pf status --project "$project")"
 quit
 
 # ---- ESP32-S3-Touch-LCD-3.49-V2, through esp_lcd, with a build of its own

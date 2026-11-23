@@ -60,7 +60,8 @@ class Power : public testing::Test {
   }
 
   static constexpr const char* kNames[] = {"PREFLASH_RESET", "PREFLASH_POWER", "PREFLASH_HELD",
-                                           "PREFLASH_RESTARTED", "PREFLASH_EXPANDER"};
+                                           "PREFLASH_RESTARTED", "PREFLASH_EXPANDER",
+                                           "PREFLASH_RTC_CARRY"};
   std::vector<std::optional<std::string>> saved_;
 };
 
@@ -273,4 +274,23 @@ TEST_F(Power, SwitchingGoesThroughTheTestsStandIn) {
   ASSERT_TRUE(seen.has_value());
   EXPECT_EQ(seen->first, Mode::Off);
   EXPECT_EQ(seen->second, Reset::PowerOn);
+}
+
+// The AXP2101 restarting the board in place of a power-off cycles the rails, so the expander
+// starts afresh, though the chip sees a power-on reset as for RST.
+TEST_F(Power, APowerCycleDropsTheExpandersPins) {
+  preflash::expander_power_on();
+  preflash::expander_set_outputs(kHoldBit, kHoldBit);
+  const std::vector<std::string> env = power::env_for(Mode::On, Reset::PowerCycle);
+  EXPECT_FALSE(names(env, "PREFLASH_EXPANDER"));
+  EXPECT_TRUE(has(env, "PREFLASH_RESET=poweron"));
+  EXPECT_TRUE(has(env, "PREFLASH_POWER=on"));
+  preflash::expander_power_on();
+}
+
+// The RTC runs on its own cell, so its time passes through an off run untouched.
+TEST_F(Power, TheRtcKeepsTimeWhileOff) {
+  setenv("PREFLASH_POWER", "off", 1);
+  setenv("PREFLASH_RTC_CARRY", "1762300000:0", 1);
+  EXPECT_TRUE(has(power::env_for(Mode::On, Reset::PowerOn), "PREFLASH_RTC_CARRY=1762300000:0"));
 }

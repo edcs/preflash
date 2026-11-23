@@ -85,7 +85,11 @@ void tick_forever() {
       if (!g_live.empty()) next = g_live.back()->tick();
     }
     // Outside the lock and on this thread, which holds nothing enter needs.
-    if (next) power::switch_to(*next, power::Reset::PowerOn);
+    // A restart in place of power-off cycles the rails: a power-on reset for every chip.
+    if (next) {
+      power::switch_to(*next, *next == power::Mode::On ? power::Reset::PowerCycle
+                                                        : power::Reset::PowerOn);
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(power::kPowerPollMs));
   }
 }
