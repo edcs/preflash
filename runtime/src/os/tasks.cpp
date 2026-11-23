@@ -174,6 +174,7 @@ BaseType_t xTaskNotifyGive(TaskHandle_t task) {
 }
 
 void vTaskNotifyGiveFromISR(TaskHandle_t task, BaseType_t* task_woken) {
+  if (!task) preflash_unsupported("vTaskNotifyGiveFromISR", "the task handle is null");
   if (task_woken) *task_woken = pdFALSE;
   xTaskNotifyGive(task);
 }
