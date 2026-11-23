@@ -70,10 +70,9 @@ bool has_chip(const Board& board, const char* chip) {
 
 std::vector<Item> items_for(const Board& board) {
   std::vector<Item> items;
-  if (has_chip(board, "qmi8658")) {
-    items.push_back({"rotation", "Rotation", "", true,
-                     {{"0", "0°"}, {"90", "90°"}, {"180", "180°"}, {"270", "270°"}}});
-  }
+  // Every board, as the window turns with or without a motion sensor to report it.
+  items.push_back({"rotation", "Rotation", "", true,
+                   {{"0", "0°"}, {"90", "90°"}, {"180", "180°"}, {"270", "270°"}}});
   if (has_chip(board, "axp2101")) {
     items.push_back({"usb", "USB power", "", true, {{"plugged", "plugged in"}, {kUnplugged, kUnplugged}}});
     items.push_back({"battery", "Battery", "", true,

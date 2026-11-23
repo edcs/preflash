@@ -11,6 +11,8 @@
 #include <vector>
 
 #include "host/window.h"
+#include "preflash/board.h"
+#include "preflash/hardware.h"
 #include "preflash/touch.h"
 #include "window/link.h"
 #include "winlink/backlight.h"
@@ -175,4 +177,18 @@ TEST(WindowInput, ATouchFromTheWindowClampsLikePointer) {
   EXPECT_EQ(e->y, 7);  // the suite's board is 16 by 8
   EXPECT_TRUE(e->down);
   EXPECT_FALSE(preflash::touch::pop());
+}
+
+// Rotate steps the board's own rotation, a quarter each way, round past 0 and 270.
+TEST(WindowInput, RotateStepsTheBoardsRotation) {
+  preflash::hardware::load(preflash::Board{});
+  preflash::window::handle({{"op", "rotate"}, {"by", 90}});
+  EXPECT_EQ(preflash::hardware::rotation(), 90);
+  preflash::window::handle({{"op", "rotate"}, {"by", -90}});
+  preflash::window::handle({{"op", "rotate"}, {"by", -90}});
+  EXPECT_EQ(preflash::hardware::rotation(), 270);
+  preflash::window::handle({{"op", "rotate"}, {"by", 45}});  // not a quarter: ignored
+  EXPECT_EQ(preflash::hardware::rotation(), 270);
+  preflash::window::handle({{"op", "rotate"}, {"by", 90}});
+  EXPECT_EQ(preflash::hardware::rotation(), 0);
 }

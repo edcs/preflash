@@ -113,7 +113,6 @@ TEST_F(Hardware, ABoardShowsOnlyWhatItsChipsCanDo) {
   Board board{};
   board.i2c = {{"pcf85063", kRtc, 0}, {"axs15231b", 0x3b, 1}};
   hardware::load(board);
-  EXPECT_TRUE(item("rotation").is_null());
   EXPECT_TRUE(item("usb").is_null());
   EXPECT_TRUE(item("battery").is_null());
   EXPECT_TRUE(item("motion").is_null());
@@ -122,6 +121,18 @@ TEST_F(Hardware, ABoardShowsOnlyWhatItsChipsCanDo) {
   const json i2c = item("i2c");
   for (const json& option : i2c["options"]) touch = touch || option["label"] == "NACK AXS15231B";
   EXPECT_TRUE(touch);
+}
+
+// The window turns with no sensor to report it.
+TEST_F(Hardware, EveryBoardCanTurn) {
+  Board board{};
+  board.i2c = {{"pcf85063", kRtc, 0}};
+  hardware::load(board);
+  EXPECT_EQ(item("rotation")["value"], "0");
+  EXPECT_EQ(hardware::set("rotation", "90"), "");
+  EXPECT_EQ(hardware::rotation(), 90);
+  hardware::load(Board{});
+  EXPECT_FALSE(item("rotation").is_null());
 }
 
 TEST_F(Hardware, UnknownNamesAndValuesSaySo) {

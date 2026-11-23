@@ -36,7 +36,9 @@ file(GLOB_RECURSE RUNTIME_SOURCES CONFIGURE_DEPENDS ${RUNTIME_DIR}/src/*.cpp)
 list(FILTER RUNTIME_SOURCES EXCLUDE REGEX "/src/host/(main|sdl_audio)\\.cpp$")
 list(APPEND RUNTIME_SOURCES ${RUNTIME_DIR}/replay/no_sdl_audio.cpp)
 # The window process's socket server has no SDL in it, so the suite builds it.
-list(APPEND RUNTIME_SOURCES ${RUNTIME_DIR}/window/link.cpp)
+# Nor do its layout and buttons held.
+list(APPEND RUNTIME_SOURCES ${RUNTIME_DIR}/window/link.cpp ${RUNTIME_DIR}/window/layout.cpp
+     ${RUNTIME_DIR}/window/pad.cpp)
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp)
 
 # The runtime is compiled once and shared by the tests and the restart helper.
