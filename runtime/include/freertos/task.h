@@ -38,6 +38,7 @@ TaskHandle_t xTaskGetCurrentTaskHandle(void);
 char* pcTaskGetName(TaskHandle_t task);
 
 BaseType_t xTaskNotifyGive(TaskHandle_t task);
+void vTaskNotifyGiveFromISR(TaskHandle_t task, BaseType_t* task_woken);
 uint32_t ulTaskNotifyTake(BaseType_t clear_count_on_exit, TickType_t ticks_to_wait);
 
 #ifdef __cplusplus
