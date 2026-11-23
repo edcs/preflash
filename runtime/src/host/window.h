@@ -9,7 +9,8 @@
 namespace preflash::window {
 
 // What the app does with one message from the window: a touch goes to touch::pointer, a
-// rotate steps hardware's rotation a quarter, and a quit ends the app. The link's reader thread calls it for each message, and tests can too.
+// rotate steps hardware's rotation a quarter, and a quit ends the app. The link's reader
+// thread calls it for each message, and tests can too.
 void handle(const nlohmann::json& message);
 
 // Call on the main thread. Shares the panel's frames and connects to the window at

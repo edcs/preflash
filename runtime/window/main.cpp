@@ -332,6 +332,9 @@ int main(int argc, char** argv) {
             if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
                 e.window.event == SDL_WINDOWEVENT_LEAVE) {
               let_go_of_everything();
+              // A drag whose mouse-up never comes would leave the firmware touched.
+              if (mouse_held) send_touch(mouse_x, mouse_y, false);
+              mouse_held = false;
               if (e.window.event == SDL_WINDOWEVENT_LEAVE) mouse_in = false;
               break;
             }

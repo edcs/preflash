@@ -268,7 +268,7 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 | Command | What it does |
 | --- | --- |
 | `preflash send <line...>` | Sends a line to the firmware's console and returns without waiting for it to run. Put `--project` before the line |
-| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, rotation, frames, fps, Wi-Fi state and serial port |
+| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, rotation (LVGL's), board rotation (the way the board is turned), frames, fps, Wi-Fi state and serial port |
 | `preflash serial` | Prints the serial stream, starting with what this boot has kept (up to 256 KiB), and follows it through restarts until the app stops |
 | `preflash port` | Prints the virtual serial port's path |
 | `preflash shot <file.png\|file.bmp>` | Saves what the panel shows |
