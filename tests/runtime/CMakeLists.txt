@@ -39,7 +39,7 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp)
 # The runtime is compiled once and shared by the tests and the restart helper.
 # Firmware gets these from sdkconfig.h; the suite has none, so it says so here.
 add_library(runtime_objs OBJECT ${RUNTIME_SOURCES})
-target_include_directories(runtime_objs PUBLIC ${RUNTIME_DIR}/include)
+target_include_directories(runtime_objs PUBLIC ${RUNTIME_DIR}/include ${RUNTIME_DIR}/src)
 target_compile_definitions(runtime_objs PUBLIC CONFIG_FREERTOS_HZ=1000
                            CONFIG_ESP_TASK_WDT_INIT=1 CONFIG_ESP_TASK_WDT_TIMEOUT_S=5)
 find_package(CURL REQUIRED)
