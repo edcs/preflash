@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -181,6 +182,8 @@ TEST(WindowInput, ATouchFromTheWindowClampsLikePointer) {
 
 // Rotate steps the board's own rotation, a quarter each way, round past 0 and 270.
 TEST(WindowInput, RotateStepsTheBoardsRotation) {
+  // No saved faults, from an earlier test or the environment, to start from or write to.
+  unsetenv("PREFLASH_STATE");
   preflash::hardware::load(preflash::Board{});
   preflash::window::handle({{"op", "rotate"}, {"by", 90}});
   EXPECT_EQ(preflash::hardware::rotation(), 90);
