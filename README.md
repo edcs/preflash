@@ -279,6 +279,8 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 
 `preflash crash`, `preflash bench` and `preflash check` need no running app. With no app running, the others say so and exit 1.
 
+A client that talks to the socket directly can do two things the command line can't. It can send `pointer` with `x`, `y` and `down`, in the panel's own coordinates, for each press, move and release of a drag. And it can `subscribe` to `frames` to hear when each frame finishes: the event carries the frame's number, and the `frame` op then fetches its pixels. A client that falls behind skips frames instead of queuing them.
+
 This script opens the demo's Power page and saves it. The numbers are the middle of the Power tile, from the layout in [`page_home.cpp`](examples/demo/main/ui/page_home.cpp):
 
 ```sh
