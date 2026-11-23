@@ -29,7 +29,7 @@ class Link {
   // False if no app is connected, or its connection can't take more than it has backed up.
   bool send(const nlohmann::json& message);
   bool connected() const { return client_ >= 0; }
-  // How many apps have connected so far, so that a caller can greet each one.
+  // How many apps have connected so far. on_connect is where a caller greets each one.
   uint64_t connections() const { return connections_; }
   // Now while an app is connected, otherwise when the last one dropped, or when listening started
   // if none has connected.
