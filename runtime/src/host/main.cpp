@@ -20,6 +20,7 @@
 #include "preflash/hardware.h"
 #include "preflash/panel.h"
 #include "preflash/port.h"
+#include "preflash/power.h"
 #include "preflash/serial.h"
 #include "preflash/socket.h"
 #include "preflash/touch.h"
@@ -94,16 +95,21 @@ int main() {
   // without a zombie left behind.
   signal(SIGCHLD, SIG_IGN);
 
+  // Off and download mode run no firmware, but answer as the board would: the window, the
+  // socket and the console stay, and the serial port hangs up.
+  const preflash::power::Mode mode = preflash::power::mode();
+  const bool running = mode == preflash::power::Mode::On;
   try {
     // Before the chips, which read it as they start.
     preflash::hardware::load(preflash::board());
-    preflash::attach_chips(preflash::board());
+    if (running) preflash::attach_chips(preflash::board());
     // Before firmware reads a pin, so that a button held through a restart is down at boot.
     preflash::buttons::load(preflash::board());
   } catch (const std::exception& e) {
     std::fprintf(stderr, "preflash: %s\n", e.what());
     return 1;
   }
+  preflash::power::watch_reset(preflash::board());
 
   const char* headless_env = std::getenv("PREFLASH_HEADLESS");
   const bool headless = headless_env && std::strcmp(headless_env, "1") == 0;
@@ -118,7 +124,8 @@ int main() {
 
   // After the window, whose failures print straight to the terminal.
   if (!preflash::serial::start()) preflash::socket::leave(1);
-  if (const std::string forced = preflash::hardware::forced_summary(); !forced.empty()) {
+  const std::string forced = running ? preflash::hardware::forced_summary() : "";
+  if (!forced.empty()) {
     preflash::serial::notice("preflash: forced on this boot: " + forced + "\n");
   }
   // Tracing doesn't stop for a restart, so a client can see the boot it comes back to.
@@ -130,7 +137,11 @@ int main() {
   preflash::add_control("quit", [](std::vector<std::string>) { preflash::socket::quit(); });
   // After the stream, so that the toolbar's reader hears any trouble with it, and after the
   // controls, because a restart can leave a quit waiting in the terminal.
-  preflash::port::start();
+  if (running) {
+    preflash::port::start();
+  } else {
+    preflash::port::let_go();
+  }
   if (!preflash::start_console_reader()) {
     std::fprintf(stderr, "preflash: couldn't start the console task\n");
     preflash::socket::leave(1);
@@ -141,7 +152,12 @@ int main() {
     preflash::socket::leave(1);
   }
 
-  if (xTaskCreate(main_task, "main", kMainTaskStack, nullptr, kMainTaskPriority, nullptr) != pdPASS) {
+  if (mode == preflash::power::Mode::Download) {
+    // What the ROM says when GPIO0 is low as the chip comes out of an EN reset.
+    std::printf("rst:0x1 (POWERON),boot:0x0 (DOWNLOAD(USB/UART0))\nwaiting for download\n");
+    std::fflush(stdout);
+  } else if (running && xTaskCreate(main_task, "main", kMainTaskStack, nullptr, kMainTaskPriority,
+                                    nullptr) != pdPASS) {
     std::fprintf(stderr, "preflash: couldn't start the main task\n");
     preflash::socket::leave(1);
   }

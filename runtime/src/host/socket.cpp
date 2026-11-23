@@ -36,6 +36,7 @@
 #include "preflash/net.h"
 #include "preflash/panel.h"
 #include "preflash/port.h"
+#include "preflash/power.h"
 #include "preflash/serial.h"
 #include "preflash/storage.h"
 #include "preflash/tasks.h"
@@ -134,6 +135,7 @@ void op_status(Connection& c, const json&, const json& id) {
             {"width", board().width},
             {"height", board().height},
             {"pid", getpid()},
+            {"power", power::name(power::mode())},
             {"uptime_ms", esp_timer_get_time() / 1000},
             {"backlight", panel::brightness()},
             {"rotation", panel::rotation()},

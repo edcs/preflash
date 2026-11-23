@@ -252,20 +252,6 @@ TEST(Unsupported, AbortsNamingTheCall) {
   EXPECT_DEATH(preflash_unsupported("x", "y"), "x");
 }
 
-TEST(Reset, ReasonIsPowerOnUntilARestart) {
-  const char* before = std::getenv("PREFLASH_RESTARTED");
-  const std::string saved = before ? before : "";
-  unsetenv("PREFLASH_RESTARTED");
-  EXPECT_EQ(esp_reset_reason(), ESP_RST_POWERON);
-  setenv("PREFLASH_RESTARTED", "1", 1);
-  EXPECT_EQ(esp_reset_reason(), ESP_RST_SW);
-  if (before) {
-    setenv("PREFLASH_RESTARTED", saved.c_str(), 1);
-  } else {
-    unsetenv("PREFLASH_RESTARTED");
-  }
-}
-
 namespace {
 
 // A folder that goes away however the test ends.

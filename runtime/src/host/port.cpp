@@ -324,6 +324,23 @@ void start() {
   }
 }
 
+void let_go() {
+  if (take_over()) {
+    std::strncpy(g_device, ptsname(g_master), sizeof g_device - 1);
+    // The links point at the old port only if this one is it, which remove_links checks.
+    const char* links[kLinks] = {std::getenv(kLinkEnv), std::getenv(kExtraLinkEnv)};
+    for (int slot = 0; slot < kLinks; ++slot) {
+      if (links[slot]) std::strncpy(g_links[slot], links[slot], sizeof g_links[slot] - 1);
+    }
+    remove_links();
+    hang_up();
+    g_master = g_slave = -1;
+    g_device[0] = '\0';
+    for (char* link : g_links) link[0] = '\0';
+  }
+  unsetenv(kFdsEnv);
+}
+
 void write(const char* data, size_t size) {
   if (!g_writing) return;
   Queue& q = queue();

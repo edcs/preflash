@@ -43,6 +43,11 @@ class LineSplitter {
 // message on stderr, and the firmware runs on.
 void start();
 
+// Instead of start, for a board that's off or in download mode: hangs up the port a restart
+// left, as unplugging the board would, and removes its links, as a quit does. The next boot
+// that starts the port makes a new one.
+void let_go();
+
 // Queues output for the terminal. Never waits: past the queue's limit the oldest output
 // goes, because with nobody attached the terminal fills and stays full.
 void write(const char* data, size_t size);
