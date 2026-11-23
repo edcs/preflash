@@ -335,6 +335,8 @@ int main(int argc, char** argv) {
               // A drag whose mouse-up never comes would leave the firmware touched.
               if (mouse_held) send_touch(mouse_x, mouse_y, false);
               mouse_held = false;
+              // Nor may a missed mouse-up leave Rotate armed for a later one.
+              rotate_armed = false;
               if (e.window.event == SDL_WINDOWEVENT_LEAVE) mouse_in = false;
               break;
             }
