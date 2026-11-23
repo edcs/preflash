@@ -140,8 +140,11 @@ void load(const Board& board) {
 
 namespace {
 
+// *moved, if given, says whether the owner's hold changed: false when it already held the
+// button down, or had already let go.
 std::string change(const std::string& name, bool down, Owner owner,
-                   std::optional<int64_t> release_at) {
+                   std::optional<int64_t> release_at, bool* moved = nullptr) {
+  if (moved) *moved = false;
   std::vector<std::function<void(const std::string&, bool)>> listeners;
   std::string wiring_text;
   {
@@ -150,6 +153,7 @@ std::string change(const std::string& name, bool down, Owner owner,
                                      [&name](const Button& b) { return b.name == name; });
     if (button == g_buttons.end()) return no_such_button(name);
     if (holds(name, owner) == down) return "";
+    if (moved) *moved = true;
     if (down) {
       g_holds.push_back({name, owner, release_at});
     } else {
@@ -189,9 +193,14 @@ std::string press_until(const std::string& name, Owner owner, int64_t release_at
 
 std::string tap(const std::string& name, int ms, Owner owner) {
   // The deadline goes in with the press, before any listener can start an exec.
-  if (std::string error = press_until(name, owner, realtime_ms() + ms); !error.empty()) {
+  bool pressed = false;
+  if (std::string error = change(name, true, owner, realtime_ms() + ms, &pressed);
+      !error.empty()) {
     return error;
   }
+  // The owner already held it down, by a press or a tap under way: that hold isn't this tap's
+  // to let go of.
+  if (!pressed) return "";
   {
     std::unique_lock<std::mutex> lock(g_mutex);
     // Cut off: the next run lets go at the deadline held_env() gave it, and this one answers.
