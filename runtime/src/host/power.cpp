@@ -248,7 +248,7 @@ void set_enter_for_test(std::function<void(Mode, Reset)> stand_in) {
   g_stand_in = std::move(stand_in);
 }
 
-void watch_power(const Board& board) {
+void listen_power(const Board& board) {
   const Mode now = mode();
   if (now == Mode::Download) return;
   buttons::on_change([board, now](const std::string& name, bool down) {
@@ -264,6 +264,10 @@ void watch_power(const Board& board) {
     }
     if (axp2101) axp2101_pwron(down);
   });
+}
+
+void watch_power(const Board& board) {
+  if (mode() == Mode::Download) return;
   const Button* key = power_key(board);
   if (!key) return;
   try {

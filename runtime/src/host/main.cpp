@@ -114,6 +114,8 @@ int main() {
   }
   const bool running = mode == preflash::power::Mode::On;
   preflash::power::watch_reset(preflash::board());
+  // Before the window, whose hello can carry a press of PWR made while the app re-ran.
+  preflash::power::listen_power(preflash::board());
 
   const char* headless_env = std::getenv("PREFLASH_HEADLESS");
   const bool headless = headless_env && std::strcmp(headless_env, "1") == 0;
@@ -156,7 +158,8 @@ int main() {
     preflash::socket::leave(1);
   }
 
-  // Once the socket and the stream are up for enter to tell, and before the firmware starts.
+  // Once the socket and the stream are up for enter to tell, and before the firmware starts:
+  // the circuit, unlike a press, can wait.
   preflash::power::watch_power(preflash::board());
 
   if (mode == preflash::power::Mode::Download) {
