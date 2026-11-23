@@ -213,6 +213,29 @@ quit() {
   [ "$app_status" -eq 0 ] || fail "the app quit with status $app_status" "$(cat "$app_log")"
 }
 
+# Waits for status to say the board's power is on or off, and for the app to survive it.
+wait_power() {
+  local tenths
+  for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
+    pf status --project "$project" 2>/dev/null | grep -qF "power      $1" && break
+    kill -0 "$app_pid" 2>/dev/null || fail "the app ended while waiting for power $1" "$(cat "$app_log")"
+    sleep 0.1
+  done
+  expect_in "power      $1" "$(pf status --project "$project")"
+}
+
+# Waits until no script is still holding PWR.
+wait_pwr_up() {
+  local tenths
+  for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
+    pf status --project "$project" --json | python3 -I -c '
+import json, sys
+sys.exit(any(b["name"] == "PWR" and b["down"] for b in json.load(sys.stdin)["buttons"]))' && return 0
+    sleep 0.1
+  done
+  fail "PWR stayed down" "$(pf status --project "$project" --json)"
+}
+
 # Force a failure and see it on the faults page, then put it back.
 forced() {
   local name="$1" setting="$2" healthy="$3" expected="$4"
@@ -408,15 +431,44 @@ crash_with "crash abort" "abort" "mishaps.cpp"
 crash_with "crash check" "ESP_ERR_INVALID_STATE" "mishaps.cpp"
 crash_with "hang" "watchdog" "monitor"
 
-# Turning off through the power chip leaves the board off and the app up, and PWR turns it on.
 boot
+# BOOT is counted by a pin interrupt. A tap goes up by one, and the task reports it.
+buttons_field() {
+  mark
+  pf send --project "$project" buttons
+  saw "boot_presses="
+  tail -n "+$((marked + 1))" "$app_log" | grep -oE "$1=[0-9a-z]+" | head -n 1 | cut -d= -f2
+}
+[ "$(buttons_field boot_presses)" = 0 ] || fail "BOOT has been pressed already" "$(cat "$app_log")"
+mark
+pf hardware --project "$project" button BOOT tap
+saw "buttons: BOOT pressed, 1 so far"
+[ "$(buttons_field boot_presses)" = 1 ] || fail "a tap of BOOT didn't count once" "$(tail -n 20 "$app_log")"
+mark
+pf send --project "$project" buttons
+saw "boot=up"
+
+# A short press of PWR is a tap to the AXP2101. A hold past IRQLEVEL raises its long-press
+# interrupt, and the firmware chooses to switch the board off through the chip.
+mark
+pf hardware --project "$project" button PWR tap 200
+saw "buttons: PWR tapped, 1 so far"
+mark
+pf hardware --project "$project" button PWR tap 3000 || fail "a hold that switched the board off failed"
+saw "buttons: turning off"
+wait_power off
+wait_pwr_up
+# PWR boots it again.
+mark
+pf hardware --project "$project" button PWR tap || fail "a tap that powered the board on failed"
+saw "ready on"
+expect_in "power      on" "$(pf status --project "$project")"
+wait_pwr_up
+
+# Turning off through the power chip leaves the board off and the app up, and PWR turns it on.
 pf send --project "$project" poweroff
-for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
-  pf status --project "$project" 2>/dev/null | grep -qF "power      off" && break
-  kill -0 "$app_pid" 2>/dev/null || fail "poweroff ended the app" "$(cat "$app_log")"
-  sleep 0.1
-done
-expect_in "power      off" "$(pf status --project "$project")"
+wait_power off
+kill -0 "$app_pid" 2>/dev/null || fail "poweroff ended the app" "$(cat "$app_log")"
 # A tap that boots the board, or holds PWR past the AXP2101's 6 s OFFLEVEL, is answered as
 # done, though the app restarts part way through it.
 mark
@@ -425,18 +477,13 @@ saw "ready on"
 expect_in "power      on" "$(pf status --project "$project")"
 # The first tap's release lands in the new boot, a second after it began. Until then the script
 # still holds PWR, and pressing it again would do nothing.
-for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
-  pf status --project "$project" --json | python3 -I -c '
-import json, sys
-sys.exit(any(b["name"] == "PWR" and b["down"] for b in json.load(sys.stdin)["buttons"]))' && break
-  sleep 0.1
-done
+wait_pwr_up
+# The firmware would switch off at IRQLEVEL, so stop it, and the chip's own OFFLEVEL acts.
+mark
+pf send --project "$project" buttons pwr-hold off
+saw "pwr-hold=off"
 pf hardware --project "$project" button PWR tap 7000 || fail "a tap that powered the board off failed"
-for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
-  pf status --project "$project" 2>/dev/null | grep -qF "power      off" && break
-  sleep 0.1
-done
-expect_in "power      off" "$(pf status --project "$project")"
+wait_power off
 quit
 
 # ---- ESP32-S3-Touch-LCD-3.49-V2, through esp_lcd, with a build of its own

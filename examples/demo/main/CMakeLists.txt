@@ -1,6 +1,7 @@
 set(srcs
     app_main.cpp
     audio.cpp
+    buttons.cpp
     console.cpp
     i2c_chip.cpp
     monitor.cpp

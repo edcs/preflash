@@ -7,6 +7,7 @@
 
 #include "audio.h"
 #include "board.h"
+#include "buttons.h"
 #include "esp_console.h"
 #include "esp_system.h"
 #include "mishaps.h"
@@ -149,6 +150,25 @@ int poweroff_command(int, char**) {
   return 0;
 }
 
+int buttons_command(int argc, char** argv) {
+  if (argc == 3 && std::strcmp(argv[1], "pwr-hold") == 0) {
+    const bool on = std::strcmp(argv[2], "on") == 0;
+    if (!on && std::strcmp(argv[2], "off") != 0) return fail("usage: buttons [pwr-hold on|off]");
+    buttons::set_hold_turns_off(on);
+    std::printf("pwr-hold=%s\n", on ? "on" : "off");
+    return 0;
+  }
+  if (argc != 1) return fail("usage: buttons [pwr-hold on|off]");
+  const buttons::State now = buttons::latest();
+  std::printf("boot=%s boot_presses=%lu\n", now.boot_down ? "down" : "up",
+              static_cast<unsigned long>(now.boot_presses));
+  if (now.has_power_key) {
+    std::printf("pwr_taps=%lu pwr_holds=%lu pwr-hold=%s\n", static_cast<unsigned long>(now.power_taps),
+                static_cast<unsigned long>(now.power_holds), now.hold_turns_off ? "on" : "off");
+  }
+  return 0;
+}
+
 int crash_command(int argc, char** argv) {
   const char* how = argc == 2 ? argv[1] : "null";
   if (std::strcmp(how, "null") == 0) mishaps::null_read();
@@ -207,6 +227,7 @@ void start() {
   add("update", "Checks for a newer version", update_command);
   add("restart", "Restarts the app", restart_command);
   add("poweroff", "Turns the board off through its power chip", poweroff_command);
+  add("buttons", "Shows the keys, or pwr-hold on|off sets what holding PWR does", buttons_command);
   add("crash", "Crashes on purpose: null, abort or check", crash_command);
   add("hang", "Stops feeding the watchdog", hang_command);
   add("spew", "Prints many bytes, to measure the serial stream", spew_command);
