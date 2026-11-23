@@ -79,8 +79,9 @@ Key take_key() {
   if (g_chip.read(kIrqStatus1, &status, 1) != ESP_OK) return Key::none;
   const uint8_t seen = status & (kKeyShort | kKeyLong);
   if (!seen) return Key::none;
-  // A bit clears when 1 is written to it.
-  g_chip.write(kIrqStatus1, seen);
+  // A bit clears when 1 is written to it. Until the clear lands the bit stays up, so the key
+  // is reported once that write succeeds, and the next poll tries again if it doesn't.
+  if (g_chip.write(kIrqStatus1, seen) != ESP_OK) return Key::none;
   return (seen & kKeyLong) ? Key::hold : Key::tap;
 }
 
