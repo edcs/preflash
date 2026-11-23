@@ -371,6 +371,12 @@ func TestButtonNamesAreShortAndPlain(t *testing.T) {
 	}
 }
 
+func TestAPowerHoldPinMustExist(t *testing.T) {
+	_, err := Load(writeBoard(t, buttonBoardHead+"buttons:\n  - {name: P, power: {key: gpio16, active_low: true, hold: gpio99}}\n"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `buttons: P: power.hold "gpio99" is out of range`)
+}
+
 func TestButtonNamesAreUnique(t *testing.T) {
 	_, err := Load(writeBoard(t, buttonBoardHead+"buttons:\n  - {name: A, reset: en}\n  - {name: A, gpio: gpio0, active_low: true}\n"))
 	require.Error(t, err)

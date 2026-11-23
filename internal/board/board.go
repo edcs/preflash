@@ -608,8 +608,11 @@ func readPowerKey(name string, raw any) (*PowerKey, error) {
 	}
 	p := &PowerKey{Key: key, ActiveLow: low}
 	hold, _ := m["hold"].(string)
-	if g := pinPattern.FindStringSubmatch(hold); g != nil {
-		pin, _ := strconv.Atoi(g[1])
+	if pinPattern.MatchString(hold) {
+		pin, err := parsePin(name, "power.hold", hold)
+		if err != nil {
+			return nil, err
+		}
 		p.HoldGPIO = &pin
 	} else if e := expanderRefPattern.FindStringSubmatch(hold); e != nil {
 		bit, _ := strconv.Atoi(e[1])
