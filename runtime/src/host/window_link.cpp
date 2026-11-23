@@ -214,13 +214,48 @@ int as_int(const json& m, const char* key) {
   return it != m.end() && it->is_number() ? it->get<int>() : 0;
 }
 
+// What the window last did with the pointer, so that a press it never ended can be let go.
+// Only the reader thread of the current connection touches it.
+struct Pointer {
+  bool pressed = false;
+  int x = 0;
+  int y = 0;
+} g_pointer;
+
+}  // namespace
+
+void handle(const json& message) {
+  const auto op = message.find("op");
+  if (op == message.end() || !op->is_string()) return;
+  const std::string name = op->get<std::string>();
+  if (name == "touch") {
+    const auto down = message.find("down");
+    g_pointer.x = as_int(message, "x");
+    g_pointer.y = as_int(message, "y");
+    g_pointer.pressed = down != message.end() && down->is_boolean() && down->get<bool>();
+    touch::pointer(g_pointer.x, g_pointer.y, g_pointer.pressed);
+  } else if (name == "quit") {
+    socket::quit();
+  } else if (name == "hello") {
+    // Which buttons the window holds, of which there are none until boards have buttons.
+    const auto held = message.find("held");
+    if (held != message.end() && held->is_array() && !held->empty()) {
+      std::fprintf(stderr, "preflash: the window holds buttons, which this app can't press\n");
+    }
+  } else if (name == "button" || name == "rotate") {
+    std::fprintf(stderr, "preflash: the window sent %s, which this app can't do yet\n",
+                 name.c_str());
+  }
+}
+
+namespace {
+
 // The window's messages, on a thread of its own, for one connection. A press the window
 // started and this connection never ended is let go, so that firmware isn't left held down.
 void read_link(int fd) {
   std::string in;
-  bool pressed = false;
-  touch::Event last{0, 0, false};
   char chunk[4096];
+  g_pointer = {};
   for (;;) {
     const ssize_t got = read(fd, chunk, sizeof chunk);
     if (got < 0 && errno == EINTR) continue;
@@ -229,32 +264,13 @@ void read_link(int fd) {
     size_t start = 0;
     for (size_t nl; (nl = in.find('\n', start)) != std::string::npos; start = nl + 1) {
       const auto message = winlink::decode_line(in.substr(start, nl - start));
-      if (!message) continue;
-      const std::string op = (*message)["op"].get<std::string>();
-      if (op == "touch") {
-        const auto down = message->find("down");
-        last = {std::clamp(as_int(*message, "x"), 0, board().width - 1),
-                std::clamp(as_int(*message, "y"), 0, board().height - 1),
-                down != message->end() && down->is_boolean() && down->get<bool>()};
-        pressed = last.down;
-        if (!crash::happened()) touch::push(last);  // nothing will read it otherwise
-      } else if (op == "quit") {
-        socket::quit();
-      } else if (op == "hello") {
-        // Which buttons the window holds, of which there are none until boards have buttons.
-        const auto held = message->find("held");
-        if (held != message->end() && held->is_array() && !held->empty()) {
-          std::fprintf(stderr, "preflash: the window holds buttons, which this app can't press\n");
-        }
-      } else if (op == "button" || op == "rotate") {
-        std::fprintf(stderr, "preflash: the window sent %s, which this app can't do yet\n",
-                     op.c_str());
-      }
+      if (message) handle(*message);
     }
     in.erase(0, start);
     if (in.size() > kLongestLine) in.clear();
   }
-  if (pressed && !crash::happened()) touch::push({last.x, last.y, false});
+  if (g_pointer.pressed) touch::pointer(g_pointer.x, g_pointer.y, false);
+  g_pointer = {};
   g_dropped = true;
 }
 

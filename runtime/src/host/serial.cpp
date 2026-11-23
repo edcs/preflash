@@ -304,9 +304,21 @@ void Outbox::push_trace(std::string line) {
   ready_.notify_one();
 }
 
+void Outbox::push_frame(uint64_t frame) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_) return;
+    if (!frame_waiting_) forget(-1);
+    frame_waiting_ = true;
+    frame_ = std::max(frame_, frame);
+  }
+  ready_.notify_one();
+}
+
 bool Outbox::pop(std::string* line) {
   std::unique_lock<std::mutex> lock(mutex_);
-  ready_.wait(lock, [this] { return !items_.empty() || dropped_ > 0 || closed_; });
+  ready_.wait(lock,
+              [this] { return !items_.empty() || dropped_ > 0 || frame_waiting_ || closed_; });
   if (dropped_ > 0) {
     *line = "{\"event\":\"dropped\",\"bytes\":" + std::to_string(dropped_) + "}\n";
     dropped_ = 0;
@@ -314,7 +326,13 @@ bool Outbox::pop(std::string* line) {
     in_flight_ = 1;
     return true;
   }
-  if (items_.empty()) return false;
+  if (items_.empty()) {
+    if (!frame_waiting_) return false;
+    frame_waiting_ = false;
+    in_flight_ = 1;
+    *line = "{\"event\":\"frame\",\"frame\":" + std::to_string(frame_) + "}\n";
+    return true;
+  }
   Item item = std::move(items_.front());
   items_.pop_front();
   in_flight_ = 1;
@@ -351,6 +369,7 @@ void Outbox::abandon() {
     closed_ = true;
     items_.clear();
     dropped_ = 0;
+    frame_waiting_ = false;
     serial_bytes_ = 0;
     trace_bytes_ = 0;
     message_bytes_ = 0;

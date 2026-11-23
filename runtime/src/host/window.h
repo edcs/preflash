@@ -1,9 +1,15 @@
 #pragma once
 
+#include <nlohmann/json_fwd.hpp>
+
 // The app's end of the link to its window, which is a process of its own (runtime/window) so
 // that it stays put while the app restarts. The app writes frames into a shared file and tells
 // the window the board and how the device stands. The window sends back touches and a quit.
 namespace preflash::window {
+
+// What the app does with one message from the window: a touch goes to touch::pointer, a quit
+// ends the app. The link's reader thread calls it for each message, and tests can too.
+void handle(const nlohmann::json& message);
 
 // Call on the main thread. Shares the panel's frames and connects to the window at
 // PREFLASH_WINDOW_SOCKET, starting PREFLASH_WINDOW_EXE if nothing answers. Ends the process

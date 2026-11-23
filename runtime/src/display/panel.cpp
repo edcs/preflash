@@ -6,7 +6,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <functional>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -51,6 +53,20 @@ Pixels& pixels() {
   return p;
 }
 
+// Who's told of each finished frame. The list's lock is held for as long as a subscriber takes
+// to note a number, and for no longer by anyone else, and with nobody listening it isn't taken.
+struct FrameListeners {
+  std::mutex mutex;
+  std::map<int, FrameSubscriber> by_number;
+  int next = 0;
+  std::atomic<int> count{0};
+};
+
+FrameListeners& listeners() {
+  static FrameListeners* l = new FrameListeners;  // threads outlive static destructors
+  return *l;
+}
+
 // With the mutex held.
 void forget_old_frames(Pixels& p, std::chrono::steady_clock::time_point now) {
   while (!p.recent.empty() && now - p.recent.front() >= std::chrono::seconds(1)) {
@@ -75,7 +91,10 @@ void put_le(std::vector<char>* out, size_t at, uint32_t value, int bytes) {
 
 }  // namespace
 
-void draw(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame) {
+namespace {
+
+// Puts the bitmap in the panel and returns the number of the frame it finished, or 0.
+uint64_t draw_locked(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame) {
   Pixels& p = pixels();
   const int source_stride = (x2 - x1) * kBytesPerPixel;
   const int left = std::max(x1, 0);
@@ -86,9 +105,10 @@ void draw(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame
   const auto* source = static_cast<const uint8_t*>(rgb565);
   // One lock for the pixels and the count, so that a frame counted can also be read.
   std::lock_guard<std::mutex> lock(p.mutex);
+  uint64_t finished = 0;
   if (last_of_frame) {
     const auto now = std::chrono::steady_clock::now();
-    ++p.frames;
+    finished = ++p.frames;
     forget_old_frames(p, now);
     p.recent.push_back(now);
   }
@@ -100,21 +120,50 @@ void draw(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame
     }
     p.changed = true;
   }
-  if (!p.shared) return;
+  if (!p.shared) return finished;
   // Whole frames only, so the window never shows one half drawn: a frame held back is let go
   // once firmware starts on the next one, which will finish in its turn.
   if (!last_of_frame) {
     p.held_back = false;
-    return;
+    return finished;
   }
   const auto now = std::chrono::steady_clock::now();
   if (now - p.last_shared < kShareEvery) {
     p.held_back = true;
-    return;
+    return finished;
   }
   p.shared->write(p.data.data());
   p.last_shared = now;
   p.held_back = false;
+  return finished;
+}
+
+}  // namespace
+
+void draw(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame) {
+  const uint64_t finished = draw_locked(x1, y1, x2, y2, rgb565, last_of_frame);
+  if (finished == 0) return;
+  // After the pixels' lock is let go, so a subscriber never holds up a reader of the panel.
+  FrameListeners& l = listeners();
+  if (l.count.load(std::memory_order_acquire) == 0) return;
+  std::lock_guard<std::mutex> lock(l.mutex);
+  for (const auto& entry : l.by_number) entry.second(finished);
+}
+
+int subscribe_frames(FrameSubscriber subscriber) {
+  FrameListeners& l = listeners();
+  std::lock_guard<std::mutex> lock(l.mutex);
+  const int number = l.next++;
+  l.by_number.emplace(number, std::move(subscriber));
+  l.count.store(static_cast<int>(l.by_number.size()), std::memory_order_release);
+  return number;
+}
+
+void unsubscribe_frames(int subscription) {
+  FrameListeners& l = listeners();
+  std::lock_guard<std::mutex> lock(l.mutex);
+  l.by_number.erase(subscription);
+  l.count.store(static_cast<int>(l.by_number.size()), std::memory_order_release);
 }
 
 void share_frames(const std::string& path) {
@@ -226,9 +275,10 @@ bool take_frame(std::vector<uint8_t>* out) {
   return true;
 }
 
-std::vector<uint8_t> copy_frame() {
+std::vector<uint8_t> copy_frame(uint64_t* number) {
   Pixels& p = pixels();
   const auto lock = read_lock(p);
+  if (number) *number = p.frames;
   return p.data;
 }
 
@@ -290,6 +340,11 @@ std::optional<Event> pop() {
   const Event e = g_events.front();
   g_events.pop_front();
   return e;
+}
+
+void pointer(int x, int y, bool down) {
+  if (crash::happened()) return;
+  push({std::clamp(x, 0, board().width - 1), std::clamp(y, 0, board().height - 1), down});
 }
 
 bool press(int x, int y, int ms) {

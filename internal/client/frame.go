@@ -22,6 +22,8 @@ type Frame struct {
 	Height int    `json:"height"`
 	Format string `json:"format"`
 	Data   []byte `json:"data"`
+	// Number is the frame these pixels belong to, as the "frame" event counts them.
+	Number uint64 `json:"frame"`
 }
 
 // Save writes the frame as a PNG or a BMP, chosen by the file's extension.

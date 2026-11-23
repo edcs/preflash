@@ -20,6 +20,7 @@
 #include "preflash/fail.h"
 #include "preflash/panel.h"
 #include "preflash/serial.h"
+#include "preflash/touch.h"
 
 namespace {
 
@@ -77,7 +78,11 @@ void wait_and_report_hold(const char* path) {
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   const long after = g_counted;
   const auto frame = preflash::panel::copy_frame();
-  std::ofstream(path) << "counted " << after - before << " frame " << frame.size() << "\n";
+  // A pointer after a crash is let go, since nothing will read it.
+  preflash::touch::pointer(1, 1, true);
+  const bool touched = preflash::touch::pop().has_value();
+  std::ofstream(path) << "counted " << after - before << " frame " << frame.size() << " touched "
+                      << touched << "\n";
   _exit(7);
 }
 

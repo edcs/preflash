@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <condition_variable>
 #include <functional>
@@ -44,6 +45,10 @@ class Outbox {
   // A trace record, with a limit of its own the same size as serial's. Past that the oldest
   // goes, which a client sees as a gap in the records' numbers.
   void push_trace(std::string line);
+  // Says a frame is ready. There's one slot for the newest number, which a number still
+  // waiting is overwritten by, so a client that falls behind skips frames and never builds a
+  // backlog. Never waits on the client, and goes out after what's queued.
+  void push_frame(uint64_t frame);
   // A message that goes ahead of everything queued, for news that can't wait behind a
   // slow client's backlog.
   void push_urgent(std::string line);
@@ -77,6 +82,8 @@ class Outbox {
   size_t trace_bytes_ = 0;
   size_t message_bytes_ = 0;
   size_t dropped_ = 0;
+  bool frame_waiting_ = false;
+  uint64_t frame_ = 0;
   long unsent_ = 0;
   long in_flight_ = 0;  // popped, and sent() not yet called
   bool closed_ = false;

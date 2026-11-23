@@ -10,6 +10,8 @@
 #include <thread>
 #include <vector>
 
+#include "host/window.h"
+#include "preflash/touch.h"
 #include "window/link.h"
 #include "winlink/backlight.h"
 
@@ -161,3 +163,16 @@ TEST(WindowBacklight, FollowsASquareRootCurve) {
 }
 
 }  // namespace
+
+// The app's side of the link: the handler its reader thread runs for each message.
+TEST(WindowInput, ATouchFromTheWindowClampsLikePointer) {
+  while (preflash::touch::pop()) {
+  }
+  preflash::window::handle({{"op", "touch"}, {"x", -5}, {"y", 9999}, {"down", true}});
+  const auto e = preflash::touch::pop();
+  ASSERT_TRUE(e);
+  EXPECT_EQ(e->x, 0);
+  EXPECT_EQ(e->y, 7);  // the suite's board is 16 by 8
+  EXPECT_TRUE(e->down);
+  EXPECT_FALSE(preflash::touch::pop());
+}

@@ -71,6 +71,7 @@ struct Connection {
   serial::Outbox out;
   std::optional<int> subscription;
   std::optional<int> trace_subscription;
+  std::optional<int> frame_subscription;
 };
 
 struct Clients {
@@ -164,6 +165,12 @@ void op_send(Connection& c, const json& request, const json& id) {
   }
 }
 
+void subscribe_to_frames(Connection& c) {
+  if (c.frame_subscription) return;
+  c.frame_subscription =
+      panel::subscribe_frames([out = &c.out](uint64_t frame) { out->push_frame(frame); });
+}
+
 void op_subscribe(Connection& c, const json& request, const json& id) {
   const auto streams = request.find("streams");
   if (streams == request.end() || !streams->is_array()) {
@@ -171,7 +178,7 @@ void op_subscribe(Connection& c, const json& request, const json& id) {
     return;
   }
   for (const json& stream : *streams) {
-    if (stream != "serial" && stream != "trace") {
+    if (stream != "serial" && stream != "trace" && stream != "frames") {
       reply_error(c, id, "unknown stream: " + encode(stream));
       return;
     }
@@ -196,6 +203,7 @@ void op_subscribe(Connection& c, const json& request, const json& id) {
       serial::notice("preflash: couldn't start the trace\n");
     }
   }
+  if (asked_for("frames")) subscribe_to_frames(c);
 }
 
 // A path of the state folder's for a trace saved with none given.
@@ -243,9 +251,11 @@ void op_nvs(Connection& c, const json&, const json& id) {
 }
 
 void op_frame(Connection& c, const json&, const json& id) {
-  const std::vector<uint8_t> frame = panel::copy_frame();
+  uint64_t number = 0;
+  const std::vector<uint8_t> frame = panel::copy_frame(&number);
   reply_ok(c, id,
-           {{"width", board().width},
+           {{"frame", number},
+            {"width", board().width},
             {"height", board().height},
             {"format", "rgb565le"},
             {"data", serial::base64(frame.data(), frame.size())}});
@@ -259,6 +269,18 @@ void op_touch(Connection& c, const json& request, const json& id) {
     reply_error(c, id, "touch needs x and y on the panel, and ms of 0 or more");
     return;
   }
+  reply_ok(c, id);
+}
+
+void op_pointer(Connection& c, const json& request, const json& id) {
+  const auto x = int_field(request, "x");
+  const auto y = int_field(request, "y");
+  const auto down = request.find("down");
+  if (!x || !y || down == request.end() || !down->is_boolean()) {
+    reply_error(c, id, "pointer needs x, y and down");
+    return;
+  }
+  touch::pointer(*x, *y, down->get<bool>());
   reply_ok(c, id);
 }
 
@@ -307,8 +329,8 @@ using Op = void (*)(Connection&, const json& request, const json& id);
 
 const std::map<std::string, Op> kOps = {
     {"hello", op_hello}, {"status", op_status}, {"send", op_send}, {"subscribe", op_subscribe},
-    {"frame", op_frame}, {"touch", op_touch},   {"shot", op_shot}, {"quit", op_quit},
-    {"tasks", op_tasks}, {"nvs", op_nvs},       {"trace_save", op_trace_save},
+    {"frame", op_frame}, {"touch", op_touch},   {"pointer", op_pointer}, {"shot", op_shot},
+    {"quit", op_quit},   {"tasks", op_tasks},   {"nvs", op_nvs}, {"trace_save", op_trace_save},
     {"hardware", op_hardware}, {"hardware_set", op_hardware_set},
 };
 
@@ -379,6 +401,7 @@ void read_requests(std::shared_ptr<Connection> c) {
   }
   if (c->subscription) serial::unsubscribe(*c->subscription);
   if (c->trace_subscription) trace::unsubscribe(*c->trace_subscription);
+  if (c->frame_subscription) panel::unsubscribe_frames(*c->frame_subscription);
   forget(c);
   c->out.close();
   if (cut_off) {
