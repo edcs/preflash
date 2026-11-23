@@ -62,15 +62,24 @@ TEST_F(WindowLink, AnAppConnectsAndMessagesArriveWhole) {
   ASSERT_TRUE(link.listen(path_, &error)) << error;
   EXPECT_FALSE(link.connected());
   const int app = connect_client();
+  // Poll between the pieces, so that each poll reads only part of a line.
+  std::vector<json> got;
+  auto poll_a_while = [&] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    for (int i = 0; i < 5; i++) link.poll([&](const json& m) { got.push_back(m); });
+  };
   write_all(app, "{\"op\":\"sta");
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  poll_a_while();
+  EXPECT_TRUE(link.connected());
+  EXPECT_EQ(got.size(), 0u) << "half a line isn't a message";
   write_all(app, "te\",\"backlight\":5}\n{\"op\":\"close\"}");
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  write_all(app, "\n");
-  const auto got = collect(link, 2);
-  ASSERT_EQ(got.size(), 2u);
+  poll_a_while();
+  ASSERT_EQ(got.size(), 1u) << "the close has no newline yet";
   EXPECT_EQ(got[0]["op"], "state");
   EXPECT_EQ(got[0]["backlight"], 5);
+  write_all(app, "\n");
+  for (const json& m : collect(link, 1)) got.push_back(m);
+  ASSERT_EQ(got.size(), 2u);
   EXPECT_EQ(got[1]["op"], "close");
   EXPECT_TRUE(link.connected());
   close(app);

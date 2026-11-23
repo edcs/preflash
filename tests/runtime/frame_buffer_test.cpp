@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -54,6 +55,13 @@ TEST(FrameBuffer, OpeningAFileThatIsntOneFails) {
   EXPECT_FALSE(FrameBuffer::open(dir.path + "/missing"));
 }
 
+TEST(FrameBuffer, ASizeNoReaderWouldOpenIsRefused) {
+  TempFolder dir;
+  EXPECT_THROW(FrameBuffer::create(dir.path + "/f", 0, 1), std::runtime_error);
+  EXPECT_THROW(FrameBuffer::create(dir.path + "/f", 65536, 1), std::runtime_error);
+  EXPECT_THROW(FrameBuffer::create(dir.path + "/f", 1, 65536), std::runtime_error);
+}
+
 TEST(FrameBuffer, AReaderNeverSeesAHalfWrittenFrame) {
   TempFolder dir;
   constexpr int kW = 64, kH = 64;
@@ -69,13 +77,26 @@ TEST(FrameBuffer, AReaderNeverSeesAHalfWrittenFrame) {
   uint64_t seq = 0;
   std::vector<uint8_t> out;
   int reads = 0;
-  while (!done) {
-    if (!reader->read_if_newer(&seq, &out)) continue;
+  bool torn = false;
+  // Nonfatal checks only until the producer is joined: a fatal one would return with the thread
+  // still running.
+  auto check = [&] {
     reads++;
-    ASSERT_EQ(out.size(), size_t(kW * kH * 2));
-    for (uint8_t b : out) ASSERT_EQ(b, out[0]);
+    EXPECT_EQ(out.size(), size_t(kW * kH * 2));
+    for (uint8_t b : out) {
+      if (b != out[0]) {
+        torn = true;
+        break;
+      }
+    }
+  };
+  while (!done && !torn) {
+    if (reader->read_if_newer(&seq, &out)) check();
   }
   producer.join();
+  // A fast producer can finish before the reader's first look, so read its last frame too.
+  if (!torn && reader->read_if_newer(&seq, &out)) check();
+  EXPECT_FALSE(torn) << "a frame mixed two writes";
   EXPECT_GT(reads, 0);
 }
 
