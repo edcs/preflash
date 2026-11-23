@@ -366,7 +366,8 @@ func Follow(path string, out io.Writer, warn func(string)) error {
 	})
 }
 
-// Watcher hears what happens on an app's stream. Any of these can be nil.
+// Watcher hears what happens on an app's stream. Any of these can be nil. Watch doesn't pass
+// "frames" events on, so follow frames with Client.Subscribe and Client.Next instead.
 type Watcher struct {
 	Connected  func(Hello)        // a boot answered
 	Serial     func([]byte) error // the next bytes of the stream

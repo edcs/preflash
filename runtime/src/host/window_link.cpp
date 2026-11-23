@@ -215,7 +215,8 @@ int as_int(const json& m, const char* key) {
 }
 
 // What the window last did with the pointer, so that a press it never ended can be let go.
-// Only the reader thread of the current connection touches it.
+// Written by handle(), which the current connection's reader thread calls, and which tests call
+// directly.
 struct Pointer {
   bool pressed = false;
   int x = 0;
