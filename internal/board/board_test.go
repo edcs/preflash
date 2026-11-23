@@ -2,6 +2,7 @@ package board
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -355,6 +356,18 @@ func TestAButtonNeedsExactlyOneKind(t *testing.T) {
 		_, err := Load(writeBoard(t, buttonBoardHead+"buttons:\n  - "+line+"\n"))
 		require.Error(t, err, line)
 		assert.Contains(t, err.Error(), "buttons: A needs exactly one of gpio, expander, axp2101, reset or power")
+	}
+}
+
+func TestButtonNamesAreShortAndPlain(t *testing.T) {
+	for _, name := range []string{"A,B", "A@1", "SIXSIX", "A B", "Ü"} {
+		_, err := Load(writeBoard(t, buttonBoardHead+"buttons:\n  - {name: \""+name+"\", reset: en}\n"))
+		require.Error(t, err, name)
+		assert.Contains(t, err.Error(), fmt.Sprintf("buttons: %q must be 1-5 letters, digits, - or _", name))
+	}
+	for _, name := range []string{"BOOT", "KEY_1", "up-2", "PWR"} {
+		_, err := Load(writeBoard(t, buttonBoardHead+"buttons:\n  - {name: \""+name+"\", reset: en}\n"))
+		assert.NoError(t, err, name)
 	}
 }
 
