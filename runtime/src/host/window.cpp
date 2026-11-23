@@ -16,6 +16,7 @@
 #include "preflash/panel.h"
 #include "preflash/socket.h"
 #include "preflash/touch.h"
+#include "../winlink/backlight.h"
 
 namespace preflash::window {
 namespace {
@@ -69,10 +70,7 @@ void handle_events() {
   }
 }
 
-// Square-root response: 1% is dim but visible, like the panel in a dark room.
-Uint8 backlight_level() {
-  return static_cast<Uint8>(std::lround(255 * std::sqrt(panel::brightness() / 100.0)));
-}
+Uint8 backlight_level() { return winlink::backlight_level(panel::brightness()); }
 
 // The device takes one fixed format and SDL converts what firmware writes to it,
 // since the codec's rate isn't known until firmware opens it, long after the window.

@@ -34,12 +34,14 @@ get_filename_component(RUNTIME_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime ABS
 # window needs a screen, so it's checked by running a project.
 file(GLOB_RECURSE RUNTIME_SOURCES CONFIGURE_DEPENDS ${RUNTIME_DIR}/src/*.cpp)
 list(FILTER RUNTIME_SOURCES EXCLUDE REGEX "/src/host/(main|window)\\.cpp$")
+# The window process's socket server has no SDL in it, so the suite builds it.
+list(APPEND RUNTIME_SOURCES ${RUNTIME_DIR}/window/link.cpp)
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp)
 
 # The runtime is compiled once and shared by the tests and the restart helper.
 # Firmware gets these from sdkconfig.h; the suite has none, so it says so here.
 add_library(runtime_objs OBJECT ${RUNTIME_SOURCES})
-target_include_directories(runtime_objs PUBLIC ${RUNTIME_DIR}/include ${RUNTIME_DIR}/src)
+target_include_directories(runtime_objs PUBLIC ${RUNTIME_DIR}/include ${RUNTIME_DIR}/src ${RUNTIME_DIR})
 target_compile_definitions(runtime_objs PUBLIC CONFIG_FREERTOS_HZ=1000
                            CONFIG_ESP_TASK_WDT_INIT=1 CONFIG_ESP_TASK_WDT_TIMEOUT_S=5)
 find_package(CURL REQUIRED)

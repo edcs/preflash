@@ -45,3 +45,6 @@ FetchContent_Declare(preflash_json
     SOURCE_SUBDIR no-cmake-build)
 FetchContent_MakeAvailable(preflash_json)
 target_include_directories(preflash_runtime SYSTEM PRIVATE ${preflash_json_SOURCE_DIR}/include)
+
+# After the JSON headers are fetched, which the window's sources include.
+add_subdirectory(window)
