@@ -175,7 +175,7 @@ preflash run [--project dir] [--board file] [--headless] [--sanitize address|thr
 - `~/.preflash/build/<name>-<hash>` holds the build.
 - `~/.preflash/state/<name>-<hash>` holds what firmware saves, such as NVS. Delete it for a factory-fresh device.
 
-The window is a process of its own, `preflash-window`, built beside the app. It stays where it is while the firmware restarts, whether by `esp_restart` or a crash, and keeps the last frame up until the new boot draws. Closing the window quits the app, and quitting the app closes the window. If the window process dies, the app starts a new one.
+The window is a process of its own, `preflash-window`, built beside the app. It stays where it is while the firmware restarts, whether by `esp_restart` or a crash, and keeps the last frame up until the new boot draws. Under `preflash run`, closing the window quits the app and quitting the app closes the window. The terminal app keeps the window up while it rebuilds or restarts the app, and closes it when you quit the terminal app. If the window process dies, the app starts a new one.
 
 `--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked Mac.
 

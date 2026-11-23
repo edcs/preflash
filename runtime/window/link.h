@@ -29,7 +29,8 @@ class Link {
   bool connected() const { return client_ >= 0; }
   // How many apps have connected so far, so that a caller can greet each one.
   uint64_t connections() const { return connections_; }
-  // When an app was last connected, or when listening started if none has been.
+  // Now while an app is connected, otherwise when the last one dropped, or when listening started
+  // if none has connected.
   std::chrono::steady_clock::time_point last_connected() const;
 
  private:

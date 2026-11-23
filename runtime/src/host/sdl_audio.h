@@ -1,6 +1,7 @@
 #pragma once
 
-// The sound card: the only SDL the app itself uses, all of it on the main thread. The window
+// The sound card: the only SDL the app itself uses. The device is opened on the main thread.
+// Samples are queued from the codec's writer thread, which SDL's audio queue allows. The window
 // is a process of its own (runtime/window).
 namespace preflash::sdl_audio {
 
