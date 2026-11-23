@@ -140,6 +140,9 @@ std::string as_text(const json& m, const char* key, const std::string& fallback)
   return it != m.end() && it->is_string() ? it->get<std::string>() : fallback;
 }
 
+// What a latched button's hover text adds to its wiring.
+constexpr const char* kLatchedNote = " · latched";
+
 struct BoardButton {
   std::string name;
   std::string wiring;
@@ -170,7 +173,7 @@ struct Device {
     const std::string longest = std::to_string(rotation) + "° · download mode";
     int lines = window::status_lines_for(board, longest, width);
     for (const BoardButton& b : buttons) {
-      lines = std::max(lines, window::status_lines_for(board, b.wiring, width));
+      lines = std::max(lines, window::status_lines_for(board, b.wiring + kLatchedNote, width));
     }
     return window::layout_for(panel_w, panel_h, rotation, count, lines);
   }
@@ -349,9 +352,19 @@ int main(int argc, char** argv) {
             mouse_y = e.button.y;
             mouse_in = true;
             if (const int i = button_at(mouse_x, mouse_y); i >= 0) {
-              pressed = device.buttons[i].name;
-              pad.press(pressed);
-              send_button(pressed, true);
+              const std::string name = device.buttons[i].name;
+              if (pad.latched(name)) {
+                // Any click on a latched button lets it go.
+                let_go(name);
+              } else if (SDL_GetModState() & KMOD_ALT) {
+                // ⌥-click holds it down with the mouse free, say BOOT while you click RST.
+                pad.latch(name);
+                send_button(name, true);
+              } else {
+                pressed = name;
+                pad.press(pressed);
+                send_button(pressed, true);
+              }
             } else if (layout.rotate.contains(mouse_x, mouse_y)) {
               rotate_armed = true;
             } else if (layout.panel.contains(mouse_x, mouse_y)) {
@@ -418,6 +431,7 @@ int main(int argc, char** argv) {
       }
       if (hovered >= 0 && !device.buttons[hovered].wiring.empty()) {
         chrome.status = device.buttons[hovered].wiring;
+        if (pad.latched(device.buttons[hovered].name)) chrome.status += kLatchedNote;
         chrome.status_is_wiring = true;
       }
       chrome.rotate_hovered = mouse_in && layout.rotate.contains(mouse_x, mouse_y);
