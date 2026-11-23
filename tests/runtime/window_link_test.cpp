@@ -195,3 +195,20 @@ TEST(WindowInput, RotateStepsTheBoardsRotation) {
   preflash::window::handle({{"op", "rotate"}, {"by", 90}});
   EXPECT_EQ(preflash::hardware::rotation(), 0);
 }
+
+// The board message carries the board's buttons, named and wired, in the board file's order.
+TEST(WindowInput, TheBoardMessageCarriesTheButtons) {
+  const preflash::Board b = preflash::parse_board(R"({
+    "name": "T", "display": {"width": 16, "height": 8}, "i2c": [],
+    "backlight": {"pin": 4, "active_low": true}, "audio_codec": "none",
+    "buttons": [{"name": "PWR", "kind": "axp2101"},
+                {"name": "BOOT", "kind": "gpio", "pin": 0, "active_low": true},
+                {"name": "RST", "kind": "reset"}]})");
+  const json message = preflash::window::board_message(b, "proj", "/tmp/frame");
+  EXPECT_EQ(message["op"], "board");
+  EXPECT_EQ(message["board"], "T");
+  ASSERT_EQ(message["buttons"].size(), 3u);
+  EXPECT_EQ(message["buttons"][0], (json{{"name", "PWR"}, {"wiring", "AXP2101 PWRON"}}));
+  EXPECT_EQ(message["buttons"][1], (json{{"name", "BOOT"}, {"wiring", "GPIO0, active low"}}));
+  EXPECT_EQ(message["buttons"][2], (json{{"name", "RST"}, {"wiring", "EN"}}));
+}

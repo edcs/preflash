@@ -447,6 +447,9 @@ A few keys cover wiring that differs between boards. The stock `ESP32-S3-Touch-L
 | `i2c[].bus` | The `i2c_port` a chip sits on, 0 by default. Firmware on the other bus gets no answer |
 | `backlight.enable` | What cuts the backlight when low: a pin, `gpio43`, or a TCA9554 bit, `exio1` |
 | `power_amp` | The expander bit behind `BSP_POWER_AMP_IO`, such as `exio3` |
+| `buttons` | The board's hardware buttons, in the order the window's button strip shows them. Each has a `name` and one of `gpio: gpio0` or `expander: tca9554.3` (both with `active_low`), `axp2101: pwrkey`, `reset: en`, or `power: {key: gpio16, active_low: true, hold: tca9554.6}` |
+
+The stock boards list the buttons their schematics show, and the window names each one with where it connects. A list under `changes` replaces the stock one. A button on `axp2101` needs an `axp2101` chip under `i2c`, and names must be unique. Pressing them isn't wired up yet.
 
 A channel set up with `ledc_channel_config` on the backlight pin sets the brightness, so firmware dims the panel through LEDC as it would on the board. On a stock 3.49 V2 the window shows the bare portrait panel, so firmware that draws in landscape appears on its side. `esp_lcd_new_panel_axs15231b` is the one panel driver Preflash has, and any other stops the build at the missing call. The demo's [`board_349.cpp`](examples/demo/main/board_349.cpp) drives that panel with no BSP, and [`board_4b.cpp`](examples/demo/main/board_4b.cpp) goes through the board package.
 

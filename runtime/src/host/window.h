@@ -1,12 +1,23 @@
 #pragma once
 
+#include <string>
+
 #include <nlohmann/json_fwd.hpp>
 
 // The app's end of the link to its window, which is a process of its own (runtime/window) so
 // that it stays put while the app restarts. The app writes frames into a shared file and tells
 // the window the board and how the device stands. The window sends back touches, turns and a
 // quit.
+namespace preflash {
+struct Board;
+}
+
 namespace preflash::window {
+
+// The window's `board` message: the board, the project, where frames are written, and each
+// button's name and wiring in the board file's order.
+nlohmann::json board_message(const Board& board, const std::string& project,
+                             const std::string& frame_path);
 
 // What the app does with one message from the window: a touch goes to touch::pointer, a
 // rotate steps hardware's rotation a quarter, and a quit ends the app. The link's reader

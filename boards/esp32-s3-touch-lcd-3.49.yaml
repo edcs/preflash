@@ -15,3 +15,11 @@ backlight:
   pin: gpio42
   active_low: true
   enable: exio1
+# Buttons, in strip order, from Waveshare's ESP32-S3-Touch-LCD-3.49-Schematic.pdf (the file on
+# the board's wiki page, dated 2025-11-28, which carries no V1 or V2 mark): Key1 is BOOT on
+# IO0, Key2 is RESET on the module's EN, and Key3 is the power key, with SYS_OUT on IO16 and
+# SYS_EN on EXIO6 (the hold, which the firmware drives high to stay on). The key is active low.
+buttons:
+  - {name: PWR, power: {key: gpio16, active_low: true, hold: tca9554.6}}
+  - {name: BOOT, gpio: gpio0, active_low: true}
+  - {name: RST, reset: en}

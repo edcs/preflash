@@ -53,7 +53,63 @@ std::string text(const json& obj, const std::string& parent, const char* key) {
   return v.get<std::string>();
 }
 
+bool boolean(const json& obj, const std::string& parent, const char* key) {
+  const json& v = member(obj, parent, key);
+  if (!v.is_boolean()) bad(parent + "." + key, "must be true or false");
+  return v.get<bool>();
+}
+
+Button parse_button(const json& obj, size_t index) {
+  const std::string where = "buttons[" + std::to_string(index) + "]";
+  Button b;
+  b.name = text(obj, where, "name");
+  const std::string kind = text(obj, where, "kind");
+  if (kind == "gpio" || kind == "expander" || kind == "power") {
+    b.kind = kind == "gpio" ? Button::Kind::Gpio
+             : kind == "expander" ? Button::Kind::Expander
+                                  : Button::Kind::Power;
+    b.pin = integer(obj, where, "pin");
+    b.active_low = boolean(obj, where, "active_low");
+    if (b.kind == Button::Kind::Expander && (b.pin < 0 || b.pin > 7)) {
+      bad(where + ".pin", "must be a bit from 0 to 7");
+    }
+    if (b.kind == Button::Kind::Power) {
+      if (obj.contains("hold_pin")) b.hold_pin = integer(obj, where, "hold_pin");
+      b.hold_expander_bit = expander_bit(obj, where, "hold_expander_bit");
+      if (b.hold_pin.has_value() == b.hold_expander_bit.has_value()) {
+        bad(where, "needs one of hold_pin or hold_expander_bit");
+      }
+    }
+  } else if (kind == "axp2101") {
+    b.kind = Button::Kind::Axp2101;
+  } else if (kind == "reset") {
+    b.kind = Button::Kind::Reset;
+  } else {
+    bad(where + ".kind", "must be gpio, expander, axp2101, reset or power");
+  }
+  return b;
+}
+
 }  // namespace
+
+std::string wiring(const Button& b) {
+  switch (b.kind) {
+    case Button::Kind::Gpio:
+      return "GPIO" + std::to_string(b.pin) + (b.active_low ? ", active low" : ", active high");
+    case Button::Kind::Expander:
+      return "TCA9554 bit " + std::to_string(b.pin) + (b.active_low ? ", active low" : ", active high");
+    case Button::Kind::Axp2101:
+      return "AXP2101 PWRON";
+    case Button::Kind::Reset:
+      return "EN";
+    case Button::Kind::Power:
+      return "GPIO" + std::to_string(b.pin) + " key, " +
+             (b.hold_pin ? "GPIO" + std::to_string(*b.hold_pin)
+                         : "TCA9554 bit " + std::to_string(b.hold_expander_bit.value_or(0))) +
+             " hold";
+  }
+  return "";
+}
 
 Board parse_board(const std::string& source) {
   json root = json::parse(source, nullptr, false);
@@ -97,6 +153,15 @@ Board parse_board(const std::string& source) {
 
   b.audio_codec = text(root, "", "audio_codec");
   b.power_amp_bit = expander_bit(root, "", "power_amp_bit");
+
+  if (root.contains("buttons")) {
+    const json& buttons = root["buttons"];
+    if (!buttons.is_array()) bad("buttons", "must be a list");
+    for (size_t i = 0; i < buttons.size(); i++) {
+      if (!buttons[i].is_object()) bad("buttons[" + std::to_string(i) + "]", "must be an object");
+      b.buttons.push_back(parse_button(buttons[i], i));
+    }
+  }
   return b;
 }
 

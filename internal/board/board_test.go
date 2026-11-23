@@ -158,7 +158,7 @@ func TestAChangedListReadsAsReplaced(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "b.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(
-		"extends: ESP32-S3-Touch-LCD-4B\nchanges:\n  i2c:\n    - {chip: gt911, address: 0x5d}\n"), 0o644))
+		"extends: ESP32-S3-Touch-LCD-4B\nchanges:\n  i2c:\n    - {chip: gt911, address: 0x5d}\n    - {chip: axp2101, address: 0x34}\n"), 0o644))
 
 	b, err := Load(path)
 
@@ -295,4 +295,100 @@ func TestExpanderBitsAreChecked(t *testing.T) {
 		_, err := Load(writeBoard(t, src))
 		assert.Error(t, err, src)
 	}
+}
+
+const buttonBoardHead = "name: X\ndisplay:\n  width: 480\n  height: 320\ni2c:\n  - {chip: tca9554, address: 0x20}\n  - {chip: axp2101, address: 0x34}\nbacklight:\n  pin: gpio4\n  active_low: true\naudio_codec: none\n"
+
+func TestButtonsParse(t *testing.T) {
+	b, err := Load(writeBoard(t, buttonBoardHead+`buttons:
+  - {name: BOOT, gpio: gpio0, active_low: true}
+  - {name: X, expander: tca9554.3, active_low: true}
+  - {name: PWR, axp2101: pwrkey}
+  - {name: RST, reset: en}
+  - {name: P2, power: {key: gpio16, active_low: true, hold: tca9554.6}}
+  - {name: P3, power: {key: gpio17, active_low: false, hold: gpio18}}
+`))
+	require.NoError(t, err)
+	require.Len(t, b.Buttons, 6)
+	boot := b.Buttons[0]
+	assert.Equal(t, "BOOT", boot.Name)
+	require.NotNil(t, boot.GPIO)
+	assert.Equal(t, 0, *boot.GPIO)
+	assert.True(t, boot.ActiveLow)
+	require.NotNil(t, b.Buttons[1].Expander)
+	assert.Equal(t, 3, *b.Buttons[1].Expander)
+	assert.Equal(t, "pwrkey", b.Buttons[2].AXP2101)
+	assert.Equal(t, "en", b.Buttons[3].Reset)
+	p := b.Buttons[4].Power
+	require.NotNil(t, p)
+	assert.Equal(t, 16, p.Key)
+	assert.True(t, p.ActiveLow)
+	assert.Nil(t, p.HoldGPIO)
+	require.NotNil(t, p.HoldExpander)
+	assert.Equal(t, 6, *p.HoldExpander)
+	p = b.Buttons[5].Power
+	require.NotNil(t, p)
+	assert.False(t, p.ActiveLow)
+	require.NotNil(t, p.HoldGPIO)
+	assert.Equal(t, 18, *p.HoldGPIO)
+
+	out, err := Resolve(b)
+	require.NoError(t, err)
+	var m struct {
+		Buttons []map[string]any `json:"buttons"`
+	}
+	require.NoError(t, json.Unmarshal(out, &m))
+	require.Len(t, m.Buttons, 6)
+	assert.Equal(t, map[string]any{"name": "BOOT", "kind": "gpio", "pin": float64(0), "active_low": true}, m.Buttons[0])
+	assert.Equal(t, map[string]any{"name": "X", "kind": "expander", "pin": float64(3), "active_low": true}, m.Buttons[1])
+	assert.Equal(t, "axp2101", m.Buttons[2]["kind"])
+	assert.Equal(t, "reset", m.Buttons[3]["kind"])
+	assert.Equal(t, map[string]any{"name": "P2", "kind": "power", "pin": float64(16), "active_low": true, "hold_expander_bit": float64(6)}, m.Buttons[4])
+	assert.Equal(t, float64(18), m.Buttons[5]["hold_pin"])
+}
+
+func TestAButtonNeedsExactlyOneKind(t *testing.T) {
+	for _, line := range []string{
+		"{name: A, gpio: gpio0, reset: en}",
+		"{name: A}",
+	} {
+		_, err := Load(writeBoard(t, buttonBoardHead+"buttons:\n  - "+line+"\n"))
+		require.Error(t, err, line)
+		assert.Contains(t, err.Error(), "buttons: A needs exactly one of gpio, expander, axp2101, reset or power")
+	}
+}
+
+func TestButtonNamesAreUnique(t *testing.T) {
+	_, err := Load(writeBoard(t, buttonBoardHead+"buttons:\n  - {name: A, reset: en}\n  - {name: A, gpio: gpio0, active_low: true}\n"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "buttons: two named A")
+}
+
+func TestAxp2101ButtonNeedsTheChip(t *testing.T) {
+	src := "name: X\ndisplay:\n  width: 480\n  height: 320\ni2c: []\nbacklight:\n  pin: gpio4\n  active_low: true\naudio_codec: none\nbuttons:\n  - {name: PWR, axp2101: pwrkey}\n"
+	_, err := Load(writeBoard(t, src))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "buttons: PWR uses axp2101 but the board has no axp2101")
+}
+
+func TestStockBoardsListTheirButtons(t *testing.T) {
+	names := func(b Board) []string {
+		var out []string
+		for _, btn := range b.Buttons {
+			out = append(out, btn.Name)
+		}
+		return out
+	}
+	b, err := LoadStock("ESP32-S3-Touch-LCD-4B")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"PWR", "BOOT", "RST"}, names(b))
+	b, err = LoadStock("ESP32-S3-Touch-LCD-3.49-V2")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"PWR", "BOOT"}, names(b)[:2])
+	p := b.Buttons[0].Power
+	require.NotNil(t, p)
+	assert.Equal(t, 16, p.Key)
+	assert.True(t, p.ActiveLow)
+	require.NotNil(t, p.HoldExpander)
+	assert.Equal(t, 6, *p.HoldExpander)
 }

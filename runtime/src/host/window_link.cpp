@@ -33,10 +33,21 @@
 #include "sdl_audio.h"
 #include "window.h"
 
-namespace preflash::window {
-namespace {
-
 using nlohmann::json;
+
+namespace preflash::window {
+
+json board_message(const Board& b, const std::string& project, const std::string& frame_path) {
+  json buttons = json::array();
+  for (const Button& button : b.buttons) {
+    buttons.push_back({{"name", button.name}, {"wiring", wiring(button)}});
+  }
+  return {{"op", "board"},         {"project", project}, {"board", b.name},
+          {"width", b.width},      {"height", b.height}, {"buttons", buttons},
+          {"frame_path", frame_path}};
+}
+
+namespace {
 using Clock = std::chrono::steady_clock;
 
 // How long a window just started gets to answer.
@@ -188,15 +199,7 @@ bool send(const json& message) {
 
 std::string project_name() { return from_env("PREFLASH_PROJECT", board().name); }
 
-void send_board() {
-  send({{"op", "board"},
-        {"project", project_name()},
-        {"board", board().name},
-        {"width", board().width},
-        {"height", board().height},
-        {"buttons", json::array()},
-        {"frame_path", g_frame_path}});
-}
+void send_board() { send(board_message(board(), project_name(), g_frame_path)); }
 
 // The rotation is the board's, which the window turns by, and not LVGL's.
 void send_state(bool always) {
