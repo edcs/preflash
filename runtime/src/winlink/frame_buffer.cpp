@@ -52,7 +52,9 @@ void FrameBuffer::release() {
 }
 
 FrameBuffer FrameBuffer::create(const std::string& path, int width, int height) {
-  if (width <= 0 || height <= 0) throw std::runtime_error("frame buffer needs a positive size");
+  if (width <= 0 || height <= 0 || width > 65535 || height > 65535) {
+    throw std::runtime_error("frame buffer needs a size from 1 to 65535 each way");
+  }
   const size_t size = sizeof(Header) + size_t(width) * height * 2;
   // A window outlives the app and may still map the file from the app's last run. Cutting
   // that file shorter would kill the window with SIGBUS on its next read, so a file of the
