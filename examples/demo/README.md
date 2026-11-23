@@ -43,7 +43,7 @@ preflash hardware --project examples/demo i2c healthy
 | Motion sensor rotation | [`motion.cpp`](main/motion.cpp), [`monitor.cpp`](main/monitor.cpp), [`ui/page_motion.cpp`](main/ui/page_motion.cpp) | `preflash hardware rotation 90` |
 | AXP2101 power | [`power.cpp`](main/power.cpp), [`ui/page_power.cpp`](main/ui/page_power.cpp) | `preflash hardware battery 15` |
 | BOOT by pin interrupt | [`buttons.cpp`](main/buttons.cpp) | `preflash hardware button BOOT tap`, then `buttons` |
-| PWR through the AXP2101: tap, hold, soft off | [`buttons.cpp`](main/buttons.cpp), [`power.cpp`](main/power.cpp) | `preflash hardware button PWR tap 3000` on the 4B |
+| PWR through the AXP2101: tap, hold, soft off | [`buttons.cpp`](main/buttons.cpp), [`power.cpp`](main/power.cpp) | `preflash hardware button PWR tap`, then `preflash hardware button PWR tap 3000` on the 4B |
 | Backlight | `set_brightness` in [`board_4b.cpp`](main/board_4b.cpp) and [`board_349.cpp`](main/board_349.cpp) | `brightness 30` |
 | Codec audio | [`audio.cpp`](main/audio.cpp), [`ui/page_sound.cpp`](main/ui/page_sound.cpp) | `beep` |
 | Wi-Fi join | [`network.cpp`](main/network.cpp), [`ui/page_network.cpp`](main/ui/page_network.cpp) | `preflash hardware wifi_join fails`, then `wifi other` |
@@ -59,7 +59,7 @@ preflash hardware --project examples/demo i2c healthy
 
 The 3.49 V2 has no power chip or codec in its board file, so those pages say so. Its layout only works upright, so the screen follows a half turn and ignores a quarter turn.
 
-BOOT is read through a GPIO interrupt that counts presses and wakes a task, which prints each one. On the 4B, PWR is wired to the AXP2101, so the firmware enables the chip's key interrupts, reads which one fired, and turns the board off on a long press (1.5 s by default). The chip only reports the hold. What it means is the firmware's choice.
+BOOT is read through a GPIO interrupt that counts presses and wakes a task, which prints each one. On the 4B, PWR is wired to the AXP2101, so the firmware enables the chip's key interrupts, reads which one fired, and turns the board off on a long press (1.5 s by default). The chip reports a tap and a hold. What a hold means, here a soft off, is the firmware's choice.
 
 The fonts are LVGL's bundled Montserrat. The art is code: a ring, tiles and LVGL's built-in symbols.
 

@@ -79,7 +79,7 @@ std::optional<std::string> expander_for(Mode next, Reset reason) {
 
 // A power key's circuit, every kPowerPollMs, on a thread of its own that holds no lock. On,
 // the board goes off when decide says so. Off, USB coming back powers it, as at a launch.
-// Presses reach watch_power through on_change instead, so a tap shorter than the poll counts.
+// Presses reach listen_power through on_change instead, so a tap shorter than the poll counts.
 void watch_circuit(const Board& board, const std::string& key) {
   const Mode now = mode();
   for (;;) {
