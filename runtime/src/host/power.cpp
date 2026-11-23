@@ -78,6 +78,8 @@ std::vector<std::string> env_for(Mode next, Reset reason) {
 }
 
 void enter(Mode next, Reset reason) {
+  // What a failure names: firmware called esp_restart, or a button or the power reset the chip.
+  const char* caller = reason == Reset::Software ? "esp_restart" : "reset";
   // One way out: a reset that comes while another is on its way is part of the same one.
   if (g_entering.exchange(true)) {
     for (;;) pause();
@@ -91,7 +93,7 @@ void enter(Mode next, Reset reason) {
   char path[4096];
   uint32_t size = sizeof path;
   if (_NSGetExecutablePath(path, &size) != 0) {
-    preflash_unsupported("esp_restart", "the executable's path is too long to re-run");
+    preflash_unsupported(caller, "the executable's path is too long to re-run");
   }
   carry_chips_across_restart();
   if (trace::on()) {
@@ -107,11 +109,13 @@ void enter(Mode next, Reset reason) {
   // The stream's pipe ends with this process, and the next run needs the real fds.
   serial::hand_back();
   socket::announce_restart();
+  // A client that let go of RST gets its reply before the exec, which waits for it below.
+  socket::wait_for_replies();
   serial::wait_sent();
   // Those waits take a while, and a quit that arrived meanwhile has been told yes.
   if (socket::quitting()) socket::quit();
   exec_clean(path, *_NSGetArgv(), envp.data());
-  preflash_unsupported("esp_restart", "re-running the executable failed");
+  preflash_unsupported(caller, "re-running the executable failed");
 }
 
 std::optional<Mode> after_release(const Board& board, const std::string& released) {

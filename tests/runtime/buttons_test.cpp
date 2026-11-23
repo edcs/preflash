@@ -143,14 +143,27 @@ TEST_F(Buttons, AButtonHeldByBothOwnersStaysDownUntilBothLetGo) {
 TEST_F(Buttons, BothOwnersComeBackThroughAnExec) {
   ASSERT_EQ(buttons::set("BOOT", true, Owner::Window), "");
   ASSERT_EQ(buttons::set("PWR", true, Owner::Script), "");
-  ASSERT_EQ(buttons::set("RST", true, Owner::Window), "");
-  ASSERT_EQ(buttons::set("RST", true, Owner::Script), "");
+  ASSERT_EQ(buttons::set("KEY", true, Owner::Window), "");
+  ASSERT_EQ(buttons::set("KEY", true, Owner::Script), "");
   const std::string env = buttons::held_env();
-  EXPECT_EQ(env, "BOOT:window,PWR:script,RST:window,RST:script");
+  EXPECT_EQ(env, "BOOT:window,PWR:script,KEY:window,KEY:script");
   setenv("PREFLASH_HELD", env.c_str(), 1);
   buttons::load(board_with_buttons());
-  EXPECT_EQ(buttons::held_by(Owner::Window), (std::vector<std::string>{"BOOT", "RST"}));
-  EXPECT_EQ(buttons::held_by(Owner::Script), (std::vector<std::string>{"PWR", "RST"}));
-  EXPECT_EQ(buttons::held(), (std::vector<std::string>{"BOOT", "PWR", "RST"}));
+  EXPECT_EQ(buttons::held_by(Owner::Window), (std::vector<std::string>{"BOOT", "KEY"}));
+  EXPECT_EQ(buttons::held_by(Owner::Script), (std::vector<std::string>{"PWR", "KEY"}));
+  EXPECT_EQ(buttons::held(), (std::vector<std::string>{"BOOT", "PWR", "KEY"}));
   EXPECT_FALSE(gpio_read(0));
+}
+
+// A reset in progress takes RST's press with it, whoever held it, so the new run starts with
+// RST up and BOOT still down.
+TEST_F(Buttons, RstHeldThroughAnExecComesBackUp) {
+  ASSERT_EQ(buttons::set("BOOT", true, Owner::Script), "");
+  ASSERT_EQ(buttons::set("RST", true, Owner::Script), "");
+  ASSERT_EQ(buttons::set("RST", true, Owner::Window), "");
+  setenv("PREFLASH_HELD", buttons::held_env().c_str(), 1);
+  buttons::load(board_with_buttons());
+  EXPECT_FALSE(buttons::down("RST"));
+  EXPECT_TRUE(buttons::held_by(Owner::Window).empty());
+  EXPECT_EQ(buttons::held(), std::vector<std::string>{"BOOT"});
 }

@@ -64,6 +64,10 @@ constexpr size_t kLongestHolderAnswer = 64 * 1024;
 char g_path[sizeof(sockaddr_un::sun_path)] = "";
 int g_listener = -1;
 std::atomic<bool> g_quitting{false};
+// Requests being handled, whose replies aren't queued yet.
+std::atomic<int> g_handling{0};
+// How long a restart waits for them: a tap on another client can take seconds.
+constexpr auto kReplyPatience = std::chrono::milliseconds(500);
 
 struct Connection {
   explicit Connection(int socket_fd) : fd(socket_fd), out(kSerialQueueBytes) {}
@@ -418,7 +422,9 @@ void read_requests(std::shared_ptr<Connection> c) {
     buffer.append(chunk.data(), static_cast<size_t>(got));
     size_t start = 0;
     for (size_t end; (end = buffer.find('\n', start)) != std::string::npos; start = end + 1) {
+      ++g_handling;
       handle_line(*c, buffer.substr(start, end - start));
+      --g_handling;
       if (c->out.message_bytes() > kLongestReplyQueue) {
         cut_off = true;
         break;
@@ -641,6 +647,13 @@ void announce_restart() {
   std::lock_guard<std::mutex> lock(clients().mutex);
   clients().restarting = true;
   for (const auto& c : clients().connections) c->out.push_urgent(encode({{"event", "restarting"}}));
+}
+
+void wait_for_replies() {
+  const auto deadline = std::chrono::steady_clock::now() + kReplyPatience;
+  while (g_handling > 0 && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
 }
 
 void leave(int code) {

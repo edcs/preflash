@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"net"
 	"os"
-	"slices"
 	"syscall"
 	"time"
 )
@@ -325,19 +324,13 @@ func (c *Client) Pointer(x, y int, down bool) error {
 
 // Button presses ("press"), lets go of ("release") or taps ("tap") one of the board's
 // buttons by name. A tap holds the button for ms and returns after the release. Letting go of
-// RST restarts the app, which can go before it answers: a hang-up after the app said it was
-// restarting means the button did its job.
+// RST resets the app, which answers before it goes.
 func (c *Client) Button(name, action string, ms int) error {
 	fields := map[string]any{"name": name, "action": action}
 	if action == "tap" {
 		fields["ms"] = ms
 	}
-	err := c.Call("button", fields, nil)
-	restarted := slices.ContainsFunc(c.pending, func(e Event) bool { return e.Kind == "restarting" })
-	if errors.Is(err, ErrStopped) && restarted {
-		return nil
-	}
-	return err
+	return c.Call("button", fields, nil)
 }
 
 // Quit stops the app and returns once it has gone. A quit that lands just as a restart

@@ -73,8 +73,10 @@ void load(const Board& board) {
     const Owner owner =
         colon != std::string::npos && entry.substr(colon + 1) == "window" ? Owner::Window
                                                                          : Owner::Script;
-    const bool known = std::any_of(g_buttons.begin(), g_buttons.end(),
-                                   [&name](const Button& b) { return b.name == name; });
+    // A reset button's hold never outlasts the run: the reset under way took the press.
+    const bool known = std::any_of(g_buttons.begin(), g_buttons.end(), [&name](const Button& b) {
+      return b.name == name && b.kind != Button::Kind::Reset;
+    });
     if (!known || holds(name, owner)) continue;
     g_holds.push_back({name, owner});
     if (!is_held(name)) g_held.push_back(name);

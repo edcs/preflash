@@ -219,39 +219,47 @@ func TestButtonSendsTheOp(t *testing.T) {
 	assert.Equal(t, map[string]any{"id": float64(3), "op": "button", "name": "PWR", "action": "press"}, seen[1])
 }
 
-// A release of RST restarts the app, which can go before it answers the button.
-func TestAButtonThatRestartsTheAppIsDone(t *testing.T) {
-	path := shortPath(t)
-	listener, err := net.Listen("unix", path)
-	require.NoError(t, err)
-	t.Cleanup(func() { listener.Close() })
-	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		reader := bufio.NewReader(conn)
-		reader.ReadBytes('\n')
-		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
-		reader.ReadBytes('\n')
-		fmt.Fprintln(conn, `{"event":"restarting"}`)
-	}()
-	c, err := Dial(path)
-	require.NoError(t, err)
-	defer c.Close()
-	assert.NoError(t, c.Button("RST", "tap", 10))
+// An app that hangs up instead of answering a button has failed it, even one that said it
+// was restarting: the app answers a reset's button before it restarts.
+func TestAButtonCutOffFails(t *testing.T) {
+	for _, events := range [][]string{nil, {`{"event":"restarting"}`}} {
+		path := shortPath(t)
+		listener, err := net.Listen("unix", path)
+		require.NoError(t, err)
+		t.Cleanup(func() { listener.Close() })
+		go func() {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			reader := bufio.NewReader(conn)
+			reader.ReadBytes('\n')
+			fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
+			reader.ReadBytes('\n')
+			for _, event := range events {
+				fmt.Fprintln(conn, event)
+			}
+		}()
+		c, err := Dial(path)
+		require.NoError(t, err)
+		err = c.Button("RST", "tap", 10)
+		assert.ErrorIs(t, err, ErrStopped, "after %v", events)
+		c.Close()
+	}
 }
 
-// Without a restart, a hang-up is still a failure.
-func TestAButtonCutOffWithNoRestartFails(t *testing.T) {
+// A reply that comes after the restarting event still counts.
+func TestAButtonAnsweredAfterRestartingSucceeds(t *testing.T) {
 	path := shortPath(t)
-	startFake(t, path, func(req map[string]any, reply func(string)) {})
+	startFake(t, path, func(req map[string]any, reply func(string)) {
+		reply(`{"event":"restarting"}`)
+		reply(ok(req))
+	})
 	c, err := Dial(path)
 	require.NoError(t, err)
 	defer c.Close()
-	c.SetDeadline(time.Now().Add(200 * time.Millisecond))
-	assert.Error(t, c.Button("RST", "tap", 10))
+	assert.NoError(t, c.Button("RST", "release", 0))
 }
 
 func TestFrameEventsCarryTheNumber(t *testing.T) {

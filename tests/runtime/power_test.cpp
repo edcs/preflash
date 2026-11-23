@@ -28,7 +28,7 @@ preflash::Board board_with_buttons() {
                 {"name": "KEY", "kind": "gpio", "pin": 5, "active_low": true}]})");
 }
 
-// Puts each variable back as it was, however the test ends.
+// Starts with none of the power variables set, and puts each back as it was.
 class Power : public testing::Test {
  protected:
   void SetUp() override {
@@ -39,7 +39,12 @@ class Power : public testing::Test {
     }
     buttons::load(board_with_buttons());
   }
+  // Lets go of what the test pressed, so neighbours find the pins at rest, and then puts the
+  // environment back.
   void TearDown() override {
+    unsetenv("PREFLASH_HELD");
+    buttons::load(board_with_buttons());
+    buttons::load(preflash::Board{});
     for (size_t i = 0; i < std::size(kNames); ++i) {
       if (saved_[i]) {
         setenv(kNames[i], saved_[i]->c_str(), 1);
@@ -47,9 +52,6 @@ class Power : public testing::Test {
         unsetenv(kNames[i]);
       }
     }
-    unsetenv("PREFLASH_HELD");
-    buttons::load(board_with_buttons());
-    buttons::load(preflash::Board{});
   }
 
   static constexpr const char* kNames[] = {"PREFLASH_RESET", "PREFLASH_POWER", "PREFLASH_HELD",

@@ -74,6 +74,13 @@ field() { status_json | python3 -I -c 'import json, sys; print(json.dumps(json.l
 
 button() { pf hardware --project "$project" button "$@"; }
 
+# Whether status says a button is down: true or false.
+is_down() {
+  status_json | python3 -I -c '
+import json, sys
+print(str(any(b["name"] == sys.argv[1] and b["down"] for b in json.load(sys.stdin)["buttons"])).lower())' "$1"
+}
+
 # Waits for the demo's console to answer. A line sent while the app restarts is lost with
 # the old boot, so this asks again.
 firmware_answers() {
@@ -165,6 +172,8 @@ app="$(ps -o command= -p "$pid")"
 running="$(pgrep -fx -- "$app" | wc -l | tr -d ' ')"
 [ "$running" = 1 ] || fail "a double reset left $running apps running" "$(pgrep -fl -- "$app")"
 [ "$(field power)" = '"on"' ] || fail "the double reset didn't end on" "$(status_json)"
+# Each reset took its own press of RST, so none is left holding it in the new boot.
+[ "$(is_down RST)" = false ] || fail "a double reset left RST down" "$(status_json)"
 quit
 
 echo "buttons.sh passed"

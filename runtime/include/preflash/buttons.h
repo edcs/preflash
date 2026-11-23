@@ -19,9 +19,10 @@ namespace preflash::buttons {
 enum class Owner { Window, Script };
 
 // Takes the board's buttons, with those PREFLASH_HELD names held down by their owners, as a
-// restart leaves them, and drops names the board lacks. PREFLASH_HELD is what held_env()
-// wrote: comma-separated name:owner pairs, where a bare name is a script's. Every pin a button
-// drives rests at its released level, or its pressed one if held.
+// restart leaves them, and drops names the board lacks. A reset button comes back up: the
+// reset that started this run took its press, as a chip can't run with EN held. PREFLASH_HELD
+// is what held_env() wrote: comma-separated name:owner pairs, where a bare name is a script's.
+// Every pin a button drives rests at its released level, or its pressed one if held.
 void load(const Board& board);
 
 // Presses or lets go of a button for one owner. The button goes down with its first owner and
