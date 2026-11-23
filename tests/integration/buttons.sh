@@ -294,9 +294,10 @@ wait "$first" || fail "the first reset failed"
 saw "ready on"
 firmware_answers
 [ "$(field pid)" = "$pid" ] || fail "a double reset changed the app's pid"
-app="$(ps -o command= -p "$pid")"
-running="$(pgrep -fx -- "$app" | wc -l | tr -d ' ')"
-[ "$running" = 1 ] || fail "a double reset left $running apps running" "$(pgrep -fl -- "$app")"
+# Every process running the app's build is this one: neither reset left an app behind.
+exe="$(ps -o comm= -p "$pid")"
+running="$(pgrep -f -- "$exe" | tr '\n' ' ')"
+[ "$running" = "$pid " ] || fail "a double reset left other apps running" "$(pgrep -fl -- "$exe")"
 [ "$(field power)" = '"on"' ] || fail "the double reset didn't end on" "$(status_json)"
 # Each reset took its own press of RST, so none is left holding it in the new boot.
 [ "$(is_down RST)" = false ] || fail "a double reset left RST down" "$(status_json)"
