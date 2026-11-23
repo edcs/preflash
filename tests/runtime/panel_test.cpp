@@ -18,6 +18,7 @@
 #include "esp_lvgl_port.h"
 #include "preflash/panel.h"
 #include "preflash/touch.h"
+#include "winlink/frame_buffer.h"
 
 namespace fs = std::filesystem;
 namespace panel = preflash::panel;
@@ -417,4 +418,26 @@ TEST(Touch, PressRefusesAPointOffThePanel) {
   EXPECT_FALSE(touch::press(-1, 0, 0));
   EXPECT_FALSE(touch::press(0, 0, -1));
   EXPECT_FALSE(touch::pop());
+}
+
+// The window process reads the panel from a shared file, a whole frame at a time.
+TEST(Panel, SharesEachFinishedFrameWithTheWindow) {
+  const fs::path path = fs::temp_directory_path() / ("preflash_frames_" + std::to_string(getpid()));
+  panel::share_frames(path.string());
+  auto window = preflash::winlink::FrameBuffer::open(path.string());
+  ASSERT_TRUE(window);
+  EXPECT_EQ(window->width(), kWidth);
+  EXPECT_EQ(window->height(), kHeight);
+
+  const std::vector<uint16_t> red(kWidth * kHeight / 2, kRed);
+  panel::draw(0, 0, kWidth, kHeight / 2, red.data(), false);
+  uint64_t seq = 0;
+  std::vector<uint8_t> shown;
+  EXPECT_FALSE(window->read_if_newer(&seq, &shown)) << "half a frame reached the window";
+
+  panel::draw(0, kHeight / 2, kWidth, kHeight, red.data(), true);
+  ASSERT_TRUE(window->read_if_newer(&seq, &shown));
+  EXPECT_EQ(shown, panel::copy_frame());
+  EXPECT_EQ(pixel(shown, kWidth - 1, kHeight - 1), kRed);
+  fs::remove(path);
 }

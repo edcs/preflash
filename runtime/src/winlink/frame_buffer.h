@@ -15,7 +15,9 @@ class FrameBuffer {
  public:
   static constexpr uint32_t kMagic = 0x50464652;  // "PFFR"
 
-  // Makes or truncates the file and maps it. Throws std::runtime_error if it can't.
+  // Maps the file for writing. One already there with the same size is kept, frame and count,
+  // so that a window still mapping it from an earlier run carries on. Any other is replaced by
+  // a new file, never cut short under a reader. Throws std::runtime_error if it can't.
   static FrameBuffer create(const std::string& path, int width, int height);
   // Maps an existing file. Nullopt if it's missing, too short, or not a frame file.
   static std::optional<FrameBuffer> open(const std::string& path);

@@ -155,10 +155,13 @@ int main(int argc, char** argv) {
           m.contains("project") && m["project"].is_string() ? m["project"].get<std::string>() : "";
       if (width <= 0 || height <= 0) return;
       window.set_title(project.empty() ? "preflash" : project, window.backlight());
+      const bool reshaped = width != window.width() || height != window.height();
       if (!window.show(width, height)) {
         failed = true;
         return;
       }
+      // A new texture holds nothing, so the frame it last showed must be read again.
+      if (reshaped) seen_seq = 0;
       if (m.contains("frame_path") && m["frame_path"].is_string()) {
         // Nothing to show until the app has written a frame, so a failed open waits for the
         // next board and keeps the last one.
@@ -179,6 +182,8 @@ int main(int argc, char** argv) {
     link.poll(on_message);
     if (link.connections() != greeted) {
       greeted = link.connections();
+      // The new app never saw the press, so it gets nothing of this drag, not even its end.
+      // The app that saw it lets go of it itself when the link drops.
       mouse_held = false;
       link.send({{"op", "hello"}, {"held", json::array()}});
     }
@@ -196,8 +201,9 @@ int main(int argc, char** argv) {
           case SDL_MOUSEBUTTONDOWN:
           case SDL_MOUSEBUTTONUP:
             if (e.button.button == SDL_BUTTON_LEFT) {
-              mouse_held = e.type == SDL_MOUSEBUTTONDOWN;
-              send_touch(link, window, e.button.x, e.button.y, mouse_held);
+              const bool down = e.type == SDL_MOUSEBUTTONDOWN;
+              if (down || mouse_held) send_touch(link, window, e.button.x, e.button.y, down);
+              mouse_held = down;
             }
             break;
           case SDL_MOUSEMOTION:

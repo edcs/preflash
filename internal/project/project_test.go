@@ -247,6 +247,22 @@ func TestEnvironmentNamesTheProjectsLink(t *testing.T) {
 	assert.Contains(t, p.environment(nil, "/repo", "/work/demo/nyx.tty", false), "PREFLASH_PORT_LINK=/work/demo/nyx.tty")
 }
 
+func TestEnvironmentNamesTheWindow(t *testing.T) {
+	p := Project{Dir: "/work/demo", id: "demo-1234"}
+	t.Setenv("HOME", "/home/me")
+	base := []string{"PREFLASH_WINDOW_SOCKET=/old.window", "PREFLASH_WINDOW_EXE=/old/preflash-window", "PREFLASH_FRAME_PATH=/old.frame"}
+	env := p.environment(base, "/repo", "", false)
+
+	assert.Equal(t, strings.TrimSuffix(p.SocketPath(), ".sock")+".window", p.WindowSocketPath())
+	assert.Equal(t, filepath.Dir(p.SocketPath()), filepath.Dir(p.WindowSocketPath()))
+	assert.Contains(t, env, "PREFLASH_WINDOW_SOCKET="+p.WindowSocketPath())
+	assert.Contains(t, env, "PREFLASH_WINDOW_EXE=/home/me/.preflash/build/demo-1234/preflash-window")
+	assert.Contains(t, env, "PREFLASH_FRAME_PATH=/home/me/.preflash/build/demo-1234/panel.frame")
+	for _, stale := range base {
+		assert.NotContains(t, env, stale)
+	}
+}
+
 func TestPortPathSitsBesideTheSocket(t *testing.T) {
 	p := Project{Dir: "/work/demo"}
 	assert.Equal(t, strings.TrimSuffix(p.SocketPath(), ".sock")+".tty", p.PortPath())

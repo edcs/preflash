@@ -8,6 +8,7 @@
 #include <deque>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -16,6 +17,7 @@
 #include "preflash/bus.h"
 #include "preflash/crash.h"
 #include "preflash/touch.h"
+#include "../winlink/frame_buffer.h"
 
 namespace preflash::panel {
 namespace {
@@ -35,6 +37,7 @@ struct Pixels {
   bool changed = true;
   uint64_t frames = 0;
   std::deque<std::chrono::steady_clock::time_point> recent;  // frames in the last second
+  std::optional<winlink::FrameBuffer> shared;                // the window's copy, if it has one
 };
 
 Pixels& pixels() {
@@ -83,13 +86,23 @@ void draw(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame
     forget_old_frames(p, now);
     p.recent.push_back(now);
   }
-  if (left >= right || top >= bottom) return;
-  for (int y = top; y < bottom; ++y) {
-    const uint8_t* from = source + (y - y1) * source_stride + (left - x1) * kBytesPerPixel;
-    uint8_t* to = p.data.data() + (y * p.width + left) * kBytesPerPixel;
-    std::memcpy(to, from, (right - left) * kBytesPerPixel);
+  if (left < right && top < bottom) {
+    for (int y = top; y < bottom; ++y) {
+      const uint8_t* from = source + (y - y1) * source_stride + (left - x1) * kBytesPerPixel;
+      uint8_t* to = p.data.data() + (y * p.width + left) * kBytesPerPixel;
+      std::memcpy(to, from, (right - left) * kBytesPerPixel);
+    }
+    p.changed = true;
   }
-  p.changed = true;
+  // Whole frames only, so the window never shows one half drawn.
+  if (last_of_frame && p.shared) p.shared->write(p.data.data());
+}
+
+void share_frames(const std::string& path) {
+  Pixels& p = pixels();
+  auto shared = winlink::FrameBuffer::create(path, p.width, p.height);
+  std::lock_guard<std::mutex> lock(p.mutex);
+  p.shared.emplace(std::move(shared));
 }
 
 uint64_t frames_drawn() {

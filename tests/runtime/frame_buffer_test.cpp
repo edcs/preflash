@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -76,4 +77,58 @@ TEST(FrameBuffer, AReaderNeverSeesAHalfWrittenFrame) {
   }
   producer.join();
   EXPECT_GT(reads, 0);
+}
+
+// A restarted app makes its frame file again while the window still maps it. The window must
+// keep the frame it has, and see the new app's frames in the same mapping.
+TEST(FrameBuffer, ARestartKeepsTheFrameAWindowHasMapped) {
+  TempFolder dir;
+  const std::string path = dir.path + "/f";
+  std::optional<FrameBuffer> writer = FrameBuffer::create(path, 2, 1);
+  auto reader = FrameBuffer::open(path);
+  ASSERT_TRUE(reader);
+  const uint8_t first[4] = {1, 2, 3, 4};
+  writer->write(first);
+  uint64_t seq = 0;
+  std::vector<uint8_t> out;
+  ASSERT_TRUE(reader->read_if_newer(&seq, &out));
+
+  writer.reset();
+  writer = FrameBuffer::create(path, 2, 1);
+  EXPECT_FALSE(reader->read_if_newer(&seq, &out)) << "nothing new has been drawn";
+  auto reopened = FrameBuffer::open(path);
+  ASSERT_TRUE(reopened);
+  uint64_t fresh = 0;
+  ASSERT_TRUE(reopened->read_if_newer(&fresh, &out)) << "a window that opens it again sees the last frame";
+  EXPECT_EQ(out, std::vector<uint8_t>({1, 2, 3, 4}));
+
+  const uint8_t second[4] = {5, 6, 7, 8};
+  writer->write(second);
+  ASSERT_TRUE(reader->read_if_newer(&seq, &out));
+  EXPECT_EQ(out, std::vector<uint8_t>({5, 6, 7, 8}));
+}
+
+// A smaller panel after a restart mustn't cut the file from under a window that maps it, which
+// would kill the window with SIGBUS the next time it read.
+TEST(FrameBuffer, ASmallerPanelLeavesAMappedWindowItsFile) {
+  TempFolder dir;
+  const std::string path = dir.path + "/f";
+  constexpr int kW = 64, kH = 64;
+  std::optional<FrameBuffer> writer = FrameBuffer::create(path, kW, kH);
+  auto reader = FrameBuffer::open(path);
+  ASSERT_TRUE(reader);
+  const std::vector<uint8_t> big(kW * kH * 2, 0x5a);
+  writer->write(big.data());
+
+  writer.reset();
+  writer = FrameBuffer::create(path, 2, 1);
+  uint64_t seq = 0;
+  std::vector<uint8_t> out;
+  ASSERT_TRUE(reader->read_if_newer(&seq, &out));
+  EXPECT_EQ(out, big);
+
+  auto reopened = FrameBuffer::open(path);
+  ASSERT_TRUE(reopened);
+  EXPECT_EQ(reopened->width(), 2);
+  EXPECT_EQ(reopened->height(), 1);
 }

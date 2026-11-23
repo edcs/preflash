@@ -175,6 +175,8 @@ preflash run [--project dir] [--board file] [--headless] [--sanitize address|thr
 - `~/.preflash/build/<name>-<hash>` holds the build.
 - `~/.preflash/state/<name>-<hash>` holds what firmware saves, such as NVS. Delete it for a factory-fresh device.
 
+The window is a process of its own, `preflash-window`, built beside the app. It stays where it is while the firmware restarts, whether by `esp_restart` or a crash, and keeps the last frame up until the new boot draws. Closing the window quits the app, and quitting the app closes the window. If the window process dies, the app starts a new one.
+
 `--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked Mac.
 
 To boot firmware at a chosen moment, set `PREFLASH_RTC_START=2026-11-01T22:00:00Z`. The simulated RTC starts there and runs on, and it keeps the firmware's time across a restart.
@@ -189,7 +191,7 @@ The running screen has a toolbar, the serial console, your shortcuts and an inpu
 
 | Key | What it does |
 | --- | --- |
-| `^R` | Rebuilds and restarts, with the build's output in the console. If the build fails, the old app keeps running |
+| `^R` | Rebuilds and restarts, with the build's output in the console, in the same window. If the build fails, the old app keeps running |
 | `^D` | Opens the debug views |
 | `^H` | Opens the hardware panel |
 | `^B` | Picks another board |
@@ -471,6 +473,7 @@ If your firmware stops on a call Preflash doesn't implement, that call needs a s
 `make test` can't do these, so try them yourself with the demo:
 
 - **A mouse click in the window.** The tests press the panel through the socket. Click a tile with a real mouse and watch the page open.
+- **The window through a restart.** The tests run the window with SDL's dummy driver. Run the demo, send `restart` and press `^R`, and check the window stays put with its last frame until the new boot draws.
 - **The audible chime.** The tests count the sample frames firmware writes. Press the Beep shortcut and listen.
 - **The debug and crash screens with a window open.** The tests run these screens headless. Run the demo with a window, press `^D`, then send `crash null`.
 - **`g` in the crash screen.** The tests use a stand-in for `lldb`. Press `g` with the real one and check it attaches.
@@ -518,7 +521,8 @@ examples/demo/    a reference ESP-IDF project for both stock boards
 hardware/capture/ firmware that records what real chips answer
 runtime/idf/      the CMake layer that stands in for IDF_PATH
 runtime/include/  ESP-IDF headers the firmware compiles against
-runtime/src/      stand-ins, chip models, the window and the host
+runtime/src/      stand-ins, chip models, the app's end of the window link and the host
+runtime/window/   the window process, preflash-window
 runtime/replay/   the chip models with a main of their own, for preflash check
 tests/            runtime suite, fixtures, integration scripts and terminal tests
 .github/assets/   README images, from source/capture.sh and render.sh

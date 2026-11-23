@@ -10,7 +10,8 @@ file(GLOB PREFLASH_RUNTIME_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/src/chips/*.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/audio/*.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/net/*.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/src/host/*.cpp)
+    ${CMAKE_CURRENT_LIST_DIR}/src/host/*.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/winlink/*.cpp)
 
 # A project without LVGL still gets the panel. The port and the BSP compile against
 # the project's own LVGL, so they need one.
@@ -22,6 +23,8 @@ if(NOT PREFLASH_HAS_LVGL)
 endif()
 
 add_library(preflash_runtime STATIC ${PREFLASH_RUNTIME_SOURCES})
+# For the sources shared with the window process, which include each other as winlink/...
+target_include_directories(preflash_runtime PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
 
 # libcurl comes with the macOS SDK and checks servers against the system's certificates.
 find_package(CURL REQUIRED)

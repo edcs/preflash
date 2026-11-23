@@ -51,8 +51,8 @@ log="$(cmake -S "$project" -B "$scratch/build" 2>&1)" || fail "configure" "$log"
 log="$(cmake --build "$scratch/build" --parallel 2>&1)" || fail "build" "$log"
 app="$scratch/build/app"
 
-# The driver doesn't exist, so a run that started SDL's video would fail. A windowed
-# run has to fail here, or this check proves nothing.
+# The driver doesn't exist, so a window process that started SDL's video would fail, and the
+# app with it. A windowed run has to fail here, or this check proves nothing.
 export SDL_VIDEODRIVER=not_a_driver
 unset PREFLASH_HEADLESS
 start_app "$app"
@@ -61,7 +61,7 @@ finish_app
 [ "$app_status" -ne 0 ] || fail "a windowed run exited cleanly with no video driver" "$(cat "$app_log")"
 output="$(cat "$app_log")"
 case "$output" in
-  *"preflash: couldn't start SDL"*) ;;
+  *"preflash: couldn't open the window: preflash-window: couldn't start SDL"*) ;;
   *) fail "no message about SDL" "$output" ;;
 esac
 

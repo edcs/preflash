@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <cstring>
 #include <new>
 #include <stdexcept>
@@ -53,7 +54,21 @@ void FrameBuffer::release() {
 FrameBuffer FrameBuffer::create(const std::string& path, int width, int height) {
   if (width <= 0 || height <= 0) throw std::runtime_error("frame buffer needs a positive size");
   const size_t size = sizeof(Header) + size_t(width) * height * 2;
-  Fd file(::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0600));
+  // A window outlives the app and may still map the file from the app's last run. Cutting
+  // that file shorter would kill the window with SIGBUS on its next read, so a file of the
+  // same shape is taken over as it is, frame and all, and any other is replaced by a new one
+  // that leaves the window its old mapping until it opens the new file.
+  if (auto same = open(path); same && same->size_ == size && same->width_ == width &&
+                              same->height_ == height) {
+    Header* head = same->header();
+    // An app that died mid-write left the count odd. The frame is torn either way, and the
+    // next write finishes it.
+    const uint64_t seq = head->seq.load(std::memory_order_relaxed);
+    if (seq & 1) head->seq.store(seq + 1, std::memory_order_release);
+    return std::move(*same);
+  }
+  if (::unlink(path.c_str()) != 0 && errno != ENOENT) throw std::runtime_error("can't replace " + path);
+  Fd file(::open(path.c_str(), O_RDWR | O_CREAT | O_EXCL, 0600));
   if (file.fd < 0) throw std::runtime_error("can't create " + path);
   if (ftruncate(file.fd, off_t(size)) != 0) throw std::runtime_error("can't size " + path);
   void* map = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, file.fd, 0);

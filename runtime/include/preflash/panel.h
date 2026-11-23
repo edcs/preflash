@@ -35,10 +35,15 @@ std::string backlight_status();
 // The project, or the board if nothing names it, and what the screen shows.
 std::string window_title();
 
+// From now on, writes each finished frame into the frame file at path, for the window process
+// to show. A file a window still maps from an earlier run keeps its last frame until then.
+// Throws std::runtime_error if it can't make the file.
+void share_frames(const std::string& path);
+
 // Copies the whole panel. False, leaving out alone, if nothing changed since the last call.
 bool take_frame(std::vector<uint8_t>* out);
 
-// Copies the whole panel without touching what take_frame reports, which is the window's.
+// Copies the whole panel without touching what take_frame reports.
 std::vector<uint8_t> copy_frame();
 
 // Writes the panel as a 24-bit BMP. Throws std::runtime_error if it can't.

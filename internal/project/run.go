@@ -89,6 +89,9 @@ func (p Project) environment(base []string, root, link string, headless bool) []
 		"PREFLASH_SOCKET=" + p.SocketPath(),
 		"PREFLASH_PORT=" + p.PortPath(),
 		"PREFLASH_CRASH_FILE=" + p.CrashPath(),
+		"PREFLASH_WINDOW_SOCKET=" + p.WindowSocketPath(),
+		"PREFLASH_WINDOW_EXE=" + filepath.Join(p.BuildDir(), "preflash-window"),
+		"PREFLASH_FRAME_PATH=" + filepath.Join(p.BuildDir(), "panel.frame"),
 	}
 	if p.sanitize != "" {
 		log := filepath.Join(p.BuildDir(), "sanitizer.log")
@@ -120,7 +123,8 @@ func (p Project) environment(base []string, root, link string, headless bool) []
 		case "IDF_PATH", "PREFLASH_BOARD", "PREFLASH_STATE", "PREFLASH_PROJECT", "PREFLASH_SOCKET", "PREFLASH_HEADLESS",
 			"PREFLASH_PORT", "PREFLASH_PORT_LINK", "PREFLASH_PORT_FDS", "PREFLASH_TRACE",
 			"PREFLASH_CRASH_FILE", "PREFLASH_CRASH_HOLD", "PREFLASH_SANITIZE", "PREFLASH_SANITIZER_LOG",
-			"PREFLASH_SDKCONFIG", "PREFLASH_MANAGED_COMPONENTS":
+			"PREFLASH_SDKCONFIG", "PREFLASH_MANAGED_COMPONENTS", "PREFLASH_WINDOW_SOCKET", "PREFLASH_WINDOW_EXE",
+			"PREFLASH_FRAME_PATH":
 		case "ASAN_OPTIONS":
 			if asan == "" {
 				env = append(env, entry)

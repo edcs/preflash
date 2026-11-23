@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -130,6 +131,8 @@ type Target interface {
 	Build(ctx context.Context, env []string, output io.Writer) error
 	Install(b board.Board, env []string) (string, []string, error)
 	SocketPath() string
+	// WindowSocketPath is where the app's window process listens.
+	WindowSocketPath() string
 	LogPath() string
 	CrashPath() string
 	// ProjectDir is the project's folder, which tells its own code from everything else.
@@ -290,8 +293,9 @@ func (s *Supervisor) start(target Target, sanitizer string, b board.Board, path 
 	defer log.Close()
 
 	cmd := exec.Command(path)
-	// Held, so that g can attach to it and the window keeps its last frame.
-	cmd.Env = append(runEnv[:len(runEnv):len(runEnv)], "PREFLASH_CRASH_HOLD=1")
+	// Held, so that g can attach to it and the window keeps its last frame. Supervised, so that
+	// its quit leaves the window up for the app that comes next.
+	cmd.Env = append(runEnv[:len(runEnv):len(runEnv)], "PREFLASH_CRASH_HOLD=1", "PREFLASH_SUPERVISED=1")
 	if s.tracing() {
 		cmd.Env = append(cmd.Env, "PREFLASH_TRACE=1")
 	}
@@ -789,7 +793,20 @@ func (s *Supervisor) Close() {
 	if c := s.running(); c != nil {
 		s.stop(c)
 	}
+	s.closeWindow()
 	s.workers.Wait()
+}
+
+// closeWindow tells the window process to go, since a supervised app leaves it up when it
+// quits. There may be none, as in a headless run.
+func (s *Supervisor) closeWindow() {
+	conn, err := net.DialTimeout("unix", s.target.WindowSocketPath(), callPatience)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(callPatience))
+	conn.Write([]byte(`{"op":"close"}` + "\n"))
 }
 
 // lineWriter turns a stream of bytes into lines.
