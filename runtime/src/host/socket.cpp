@@ -301,10 +301,11 @@ void op_button(Connection& c, const json& request, const json& id) {
     reply_error(c, id, "a button's ms is 0 or more");
     return;
   }
-  std::string error = buttons::set(*name, *action != "release");
+  // A script's hold, so a tap lets go of its own press and leaves the window's alone.
+  std::string error = buttons::set(*name, *action != "release", buttons::Owner::Script);
   if (error.empty() && *action == "tap") {
     std::this_thread::sleep_for(std::chrono::milliseconds(*ms));
-    error = buttons::set(*name, false);
+    error = buttons::set(*name, false, buttons::Owner::Script);
   }
   if (!error.empty()) {
     reply_error(c, id, error);

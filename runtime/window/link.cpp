@@ -115,9 +115,11 @@ std::chrono::steady_clock::time_point Link::last_connected() const {
   return client_ >= 0 ? std::chrono::steady_clock::now() : last_connected_;
 }
 
-void Link::poll(std::function<void(const nlohmann::json&)> on_message) {
+void Link::poll(std::function<void(const nlohmann::json&)> on_message,
+                std::function<void()> on_connect) {
   if (listener_ < 0) return;
   // The newest app wins: an older one is a leftover that its restart hasn't closed yet.
+  bool accepted = false;
   for (;;) {
     const int fd = accept(listener_, nullptr, nullptr);
     if (fd < 0) break;
@@ -125,7 +127,10 @@ void Link::poll(std::function<void(const nlohmann::json&)> on_message) {
     set_nonblocking(fd);
     client_ = fd;
     ++connections_;
+    accepted = true;
   }
+  if (client_ < 0) return;
+  if (accepted && on_connect) on_connect();
   if (client_ < 0) return;
   flush();
   if (client_ < 0) return;

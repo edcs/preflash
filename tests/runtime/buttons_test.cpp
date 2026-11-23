@@ -42,9 +42,12 @@ class Buttons : public testing::Test {
     unsetenv("PREFLASH_HELD");
     buttons::load(board_with_buttons());
   }
+  // An empty board lets go of nothing, but leaves the button list empty: what this suite
+  // pressed was released above, so neighbours find the pins at rest.
   void TearDown() override {
     unsetenv("PREFLASH_HELD");
     buttons::load(board_with_buttons());
+    buttons::load(preflash::Board{});
   }
 };
 
@@ -56,7 +59,7 @@ TEST_F(Buttons, APressDrivesAnActiveLowPinLow) {
   EXPECT_FALSE(gpio_read(0));
   EXPECT_TRUE(buttons::down("BOOT"));
   EXPECT_EQ(buttons::held(), std::vector<std::string>{"BOOT"});
-  EXPECT_EQ(buttons::held_env(), "BOOT");
+  EXPECT_EQ(buttons::held_env(), "BOOT:script");
   EXPECT_EQ(buttons::set("BOOT", false), "");
   EXPECT_TRUE(gpio_read(0));
   EXPECT_FALSE(buttons::down("BOOT"));
@@ -75,7 +78,7 @@ TEST_F(Buttons, ATca9554ButtonDrivesItsInputBit) {
 }
 
 TEST_F(Buttons, HeldButtonsComeBackFromTheEnvironment) {
-  setenv("PREFLASH_HELD", "PWR,BOOT", 1);
+  setenv("PREFLASH_HELD", "PWR:window,BOOT", 1);  // a bare name is a script's
   buttons::load(board_with_buttons());
   EXPECT_TRUE(buttons::down("PWR"));
   EXPECT_TRUE(buttons::down("BOOT"));
@@ -117,4 +120,37 @@ TEST_F(Buttons, DescribeListsEachButtonInBoardOrder) {
       {{"name", "KEY"}, {"wiring", "TCA9554 bit 3, active low"}, {"down", false}},
   });
   EXPECT_EQ(buttons::describe(), want);
+}
+
+using buttons::Owner;
+
+TEST_F(Buttons, AButtonHeldByBothOwnersStaysDownUntilBothLetGo) {
+  auto edges = std::make_shared<int>(0);
+  buttons::on_change([edges](const std::string&, bool) { ++*edges; });
+  ASSERT_EQ(buttons::set("BOOT", true, Owner::Window), "");
+  ASSERT_EQ(buttons::set("BOOT", true, Owner::Script), "");
+  EXPECT_EQ(*edges, 1);  // one edge: the button only went down once
+  ASSERT_EQ(buttons::set("BOOT", false, Owner::Window), "");
+  EXPECT_TRUE(buttons::down("BOOT"));
+  EXPECT_FALSE(gpio_read(0));
+  ASSERT_EQ(buttons::set("BOOT", false, Owner::Script), "");
+  EXPECT_FALSE(buttons::down("BOOT"));
+  EXPECT_TRUE(gpio_read(0));
+  EXPECT_EQ(*edges, 2);
+  EXPECT_EQ(buttons::held(), std::vector<std::string>{});
+}
+
+TEST_F(Buttons, BothOwnersComeBackThroughAnExec) {
+  ASSERT_EQ(buttons::set("BOOT", true, Owner::Window), "");
+  ASSERT_EQ(buttons::set("PWR", true, Owner::Script), "");
+  ASSERT_EQ(buttons::set("RST", true, Owner::Window), "");
+  ASSERT_EQ(buttons::set("RST", true, Owner::Script), "");
+  const std::string env = buttons::held_env();
+  EXPECT_EQ(env, "BOOT:window,PWR:script,RST:window,RST:script");
+  setenv("PREFLASH_HELD", env.c_str(), 1);
+  buttons::load(board_with_buttons());
+  EXPECT_EQ(buttons::held_by(Owner::Window), (std::vector<std::string>{"BOOT", "RST"}));
+  EXPECT_EQ(buttons::held_by(Owner::Script), (std::vector<std::string>{"PWR", "RST"}));
+  EXPECT_EQ(buttons::held(), (std::vector<std::string>{"BOOT", "PWR", "RST"}));
+  EXPECT_FALSE(gpio_read(0));
 }

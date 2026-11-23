@@ -249,18 +249,21 @@ void handle(const json& message) {
   } else if (name == "quit") {
     socket::quit();
   } else if (name == "hello") {
-    // What the window holds replaces what this app holds: what's gone is let go, and what's
-    // new pressed. Names this board lacks are the window's last board's, and left out.
+    // The window's mouse holds, which replace those this app has as the window's: what's gone
+    // was let go while no app heard it, and what's new was pressed then. Scripts' holds stay.
+    // Names this board lacks are the window's last board's, and left out.
     const auto held = message.find("held");
     if (held == message.end() || !held->is_array()) return;
     std::vector<std::string> names;
     for (const json& n : *held) {
       if (n.is_string()) names.push_back(n.get<std::string>());
     }
-    for (const std::string& was : buttons::held()) {
-      if (std::find(names.begin(), names.end(), was) == names.end()) buttons::set(was, false);
+    for (const std::string& was : buttons::held_by(buttons::Owner::Window)) {
+      if (std::find(names.begin(), names.end(), was) == names.end()) {
+        buttons::set(was, false, buttons::Owner::Window);
+      }
     }
-    for (const std::string& now : names) buttons::set(now, true);
+    for (const std::string& now : names) buttons::set(now, true, buttons::Owner::Window);
   } else if (name == "rotate") {
     const int by = as_int(message, "by");
     if (by != 90 && by != -90) return;
@@ -276,7 +279,8 @@ void handle(const json& message) {
         !down->is_boolean()) {
       return;
     }
-    const std::string error = buttons::set(button->get<std::string>(), down->get<bool>());
+    const std::string error =
+        buttons::set(button->get<std::string>(), down->get<bool>(), buttons::Owner::Window);
     if (!error.empty()) std::fprintf(stderr, "preflash: %s\n", error.c_str());
   }
 }

@@ -201,7 +201,6 @@ int main(int argc, char** argv) {
   uint64_t seen_seq = 0;
   bool closing = false;
   bool failed = false;
-  uint64_t greeted = 0;
   // What the mouse is doing: dragging on the panel, holding a board button, or holding rotate.
   bool mouse_held = false;
   std::string pressed;
@@ -314,20 +313,14 @@ int main(int argc, char** argv) {
   };
 
   while (!closing && !failed) {
-    link.poll(on_message);
-    if (link.connections() != greeted) {
-      greeted = link.connections();
+    // Before anything the new app says, so that it hears this first whatever it sends.
+    link.poll(on_message, [&] {
       // The new app never saw the press, so it gets nothing of this drag, not even its end.
-      // The app that saw it lets go of it itself when the link drops. Buttons stay held, and
-      // the new app hears which: those held here and those the last app said were held, as
-      // by a script, which the strip still shows.
+      // The app that saw it lets go of it itself when the link drops. The mouse's buttons stay
+      // held, and the new app hears which. Holds the app told of are its own to keep.
       mouse_held = false;
-      std::vector<std::string> held = pad.held();
-      for (const std::string& name : device.app_held) {
-        if (std::find(held.begin(), held.end(), name) == held.end()) held.push_back(name);
-      }
-      link.send({{"op", "hello"}, {"held", held}});
-    }
+      link.send({{"op", "hello"}, {"held", pad.held()}});
+    });
 
     if (win.open()) {
       SDL_Event e;
