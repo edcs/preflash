@@ -195,13 +195,26 @@ TEST_F(Hardware, NoPowerAtAllIsRefused) {
   EXPECT_NE(hardware::set("battery", "none"), "");
 }
 
-TEST(HardwareDeathTest, ThePowerChipSwitchesTheBoardOff) {
-  EXPECT_EXIT(
-      {
-        Axp2101 pmu;
-        put(pmu, 0x10, 0x31);
-      },
-      ::testing::ExitedWithCode(0), "");
+// The 3.49 V2's PWR has no power chip behind it, but USB and the battery still decide whether
+// its power stays on.
+TEST_F(Hardware, APowerButtonBoardOffersUsbAndBattery) {
+  hardware::load(preflash::parse_board(R"({
+    "name": "T", "display": {"width": 16, "height": 8}, "i2c": [{"chip": "tca9554", "address": 32}],
+    "backlight": {"pin": 4, "active_low": true}, "audio_codec": "none",
+    "buttons": [{"name": "PWR", "kind": "power", "pin": 16, "active_low": true,
+                 "hold_expander_bit": 6}]})"));
+  EXPECT_EQ(item("usb")["value"], "plugged");
+  EXPECT_EQ(item("battery")["value"], "none");
+  EXPECT_EQ(hardware::set("battery", "50"), "");
+  EXPECT_EQ(hardware::set("usb", "unplugged"), "");
+  EXPECT_FALSE(hardware::usb_in());
+  // A board with no PWR and no AXP2101 has neither.
+  hardware::load(preflash::parse_board(R"({
+    "name": "T", "display": {"width": 16, "height": 8}, "i2c": [],
+    "backlight": {"pin": 4, "active_low": true}, "audio_codec": "none",
+    "buttons": [{"name": "BOOT", "kind": "gpio", "pin": 0, "active_low": true}]})"));
+  EXPECT_TRUE(item("usb").is_null());
+  EXPECT_TRUE(item("battery").is_null());
 }
 
 TEST(Axp2101, TheCommonRegisterKeepsItsOtherBits) {

@@ -408,11 +408,20 @@ crash_with "crash abort" "abort" "mishaps.cpp"
 crash_with "crash check" "ESP_ERR_INVALID_STATE" "mishaps.cpp"
 crash_with "hang" "watchdog" "monitor"
 
-# Turning off through the power chip ends the app.
+# Turning off through the power chip leaves the board off and the app up, and PWR turns it on.
 boot
 pf send --project "$project" poweroff
-wait_for_exit 100 || fail "poweroff left the app running" "$(cat "$app_log")"
-finish_app
+for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
+  pf status --project "$project" 2>/dev/null | grep -qF "power      off" && break
+  kill -0 "$app_pid" 2>/dev/null || fail "poweroff ended the app" "$(cat "$app_log")"
+  sleep 0.1
+done
+expect_in "power      off" "$(pf status --project "$project")"
+mark
+pf hardware --project "$project" button PWR tap
+saw "ready on"
+expect_in "power      on" "$(pf status --project "$project")"
+quit
 
 # ---- ESP32-S3-Touch-LCD-3.49-V2, through esp_lcd, with a build of its own
 

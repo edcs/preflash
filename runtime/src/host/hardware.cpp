@@ -15,8 +15,6 @@
 
 #include "preflash/bus.h"
 #include "preflash/net.h"
-#include "preflash/serial.h"
-#include "preflash/socket.h"
 
 namespace preflash::hardware {
 namespace {
@@ -68,12 +66,20 @@ bool has_chip(const Board& board, const char* chip) {
                      [chip](const ChipEntry& entry) { return entry.chip == chip; });
 }
 
+bool has_pwr(const Board& board) {
+  return std::any_of(board.buttons.begin(), board.buttons.end(), [](const Button& b) {
+    return b.kind == Button::Kind::Power || b.kind == Button::Kind::Axp2101;
+  });
+}
+
 std::vector<Item> items_for(const Board& board) {
   std::vector<Item> items;
   // Every board, as the window turns with or without a motion sensor to report it.
   items.push_back({"rotation", "Rotation", "", true,
                    {{"0", "0°"}, {"90", "90°"}, {"180", "180°"}, {"270", "270°"}}});
-  if (has_chip(board, "axp2101")) {
+  // A board with PWR has a battery to run from, so USB and the battery decide whether its
+  // power stays on. Only the AXP2101 lets firmware read them: no ADC or VBUS pin is modelled.
+  if (has_chip(board, "axp2101") || has_pwr(board)) {
     items.push_back({"usb", "USB power", "", true, {{"plugged", "plugged in"}, {kUnplugged, kUnplugged}}});
     items.push_back({"battery", "Battery", "", true,
                      {{kNoBattery, "not fitted"}, {"100", "100%"}, {"50", "50%"}, {"15", "15%"}, {"0", "0%"}}});
@@ -279,19 +285,6 @@ bool rtc_flat() { return g_rtc_flat; }
 
 bool i2c_nacks(int port, uint8_t address) {
   return g_nacks[port][address & (kAddresses - 1)].load(std::memory_order_relaxed);
-}
-
-void switch_off() {
-  {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    if (const Item* usb = find_item("usb")) {
-      store(&g_next, *usb, usb->options.front().value);
-      if (faults_path()) save_faults();
-    }
-  }
-  serial::notice("preflash: the power chip switched the board off\n");
-  socket::quit();
-  std::_Exit(0);
 }
 
 }  // namespace preflash::hardware

@@ -97,18 +97,22 @@ int main() {
 
   // Off and download mode run no firmware, but answer as the board would: the window, the
   // socket and the console stay, and the serial port hangs up.
-  const preflash::power::Mode mode = preflash::power::mode();
-  const bool running = mode == preflash::power::Mode::On;
+  preflash::power::Mode mode = preflash::power::Mode::On;
   try {
     // Before the chips, which read it as they start.
     preflash::hardware::load(preflash::board());
-    if (running) preflash::attach_chips(preflash::board());
     // Before firmware reads a pin, so that a button held through a restart is down at boot.
     preflash::buttons::load(preflash::board());
+    // A board with a power key, launched on battery, waits for PWR. Said in the environment,
+    // where everything that asks for the mode looks.
+    if (preflash::power::starts_off(preflash::board())) setenv("PREFLASH_POWER", "off", 1);
+    mode = preflash::power::mode();
+    if (mode == preflash::power::Mode::On) preflash::attach_chips(preflash::board());
   } catch (const std::exception& e) {
     std::fprintf(stderr, "preflash: %s\n", e.what());
     return 1;
   }
+  const bool running = mode == preflash::power::Mode::On;
   preflash::power::watch_reset(preflash::board());
 
   const char* headless_env = std::getenv("PREFLASH_HEADLESS");
@@ -151,6 +155,9 @@ int main() {
     std::fprintf(stderr, "preflash: couldn't start answering the control socket\n");
     preflash::socket::leave(1);
   }
+
+  // Once the socket and the stream are up for enter to tell, and before the firmware starts.
+  preflash::power::watch_power(preflash::board());
 
   if (mode == preflash::power::Mode::Download) {
     // What the ROM says when GPIO0 is low as the chip comes out of an EN reset.

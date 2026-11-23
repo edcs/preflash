@@ -32,7 +32,4 @@ int battery_percent();   // -1 with none fitted
 bool rtc_flat();         // the RTC's cell was flat at this boot
 bool i2c_nacks(int port, uint8_t address);  // a forced failure answers for this chip
 
-// Ends the process as a power chip does a board, ready for USB to come back next time.
-[[noreturn]] void switch_off();
-
 }  // namespace preflash::hardware

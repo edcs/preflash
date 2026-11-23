@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -166,4 +169,68 @@ TEST_F(Buttons, RstHeldThroughAnExecComesBackUp) {
   EXPECT_FALSE(buttons::down("RST"));
   EXPECT_TRUE(buttons::held_by(Owner::Window).empty());
   EXPECT_EQ(buttons::held(), std::vector<std::string>{"BOOT"});
+}
+
+namespace {
+
+int64_t realtime_ms() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
+
+// Waits up to a second for the button to come up.
+bool comes_up(const std::string& name) {
+  for (int i = 0; i < 100; ++i) {
+    if (!buttons::down(name)) return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return false;
+}
+
+}  // namespace
+
+// A tap's release that an exec cuts off still comes, in the next run, when the tap would have
+// let go: the press carries its deadline across.
+TEST_F(Buttons, ATapCutOffByAnExecLetsGoInTheNextRun) {
+  const int64_t deadline = realtime_ms() + 300;
+  ASSERT_EQ(buttons::press_until("BOOT", Owner::Script, deadline), "");
+  ASSERT_EQ(buttons::set("KEY", true, Owner::Window), "");
+  const std::string env = buttons::held_env();
+  EXPECT_EQ(env, "BOOT:script@" + std::to_string(deadline) + ",KEY:window");
+  setenv("PREFLASH_HELD", env.c_str(), 1);
+  buttons::load(board_with_buttons());
+  EXPECT_TRUE(buttons::down("BOOT"));
+  EXPECT_FALSE(gpio_read(0));
+  EXPECT_TRUE(comes_up("BOOT"));
+  EXPECT_GE(realtime_ms(), deadline);
+  EXPECT_TRUE(gpio_read(0));
+  EXPECT_TRUE(buttons::down("KEY"));  // a hold with no deadline stays
+}
+
+TEST_F(Buttons, ADeadlineAlreadyPastLetsGoAsTheRunStarts) {
+  setenv("PREFLASH_HELD", "BOOT:script@1", 1);
+  buttons::load(board_with_buttons());
+  EXPECT_TRUE(comes_up("BOOT"));
+}
+
+// A release that came in time leaves nothing for the next run, and a load in between stops a
+// release that was waiting.
+TEST_F(Buttons, ATapsOwnReleaseEndsItsDeadline) {
+  ASSERT_EQ(buttons::press_until("BOOT", Owner::Script, realtime_ms() + 60000), "");
+  ASSERT_EQ(buttons::set("BOOT", false, Owner::Script), "");
+  EXPECT_EQ(buttons::held_env(), "");
+  setenv("PREFLASH_HELD", ("BOOT:script@" + std::to_string(realtime_ms() + 200)).c_str(), 1);
+  buttons::load(board_with_buttons());
+  unsetenv("PREFLASH_HELD");
+  buttons::load(board_with_buttons());
+  ASSERT_EQ(buttons::set("BOOT", true, Owner::Script), "");
+  std::this_thread::sleep_for(std::chrono::milliseconds(400));
+  EXPECT_TRUE(buttons::down("BOOT"));
+}
+
+TEST_F(Buttons, ATapPressesAndLetsGo) {
+  ASSERT_EQ(buttons::tap("BOOT", 20, Owner::Script), "");
+  EXPECT_FALSE(buttons::down("BOOT"));
+  EXPECT_NE(buttons::tap("NOPE", 20, Owner::Script), "");
 }

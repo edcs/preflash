@@ -7,11 +7,13 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 
 #include "preflash/board.h"
 #include "preflash/bus.h"
+#include "preflash/power.h"
 
 namespace preflash {
 
@@ -91,16 +93,43 @@ class Qmi8658 : public RegisterChip {
   void take_sample();
 };
 
-// X-Powers AXP2101, datasheet V1.0. USB and the battery are as hardware:: says, and its
-// soft power-off ends the process.
+// X-Powers AXP2101, datasheet V1.0, and V1.4 for the PWRON key. USB and the battery are as
+// hardware:: says. Its soft power-off, and a PWRON hold past OFFLEVEL, switch the board off.
 class Axp2101 : public RegisterChip {
  public:
   Axp2101();
+  // Times the PWRON key by a clock of the caller's, in ms, which tests move by hand.
+  explicit Axp2101(std::function<int64_t()> clock_ms);
+  ~Axp2101() override;
+
+  bool write(std::span<const uint8_t> data) override;
+  bool read(std::span<uint8_t> out) override;
+
+  // The PWRON key went down or came up.
+  void pwron(bool down);
+
+  // Looks at a key held down: past IRQLEVEL it raises the long-press interrupt, and past
+  // OFFLEVEL it names the mode the PMU takes the board to, once. Nothing otherwise.
+  std::optional<power::Mode> tick();
 
  protected:
   uint8_t load(uint8_t reg) override;
   void store(uint8_t reg, uint8_t value) override;
+
+ private:
+  void raise(uint8_t bits);
+
+  std::function<int64_t()> clock_;
+  std::mutex mutex_;  // the key's thread and firmware's both reach the registers
+  std::optional<int64_t> pressed_at_;
+  bool long_raised_ = false;
+  bool off_named_ = false;
+  bool soft_off_ = false;
 };
+
+// Tells the board's AXP2101, if it has one, that PWRON went down or came up, and times a hold
+// for as long as the key stays down.
+void axp2101_pwron(bool down);
 
 // TI TCA9554, datasheet rev. H. Each register stays selected until the next write
 // chooses another: the chip has no auto-increment.

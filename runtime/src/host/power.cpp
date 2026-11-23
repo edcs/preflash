@@ -6,15 +6,20 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <system_error>
 #include <thread>
+#include <utility>
 
 #include "preflash/buttons.h"
+#include "preflash/bus.h"
 #include "preflash/chips.h"
 #include "preflash/fail.h"
+#include "preflash/hardware.h"
 #include "preflash/port.h"
 #include "preflash/serial.h"
 #include "preflash/socket.h"
@@ -26,6 +31,8 @@ namespace {
 constexpr const char* kPowerEnv = "PREFLASH_POWER";
 constexpr const char* kHeldEnv = "PREFLASH_HELD";
 constexpr const char* kResetEnv = "PREFLASH_RESET";
+// The I/O expander's registers, which a reset that leaves the board powered keeps.
+constexpr const char* kExpanderEnv = "PREFLASH_EXPANDER";
 // What runs before this one set for a software reset.
 constexpr const char* kOldRestartedEnv = "PREFLASH_RESTARTED";
 
@@ -37,6 +44,56 @@ std::atomic<bool> g_entering{false};
 bool is_named(const std::string& entry, const char* name) {
   const size_t length = std::strlen(name);
   return entry.size() > length && entry.compare(0, length, name) == 0 && entry[length] == '=';
+}
+
+std::mutex g_stand_in_mutex;
+std::function<void(Mode, Reset)> g_stand_in;
+
+const Button* power_key(const Board& board) {
+  const auto key = std::find_if(board.buttons.begin(), board.buttons.end(),
+                                [](const Button& b) { return b.kind == Button::Kind::Power; });
+  return key == board.buttons.end() ? nullptr : &*key;
+}
+
+bool has_button(const Board& board, const std::string& name, Button::Kind kind) {
+  return std::any_of(board.buttons.begin(), board.buttons.end(),
+                     [&](const Button& b) { return b.name == name && b.kind == kind; });
+}
+
+// What the expander's registers should be in the next run, if it keeps any: the chip's own
+// while the board runs, what download mode was handed, and nothing once the power goes,
+// because a chip with no power starts afresh.
+std::optional<std::string> expander_for(Mode next) {
+  if (next == Mode::Off) return std::nullopt;
+  switch (mode()) {
+    case Mode::On:
+      return expander_carry();
+    case Mode::Download:
+      if (const char* carried = std::getenv(kExpanderEnv)) return std::string(carried);
+      return std::nullopt;
+    case Mode::Off:
+      break;
+  }
+  return std::nullopt;
+}
+
+// A power key's circuit, every kPowerPollMs, on a thread of its own that holds no lock. On,
+// the board goes off when decide says so. Off, USB coming back powers it, as at a launch.
+// Presses reach watch_power through on_change instead, so a tap shorter than the poll counts.
+void watch_circuit(const Board& board, const std::string& key) {
+  const Mode now = mode();
+  for (;;) {
+    const bool usb = hardware::usb_in();
+    if (now == Mode::On && decide(usb, buttons::down(key), holding(board)) == Mode::Off) {
+      switch_to(Mode::Off, Reset::PowerOn);
+      return;
+    }
+    if (now == Mode::Off && usb) {
+      switch_to(Mode::On, Reset::PowerOn);
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(kPowerPollMs));
+  }
 }
 
 }  // namespace
@@ -61,7 +118,8 @@ const char* name(Mode mode) {
 }
 
 std::vector<std::string> env_for(Mode next, Reset reason) {
-  static constexpr const char* kReplaced[] = {kPowerEnv, kHeldEnv, kResetEnv, kOldRestartedEnv};
+  static constexpr const char* kReplaced[] = {kPowerEnv, kHeldEnv, kResetEnv, kOldRestartedEnv,
+                                              kExpanderEnv};
   std::vector<std::string> env;
   for (char** entry = *_NSGetEnviron(); *entry; ++entry) {
     const std::string text(*entry);
@@ -74,6 +132,9 @@ std::vector<std::string> env_for(Mode next, Reset reason) {
     env.push_back(std::string(kHeldEnv) + "=" + held);
   }
   env.push_back(std::string(kResetEnv) + "=" + (reason == Reset::Software ? "sw" : "poweron"));
+  if (const std::optional<std::string> expander = expander_for(next)) {
+    env.push_back(std::string(kExpanderEnv) + "=" + *expander);
+  }
   return env;
 }
 
@@ -139,12 +200,75 @@ void watch_reset(const Board& board) {
     if (!next) return;
     // On a thread of its own, so that whoever let go of RST can still answer for it: a
     // socket client hears its reply ahead of the restart, more often than not.
-    try {
-      std::thread([next] { enter(*next, Reset::PowerOn); }).detach();
-    } catch (const std::system_error&) {
-      enter(*next, Reset::PowerOn);
-    }
+    switch_soon(*next, Reset::PowerOn);
   });
+}
+
+Mode decide(bool usb, bool key, bool hold) { return usb || key || hold ? Mode::On : Mode::Off; }
+
+bool holding(const Board& board) {
+  const Button* key = power_key(board);
+  if (!key) return false;
+  if (key->hold_expander_bit) {
+    const ExpanderPins pins = expander_pins();
+    const uint32_t bit = 1u << *key->hold_expander_bit;
+    return (pins.outputs & bit) && (pins.levels & bit);
+  }
+  return key->hold_pin && gpio_is_output(*key->hold_pin) && gpio_read(*key->hold_pin);
+}
+
+bool starts_off(const Board& board) {
+  const Button* key = power_key(board);
+  if (!key || std::getenv(kPowerEnv)) return false;
+  return decide(hardware::usb_in(), buttons::down(key->name), false) == Mode::Off;
+}
+
+void switch_to(Mode next, Reset reason) {
+  std::function<void(Mode, Reset)> stand_in;
+  {
+    std::lock_guard<std::mutex> lock(g_stand_in_mutex);
+    stand_in = g_stand_in;
+  }
+  if (!stand_in) enter(next, reason);
+  stand_in(next, reason);
+}
+
+void switch_soon(Mode next, Reset reason) {
+  try {
+    std::thread([next, reason] { switch_to(next, reason); }).detach();
+  } catch (const std::system_error&) {
+    switch_to(next, reason);
+  }
+}
+
+void set_enter_for_test(std::function<void(Mode, Reset)> stand_in) {
+  std::lock_guard<std::mutex> lock(g_stand_in_mutex);
+  g_stand_in = std::move(stand_in);
+}
+
+void watch_power(const Board& board) {
+  const Mode now = mode();
+  if (now == Mode::Download) return;
+  buttons::on_change([board, now](const std::string& name, bool down) {
+    const bool axp2101 = has_button(board, name, Button::Kind::Axp2101);
+    if (now == Mode::Off) {
+      // The AXP2101 wants PWRON held for ONLEVEL first (datasheet section 6.5.4.2), and a
+      // power key's circuit powers the board the moment the key goes down. Either way the
+      // press boots it, with the key still down.
+      if (down && (axp2101 || has_button(board, name, Button::Kind::Power))) {
+        switch_soon(Mode::On, Reset::PowerOn);
+      }
+      return;
+    }
+    if (axp2101) axp2101_pwron(down);
+  });
+  const Button* key = power_key(board);
+  if (!key) return;
+  try {
+    std::thread([board, name = key->name] { watch_circuit(board, name); }).detach();
+  } catch (const std::system_error&) {
+    preflash_unsupported("power", "couldn't start a thread to watch the power key");
+  }
 }
 
 }  // namespace preflash::power

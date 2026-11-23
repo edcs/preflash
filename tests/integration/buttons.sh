@@ -6,6 +6,9 @@
 # The demo shows the boots and NVS. It doesn't print its reset reason, so the LVGL fixture,
 # which does, shows that RST reads as a power-on reset where a restart reads as a software
 # one. LVGL comes from the test suite's download, so build that first.
+#
+# PWR on the 3.49 V2 follows its circuit: on battery the board is powered while the key is down
+# or the firmware drives its hold high. A firmware over the LVGL fixture drives the hold.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -111,6 +114,91 @@ mark
 button RST tap
 saw "ready, reset reason 1"
 quit
+
+# ---- PWR on a power key board
+
+project="$root/build/integration/buttons/power"
+mkdir -p "$project/managed_components"
+rsync -a "$root/tests/fixtures/lvgl_project/" "$project/"
+rsync -a "$root/tests/fixtures/power_project/" "$project/"
+rsync -a --exclude /demos --exclude /docs --exclude /examples --exclude /tests \
+  "$lvgl/" "$project/managed_components/lvgl__lvgl/"
+real_project="$(cd "$project" && pwd -P)"
+state="$HOME/.preflash/state/power-$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-8)"
+rm -rf "$state"
+power_flags=(--board ESP32-S3-Touch-LCD-3.49-V2)
+
+# Waits for status to say the power is on or off. A restart can keep status from answering.
+power_becomes() {
+  local tenths
+  for tenths in $(seq 1 $(( ${PREFLASH_TEST_WAIT:-10} * 10 ))); do
+    [ "$(field power 2>/dev/null)" = "\"$1\"" ] && return 0
+    kill -0 "$app_pid" 2>/dev/null || fail "the app stopped" "$(cat "$app_log")"
+    sleep 0.1
+  done
+  fail "the power never went $1" "$(status_json 2>&1; tail -n 40 "$app_log")"
+}
+
+# Says the power stays as it is for a while.
+power_stays() {
+  sleep 0.5
+  [ "$(field power)" = "\"$1\"" ] || fail "the power didn't stay $1" "$(status_json)"
+}
+
+# On USB, as a launch is by default, the board runs. Unplugging it with the hold low takes the
+# power away.
+boot_until "power: up, reset reason 1" "${power_flags[@]}"
+[ "$(field power)" = '"on"' ] || fail "a launch on USB isn't on" "$(status_json)"
+pf hardware --project "$project" battery 50 > /dev/null
+pf hardware --project "$project" usb unplugged > /dev/null
+power_becomes off
+[ "$(field serial_port)" = '""' ] || fail "off kept the serial port" "$(status_json)"
+expect_in "power      off" "$(pf status --project "$project")"
+quit
+
+# Battery launch: the board starts off, waiting for PWR, with no firmware and no serial port.
+start_app "$scratch/preflash" run --project "$project" --headless "${power_flags[@]}"
+power_becomes off
+mark
+if no_port="$(pf port --project "$project" 2>&1)"; then
+  fail "an app launched off has a serial port" "$no_port"
+fi
+expect_in "no serial port" "$no_port"
+pid="$(field pid)"
+
+# Late latch: a tap boots the board, but the firmware never drives the hold, so the board goes
+# off again once the key comes up. The tap's release lands across the restart.
+button PWR tap 300
+power_becomes off
+[ "$(is_down PWR)" = false ] || fail "the tap left PWR down" "$(status_json)"
+power_stays off
+[ "$(field pid)" = "$pid" ] || fail "power changed the app's pid"
+
+# Latched: the firmware drives the hold while the key is down, and stays on once it's up.
+mark
+button PWR press
+saw "power: up, reset reason 1"
+power_becomes on
+pf send --project "$project" hold
+saw "power: holding"
+button PWR release
+power_stays on
+pf send --project "$project" release
+power_becomes off
+
+# On USB the hold doesn't matter. Plugging USB in powers the board, as a launch on USB does.
+mark
+pf hardware --project "$project" usb plugged > /dev/null
+saw "power: up, reset reason 1"
+power_becomes on
+pf send --project "$project" hold
+saw "power: holding"
+pf send --project "$project" release
+saw "power: released"
+power_stays on
+[ "$(field pid)" = "$pid" ] || fail "power changed the app's pid"
+quit
+rm -rf "$state"
 
 # ---- The demo
 

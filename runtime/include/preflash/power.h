@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -40,6 +41,37 @@ std::optional<Mode> after_release(const Board& board, const std::string& release
 
 // Has each release of the board's RST enter the mode after_release names. Call once.
 void watch_reset(const Board& board);
+
+// How often a board with a power key looks at its circuit, and the AXP2101 at its PWRON.
+constexpr int kPowerPollMs = 10;
+
+// Where a power key's circuit leaves the board: on while USB feeds it, and on battery while
+// the key is down or the hold is high.
+Mode decide(bool usb, bool key, bool hold);
+
+// Whether the firmware holds the board on: its power key's hold is an output driven high.
+// False on a board with no power key.
+bool holding(const Board& board);
+
+// Whether this launch starts off: a board with a power key, launched on battery with the key
+// up. A re-run, which PREFLASH_POWER marks, isn't a launch.
+bool starts_off(const Board& board);
+
+// Goes to the next mode through enter, or through the test's stand-in if one is set.
+void switch_to(Mode next, Reset reason);
+
+// The same on a thread of its own, so that the caller holds nothing enter needs and can still
+// answer whoever asked.
+void switch_soon(Mode next, Reset reason);
+
+// Has switch_to call this in place of enter, which a test can't live through. Null puts enter
+// back.
+void set_enter_for_test(std::function<void(Mode, Reset)> stand_in);
+
+// Watches the board's power, for this run's mode. Off, a press of PWR boots the board, as
+// does USB coming back to a board with a power key. On, the AXP2101 hears its PWRON, and a
+// board with a power key goes off when decide says so. Call once, after buttons::load.
+void watch_power(const Board& board);
 
 }  // namespace preflash::power
 
