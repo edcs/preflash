@@ -5,8 +5,6 @@
 
 #include <cstdint>
 
-#include "driver/i2c_master.h"
-
 namespace buttons {
 
 struct State {

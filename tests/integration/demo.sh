@@ -213,6 +213,14 @@ quit() {
   [ "$app_status" -eq 0 ] || fail "the app quit with status $app_status" "$(cat "$app_log")"
 }
 
+# One number from the demo's buttons command, such as boot_presses.
+buttons_field() {
+  mark
+  pf send --project "$project" buttons
+  saw "boot_presses="
+  tail -n "+$((marked + 1))" "$app_log" | grep -oE "$1=[0-9a-z]+" | head -n 1 | cut -d= -f2
+}
+
 # Waits for status to say the board's power is on or off, and for the app to survive it.
 wait_power() {
   local tenths
@@ -433,12 +441,6 @@ crash_with "hang" "watchdog" "monitor"
 
 boot
 # BOOT is counted by a pin interrupt. A tap goes up by one, and the task reports it.
-buttons_field() {
-  mark
-  pf send --project "$project" buttons
-  saw "boot_presses="
-  tail -n "+$((marked + 1))" "$app_log" | grep -oE "$1=[0-9a-z]+" | head -n 1 | cut -d= -f2
-}
 [ "$(buttons_field boot_presses)" = 0 ] || fail "BOOT has been pressed already" "$(cat "$app_log")"
 mark
 pf hardware --project "$project" button BOOT tap
