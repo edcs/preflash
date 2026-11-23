@@ -127,7 +127,8 @@ typedef struct intr_handle_data_t* gpio_isr_handle_t;
 esp_err_t gpio_set_intr_type(gpio_num_t gpio_num, gpio_int_type_t intr_type);
 esp_err_t gpio_intr_enable(gpio_num_t gpio_num);
 esp_err_t gpio_intr_disable(gpio_num_t gpio_num);
-// ESP_ERR_INVALID_STATE if the service is already installed. The flags are ignored.
+// ESP_ERR_INVALID_STATE if the service is already installed, ESP_ERR_NO_MEM if its thread can't
+// start. The flags are ignored.
 esp_err_t gpio_install_isr_service(int intr_alloc_flags);
 void gpio_uninstall_isr_service(void);
 // ESP_ERR_INVALID_STATE before the service is installed. Adding a handler enables the pin's

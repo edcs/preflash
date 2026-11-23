@@ -77,7 +77,7 @@ Button parse_button(const json& obj, size_t index) {
       if (obj.contains("hold_pin")) b.hold_pin = integer(obj, where, "hold_pin");
       b.hold_expander_bit = expander_bit(obj, where, "hold_expander_bit");
       if (b.hold_pin.has_value() == b.hold_expander_bit.has_value()) {
-        bad(where, "needs one of hold_pin or hold_expander_bit");
+        bad(where, "needs exactly one of hold_pin or hold_expander_bit");
       }
     }
   } else if (kind == "axp2101") {
