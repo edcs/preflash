@@ -160,13 +160,10 @@ func (term *terminal) find(text string) (int, int) {
 
 func (term *terminal) typed(text string) { term.screen.SendText(text) }
 
-// key presses a key that isn't text, such as ctrl+r, as bytes a terminal would send.
-func (term *terminal) key(bytes string) {
-	term.t.Helper()
-	if _, err := term.pty.WriteString(bytes); err != nil {
-		term.t.Fatal(err)
-	}
-}
+// key presses a key that isn't text, such as ctrl+r, as bytes a terminal would send. They go
+// the way typed text goes, through the screen, so that an enter can't overtake the text
+// typed before it.
+func (term *terminal) key(bytes string) { term.screen.SendText(bytes) }
 
 // click sends a left press and release through the emulator, which encodes them only if
 // the program really turned on mouse reporting.

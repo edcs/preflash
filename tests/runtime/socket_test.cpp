@@ -220,6 +220,10 @@ TEST(SocketClaim, GivesATricklingHolderOneDeadlineInAll) {
   std::atomic<bool> done{false};
   std::thread live([&] {
     const int client = accept(server, nullptr, nullptr);
+    // claim hangs up at its deadline, before done is set, and a write after that would raise
+    // SIGPIPE at the process.
+    const int on = 1;
+    setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
     while (!done) {
       if (write(client, "x", 1) != 1) break;
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
