@@ -226,6 +226,13 @@ int off() {
   return 0;
 }
 
+// After a hang-up, a restart mustn't pass on whatever took the port's old descriptors.
+int hangup() {
+  port::hang_up();
+  if (port::master_fd() < 0 && port::slave_fd() < 0) std::printf("fds forgotten\n");
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -249,5 +256,6 @@ int main(int argc, char** argv) {
   if (mode == "restart") return restart();
   if (mode == "links") return links();
   if (mode == "notice") return notice();
+  if (mode == "hangup") return hangup();
   return 2;
 }
