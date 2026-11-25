@@ -46,7 +46,7 @@ class RegisterChip : public I2cDevice {
 class Pcf85063 : public RegisterChip {
  public:
   Pcf85063();
-  // Counts by a clock of the caller's instead of the Mac's, which tests move by hand.
+  // Counts by a clock of the caller's instead of the computer's, which tests move by hand.
   explicit Pcf85063(std::function<std::time_t()> clock);
   ~Pcf85063() override;
 
