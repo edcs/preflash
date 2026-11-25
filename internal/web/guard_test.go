@@ -23,6 +23,8 @@ func TestGuard(t *testing.T) {
 		"loopback any port":       {"GET", "/device", "localhost:51234", "http://localhost:51234", true, nil, 200, nil},
 		"upgrade, foreign origin": {"GET", "/device", "localhost:7480", "https://evil.example", true, nil, 403, nil},
 		"upgrade, no origin":      {"GET", "/device", "localhost:7480", "", true, nil, 403, nil},
+		"head, no origin":         {"HEAD", "/", "localhost:7480", "", false, nil, 200, nil},
+		"upgrade, null origin":    {"GET", "/device", "localhost:7480", "null", true, nil, 403, nil},
 		"post, same origin":       {"POST", "/x", "localhost:7480", "http://localhost:7480", false, nil, 200, nil},
 		"post, no origin":         {"POST", "/x", "localhost:7480", "", false, nil, 403, nil},
 		"foreign host":            {"GET", "/", "evil.example", "", false, nil, 403, []string{"evil.example", "--allow-host"}},

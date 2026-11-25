@@ -46,9 +46,14 @@ func (s *Server) handle(pattern string, h http.Handler) {
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	srv := &http.Server{Handler: s.mux, ReadHeaderTimeout: 10 * time.Second}
 	done := make(chan struct{})
+	stopped := make(chan struct{}) // closed when Serve fails, so the goroutine doesn't wait on ctx
 	go func() {
 		defer close(done)
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-stopped:
+			return
+		}
 		// Sockets are hijacked and left alone by Shutdown, so don't wait on them.
 		shutdown, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -57,6 +62,9 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		}
 	}()
 	err := srv.Serve(ln)
+	if !errors.Is(err, http.ErrServerClosed) {
+		close(stopped)
+	}
 	if errors.Is(err, http.ErrServerClosed) {
 		<-done
 		return nil

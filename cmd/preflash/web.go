@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -30,6 +31,12 @@ func versionLine(v string) string {
 }
 
 func webCommand(args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	return serveWeb(ctx, os.Stdout, args)
+}
+
+func serveWeb(ctx context.Context, out io.Writer, args []string) error {
 	flags, dir := newFlags("web")
 	boardName := flags.String("board", "", "board file, or a stock board's name")
 	sanitize := flags.String("sanitize", "", "build with a sanitizer: address or thread")
@@ -69,9 +76,9 @@ func webCommand(args []string) error {
 		terminal = append(terminal, "--sanitize", *sanitize)
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-	fmt.Printf("%s\n\nRunning on: http://localhost:%d\n", versionLine(version), *port)
+	// The listener knows the port when --port was 0.
+	got := ln.Addr().(*net.TCPAddr).Port
+	fmt.Fprintf(out, "%s\n\nRunning on: http://localhost:%d\n", versionLine(version), got)
 	return web.New(web.Options{
 		Socket:     p.SocketPath(),
 		Terminal:   terminal,
