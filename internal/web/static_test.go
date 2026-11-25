@@ -66,3 +66,17 @@ var comments = regexp.MustCompile(`(?s)/\*.*?\*/|<!--.*?-->|(^|[^:"'\\])//[^\n]*
 func withoutComments(s string) string {
 	return comments.ReplaceAllString(s, "$1")
 }
+
+// The zoom controls and the divider are real controls, reachable from the keyboard.
+func TestThePageHasZoomControlsAndADivider(t *testing.T) {
+	page, err := fs.ReadFile(staticFiles, "static/index.html")
+	require.NoError(t, err)
+	for _, control := range []string{
+		`<button type="button" id="zoom-out"`,
+		`<button type="button" id="zoom-in"`,
+		`<button type="button" id="zoom-fit"`,
+		`id="divider" class="divider" role="separator" tabindex="0"`,
+	} {
+		assert.Contains(t, string(page), control)
+	}
+}

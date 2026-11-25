@@ -13,6 +13,11 @@
   --strip-fg: #1b2024;
   --strip-down: #0a7488;
   --strip-down-fg: #ffffff;
+  --pane-bg: #e3e7ea;
+  --bar-bg: #f7f9fa;
+  --lamp-on: #13a07c;
+  --lamp-download: #d98a1c;
+  --lamp-crashed: #d0532b;
   --term-bg: #0e1113;
   --term-surface: #15191c;
   --term-line: #2a3036;
@@ -38,6 +43,11 @@
     --strip-fg: #e7ecef;
     --strip-down: #5fd4e8;
     --strip-down-fg: #0e1113;
+    --pane-bg: #0c0f11;
+    --bar-bg: #15191c;
+    --lamp-on: #3ccf9f;
+    --lamp-download: #f0a53a;
+    --lamp-crashed: #f0704a;
   }
 }
 
@@ -66,7 +76,6 @@ body {
 main {
   display: flex;
   flex-direction: column-reverse;
-  gap: var(--gap);
   height: 100%;
   padding:
     max(var(--gap), env(safe-area-inset-top))
@@ -180,7 +189,51 @@ button {
   color: var(--term-bg);
 }
 
-/* The device column. */
+/* The divider between the terminal and the device. It fills the gap between them, and its
+   hit area reaches 6px past each side, so a finger has 24px to land on. */
+
+.divider {
+  position: relative;
+  flex: none;
+  height: var(--gap);
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+
+.divider::before {
+  content: "";
+  position: absolute;
+  inset: -6px 0;
+}
+
+.divider::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  transform: translate(-50%, -50%);
+  transition: background-color 0.15s;
+}
+
+@media (min-width: 900px) {
+  .divider { width: var(--gap); height: auto; cursor: col-resize; }
+  .divider::before { inset: 0 -6px; }
+  .divider::after { width: 4px; height: 48px; }
+}
+
+.divider:hover::after,
+.divider.dragging::after,
+.divider:focus-visible::after { background: var(--accent); }
+
+/* The device column: a pane like the terminal's, with its toolbar along the top where the
+   terminal has its keys along the bottom. */
 
 .device-col {
   flex: none;
@@ -188,26 +241,150 @@ button {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--pane-bg);
+  border: 1px solid var(--line);
+}
+
+.device-head {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-height: 46px;
+  padding: 6px 8px 6px 12px;
+  background: var(--bar-bg);
+  border-bottom: 1px solid var(--line);
 }
 
-@media (min-width: 900px) {
-  .device-col { justify-content: center; max-width: 45%; }
-}
-
-.status {
+/* The board, its power and its frame rate, each its own item. */
+.readout {
+  flex: 1 1 8em;
+  display: flex;
+  align-items: center;
+  gap: 14px;
   margin: 0;
+  min-width: 0;
   min-height: 1.35em;
-  max-width: 100%;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.status .alert { color: #d0532b; font-weight: 600; }
+.readout .board {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.readout .power {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+/* A lamp, as on the board: lit when on, hollow when off. */
+.readout .lamp {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lamp-on);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lamp-on) 22%, transparent);
+}
+
+.readout .power.off .lamp {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+}
+
+.readout .power.download .lamp { --lamp-on: var(--lamp-download); }
+.readout .power.crashed .lamp { --lamp-on: var(--lamp-crashed); }
+.readout .power.download,
+.readout .power.crashed { color: var(--fg); font-weight: 600; }
+
+.readout .fps {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* −, the size and + read as one control. */
+.zoom-steps {
+  display: flex;
+  align-items: stretch;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--strip-bg);
+}
+
+.zoom button {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 9px;
+  border: 0;
+  background: var(--strip-bg);
+  color: var(--strip-fg);
+  font: 600 15px/1 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.zoom-steps button { height: 100%; }
+.zoom button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.zoom button:disabled { opacity: 0.35; cursor: default; }
+
+#zoom-fit {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+#zoom-fit[aria-pressed="true"] {
+  background: var(--strip-down);
+  border-color: var(--strip-down);
+  color: var(--strip-down-fg);
+}
+
+.zoom output {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 5.6em;
+  padding: 0 4px;
+  border-inline: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The panel and its buttons, centred in what's left of the pane. */
+.device-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+}
 
 .stage {
   display: flex;
