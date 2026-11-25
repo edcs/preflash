@@ -395,8 +395,11 @@ function(preflash_link_app config_dir)
   target_link_libraries(preflash_app PRIVATE preflash_runtime)
 
   # The crash report walks the stack by frame pointer, and GCC drops them when optimising.
+  # A crash names its build by the GNU build ID, which not every distribution's GCC asks the
+  # linker for, so it is asked for here. Apple's linker always writes a UUID.
   if(NOT APPLE)
     list(APPEND options -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
+    target_link_options(preflash_app PRIVATE "LINKER:--build-id")
   endif()
 
   foreach(lib IN LISTS libs ITEMS preflash_runtime)
