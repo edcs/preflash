@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net"
@@ -60,6 +61,7 @@ type tab struct {
 	first   chan []byte // the first binary message
 	mu      sync.Mutex
 	got     string // every binary message so far
+	log     []string
 	arrived chan struct{}
 	closed  chan error
 }
@@ -91,6 +93,7 @@ func (s *termSite) open(t *testing.T) *tab {
 				}
 				b.mu.Lock()
 				b.got += string(data)
+				b.log = append(b.log, "bin:"+string(data))
 				b.mu.Unlock()
 				select {
 				case b.arrived <- struct{}{}:
@@ -100,6 +103,9 @@ func (s *termSite) open(t *testing.T) *tab {
 			}
 			var m map[string]any
 			if json.Unmarshal(data, &m) == nil {
+				b.mu.Lock()
+				b.log = append(b.log, "text:"+m["type"].(string))
+				b.mu.Unlock()
 				b.texts <- m
 			}
 		}
@@ -287,4 +293,61 @@ func TestWithoutATerminalTheTabIsToldWhy(t *testing.T) {
 	_, _, err = conn.Read(dial)
 	require.Equal(t, websocket.StatusNormalClosure, websocket.CloseStatus(err))
 	require.Contains(t, err.Error(), "no terminal app")
+}
+
+func TestServeEndingDoesNotWaitForeverForTheApp(t *testing.T) {
+	was := quitPatience
+	quitPatience = 1500 * time.Millisecond
+	var said bytes.Buffer
+	wasErr := stderr
+	stderr = &said
+	t.Cleanup(func() { quitPatience, stderr = was, wasErr })
+
+	socket := shortPath(t)
+	app := startFakeApp(t, socket, 172, 640)
+	app.mu.Lock()
+	app.stubborn = true
+	app.mu.Unlock()
+	site := startTermSite(t, "ignore-ctrl-c", socket)
+	site.open(t).until(" ok")
+
+	start := time.Now()
+	site.stop()
+	// closePatience (1 s) and the dial wait (1 s) come before the quit's own limit.
+	require.Less(t, time.Since(start), 1*time.Second+quitPatience+2*time.Second)
+	require.Equal(t, 1, app.count("quit"))
+	require.Contains(t, said.String(), "the app didn't stop")
+	require.Contains(t, said.String(), "pid 7")
+}
+
+// events is every message a tab has had, in the order it came, as "text:<type>" or "bin:<data>".
+func (b *tab) events() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]string(nil), b.log...)
+}
+
+func TestStartedComesBeforeTheNewRunsOutput(t *testing.T) {
+	site := startTermSite(t, "exit-on-ctrl-c", "")
+	b := site.open(t)
+	b.until("ready")
+	for range 5 {
+		b.keys("\x03")
+		b.next("exited")
+		b.text(map[string]any{"type": "start"})
+		b.next("started")
+	}
+	b.until("ready")
+	// After each exited, no output may come until the started that follows.
+	waiting := false
+	for _, e := range b.events() {
+		switch {
+		case e == "text:exited":
+			waiting = true
+		case e == "text:started":
+			waiting = false
+		case waiting && strings.HasPrefix(e, "bin:"):
+			t.Fatalf("output %q came between exited and started", e)
+		}
+	}
 }

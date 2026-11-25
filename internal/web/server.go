@@ -62,7 +62,7 @@ func (s *Server) handle(pattern string, h http.Handler) {
 // Serve answers on ln until ctx ends, and then returns nil.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	if s.term != nil {
-		// Stopping comes before the device follower's, so the firmware is still there to ask.
+		// Deferred first, so it runs after the device follower has stopped.
 		defer s.stopTerminal()
 		if err := s.runs.start(); err != nil {
 			return err

@@ -3,7 +3,10 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -19,6 +22,12 @@ const (
 
 // How long Serve gives the firmware app to answer before it is left alone.
 const quitDialPatience = time.Second
+
+// quitPatience is how long Serve waits in all for the firmware app to quit.
+var quitPatience = 5 * time.Second
+
+// stderr is where Serve says that the firmware app wouldn't stop.
+var stderr io.Writer = os.Stderr
 
 // runs tells every tab when the terminal app starts and stops, so each can say so to its page.
 type runs struct {
@@ -105,9 +114,7 @@ func (s *Server) serveTerminal(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	c := &terminalConn{runs: s.runs, conn: conn}
-	readerDone := make(chan struct{})
 	go func() {
-		defer close(readerDone)
 		defer cancel()
 		c.read(ctx)
 	}()
@@ -117,10 +124,6 @@ func (s *Server) serveTerminal(w http.ResponseWriter, r *http.Request) {
 	conn.CloseNow() // lets a blocked read go
 	// The reader isn't waited for. It may be stuck typing into an app that isn't reading, and
 	// that ends when the terminal closes, so only this tab is held up and not the handler.
-	select {
-	case <-readerDone:
-	default:
-	}
 }
 
 // terminalConn is one page's connection to the terminal.
@@ -150,6 +153,12 @@ func (c *terminalConn) write(ctx context.Context) {
 			if !ok {
 				// Too far behind, or the terminal is closing. The page redraws on reconnect.
 				return
+			}
+			// A new run's output must not go before its started. Its start is counted before
+			// any of its output can be seen here, so a chunk that finds a newer run waiting is
+			// left out: the screen sent after started has it.
+			if g, _, _ := c.runs.state(); g != gen {
+				continue
 			}
 			if c.sendBinary(ctx, chunk) != nil {
 				return
@@ -258,30 +267,44 @@ func (c *terminalConn) fail(ctx context.Context, text string) {
 	c.sendJSON(ctx, map[string]string{"type": "error", "text": text})
 }
 
-// quitFirmware asks the firmware app on socket to quit, if it still answers. Closing the
-// terminal app with ^C lets it stop its firmware, but a kill leaves the firmware, which is in
-// a group of its own, running.
+// quitFirmware asks the firmware app on socket to quit, if it still answers, and waits
+// quitPatience at most. Closing the terminal app with ^C lets it stop its firmware, but a
+// kill leaves the firmware, which is in a group of its own, running.
 func quitFirmware(socket string) {
-	type dialed struct {
-		c   *client.Client
-		err error
-	}
-	result := make(chan dialed, 1)
+	deadline := time.After(quitPatience)
+	dialed := make(chan *client.Client, 1)
 	go func() {
 		c, err := client.Dial(socket)
-		result <- dialed{c, err}
+		if err != nil {
+			c = nil
+		}
+		dialed <- c
 	}()
+	var c *client.Client
 	select {
-	case d := <-result:
-		if d.err == nil {
-			defer d.c.Close()
-			d.c.Quit()
+	case c = <-dialed:
+		if c == nil {
+			return
 		}
 	case <-time.After(quitDialPatience):
 		go func() {
-			if d := <-result; d.err == nil {
-				d.c.Close()
+			if c := <-dialed; c != nil {
+				c.Close()
 			}
 		}()
+		return
+	}
+	pid := c.Hello.PID
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer c.Close()
+		c.Quit()
+	}()
+	select {
+	case <-done:
+	case <-deadline:
+		// The quit goroutine is left to finish on its own, as the process is about to end.
+		fmt.Fprintf(stderr, "preflash: the app didn't stop; it may still be running (pid %d)\n", pid)
 	}
 }
