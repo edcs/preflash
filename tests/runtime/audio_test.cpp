@@ -257,15 +257,12 @@ TEST_F(Codec, HeadlessAcceptsAudioAndPlaysNothing) {
   for (int i = 0; i < 20; ++i)
     ASSERT_EQ(esp_codec_dev_write(speaker_, pcm, sizeof(pcm)), ESP_CODEC_DEV_OK);
   EXPECT_EQ(preflash::audio_samples_written() - before, 3200u);
-  // Each write waits out its own 10 ms, so the waits add up to the sound's 200 ms.
-  ASSERT_EQ(fake_.wakes.size(), 20u);
-  std::chrono::steady_clock::duration waited{};
-  auto from = start;
-  for (const auto wake : fake_.wakes) {
-    waited += wake - from;
-    from = wake;
-  }
-  EXPECT_EQ(std::chrono::duration_cast<std::chrono::microseconds>(waited).count(), 200'000);
+  // Each write waits until the play-ahead before its own 10 ms would end, so the writes
+  // take the sound's 200 ms, less the play-ahead the last one returns early by.
+  std::vector<long long> deadlines;
+  for (int k = 1; k <= 20; ++k) deadlines.push_back(k * 10'000 - 20'000);
+  EXPECT_EQ(fake_.wakes_after(start), deadlines);
+  EXPECT_EQ(fake_.now - start, std::chrono::milliseconds(200) - kPlayAhead);
 }
 
 TEST_F(Codec, DroppedSoundTakesAsLongAsItWouldToPlay) {
@@ -283,20 +280,26 @@ TEST_F(Codec, DroppedSoundTakesAsLongAsItWouldToPlay) {
 // headless, the writes keep pace with a deadline rather than each sleeping its own
 // length, so the work and the sleeps' overshoot don't add up to less than real time.
 TEST_F(Codec, HeadlessWritesKeepRealTimeDespiteWorkBetween) {
+  use_fake_clock();
   auto fs = mono(16000);
   ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
   std::vector<int16_t> pcm(320);  // 20 ms
   constexpr int kWrites = 100;    // 2 s of sound
-  const auto start = std::chrono::steady_clock::now();
+  const auto start = fake_.now;
   for (int i = 0; i < kWrites; ++i) {
     ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
               ESP_CODEC_DEV_OK);
-    std::this_thread::sleep_for(std::chrono::milliseconds(3));  // the firmware's work
+    fake_.advance(std::chrono::milliseconds(3));  // the firmware's work
   }
-  const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now() - start);
-  EXPECT_GE(took, std::chrono::milliseconds(2000 - 20 - 20)) << "faster than real time";
-  EXPECT_LE(took, std::chrono::milliseconds(2000 + 60)) << "slower than real time";
+  // The k'th write waits until its sound would end, less the play-ahead. The work falls
+  // inside the sound already playing, so it never pushes a deadline later; a write that
+  // slept its own length after the work would end 99 * 3 ms late.
+  std::vector<long long> deadlines;
+  for (int k = 1; k <= kWrites; ++k) deadlines.push_back(k * 20'000 - 20'000);
+  EXPECT_EQ(fake_.wakes_after(start), deadlines);
+  // The last write returns the play-ahead before the sound ends, at real time.
+  ASSERT_FALSE(fake_.wakes.empty());
+  EXPECT_EQ(fake_.wakes.back() + kPlayAhead - start, std::chrono::milliseconds(2000));
 }
 
 TEST_F(Codec, SinkFailingMidWriteOnlyPacesWhatItDropped) {
