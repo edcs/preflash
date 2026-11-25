@@ -15,6 +15,7 @@
   <a href="#install">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#terminal-app">Terminal app</a> ·
+  <a href="#browser">Browser</a> ·
   <a href="#drive-it-from-a-script">Scripting</a> ·
   <a href="#debug-firmware">Debugging</a> ·
   <a href="#how-it-compares">How it compares</a> ·
@@ -288,6 +289,37 @@ A project that builds differently per board can name an `sdkconfig` for each one
 sdkconfig:
   ESP32-S3-Touch-LCD-3.49-V2: sdkconfig.349
 ```
+
+## Browser
+
+`preflash web` runs the terminal app and the panel in a browser tab, so you can use Preflash from a machine with no window of its own, or from an iPad.
+
+```sh
+preflash web
+```
+
+It prints a URL, `http://localhost:7480` unless you pass `--port`. The page shows the panel on one side and the terminal app on the other, and the app runs headless, so there is no separate window. Touch or drag on the panel to tap it, and hold a button in the strip below to hold that board button. Both go through the app's control socket, as [`preflash hardware`](#break-the-hardware) does. `--board`, `--sanitize` and `--project` work as they do for `preflash tui`.
+
+The server listens on `127.0.0.1` only. To reach it from another machine, forward the port. [Nearhost](https://nearhost.dev) can do that for you. The plain way is an SSH tunnel:
+
+```sh
+ssh -L 7480:localhost:7480 <mac>
+```
+
+Then open `http://localhost:7480` on the machine you're sitting at. A page is refused unless its address is `localhost`, `127.0.0.1` or `[::1]`, on any port, so a forward onto another port works. For a name of your own, pass `--allow-host name`, once for each name. A refused request gets a page that names the host and the flag.
+
+The key row under the terminal sends the keys a touch screen lacks: Esc, Tab, `^C`, `^R`, the arrows and `/`. `^C` typed in the page ends only the terminal app, and the page offers to start it again. `^C` to `preflash web` itself stops the terminal app and the firmware, and leaves nothing running.
+
+### Check it on an iPad
+
+The tests cover the server and the page's protocol, but not Safari on a touch screen. After a change to the page, check these on a real iPad, reaching the Mac through a forwarded port:
+
+- Drag on the panel, and see the drag land where your finger is.
+- Hold a button, then lift your finger, and see the button let go.
+- Use the key row, including a sideways swipe on a narrow screen that sends no key.
+- Tap `^B`, `^D` and `^H` in the terminal app's footer, and see the board picker, the debug views and the hardware panel open. The on-screen keyboard has no Control key, so these taps are the only way to reach them, and they work only if xterm.js passes them to the app as mouse reports.
+- Turn the iPad upright, and see the panel and terminal stack to fit.
+- Let the iPad sleep, wake it, and see the terminal redraw with its colours, with nothing left held down.
 
 ## Drive it from a script
 

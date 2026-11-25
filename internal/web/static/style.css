@@ -1,0 +1,309 @@
+/* The page's colours. The terminal keeps the TUI's own dark ground in both themes. */
+:root {
+  --bg: #eceff1;
+  --fg: #1b2024;
+  --muted: #5b656d;
+  --line: #d3d9dd;
+  --accent: #0a7488;
+  --banner-bg: #1b2024;
+  --banner-fg: #eceff1;
+  --bezel: #1a1d20;
+  --bezel-edge: #30363c;
+  --strip-bg: #ffffff;
+  --strip-fg: #1b2024;
+  --strip-down: #0a7488;
+  --strip-down-fg: #ffffff;
+  --term-bg: #0e1113;
+  --term-surface: #15191c;
+  --term-line: #2a3036;
+  --term-fg: #e7ecef;
+  --term-muted: #8d98a1;
+  --term-accent: #5fd4e8;
+  --gap: 12px;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #090b0d;
+    --fg: #e7ecef;
+    --muted: #8d98a1;
+    --line: #23292e;
+    --accent: #5fd4e8;
+    --banner-bg: #e7ecef;
+    --banner-fg: #0e1113;
+    --bezel: #050607;
+    --bezel-edge: #262b30;
+    --strip-bg: #15191c;
+    --strip-fg: #e7ecef;
+    --strip-down: #5fd4e8;
+    --strip-down-fg: #0e1113;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.35 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The body follows the visual viewport, so the iPad's keyboard shrinks the page, not covers it. */
+body {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--vv-top, 0px);
+  height: var(--vv-height, 100dvh);
+}
+
+main {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--gap);
+  height: 100%;
+  padding:
+    max(var(--gap), env(safe-area-inset-top))
+    max(var(--gap), env(safe-area-inset-right))
+    max(var(--gap), env(safe-area-inset-bottom))
+    max(var(--gap), env(safe-area-inset-left));
+}
+
+@media (min-width: 900px) {
+  main { flex-direction: row; }
+}
+
+[hidden] { display: none !important; }
+
+button {
+  font: inherit;
+  color: inherit;
+  touch-action: manipulation;
+}
+
+/* The terminal column. */
+
+.term-col {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--term-bg);
+  border: 1px solid var(--term-line);
+}
+
+.term-frame {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+#term {
+  position: absolute;
+  inset: 6px 4px 2px 8px;
+}
+
+#term .xterm-viewport { overscroll-behavior: none; }
+
+/* iOS Safari zooms the page into a focused field under 16px. The field is invisible, so its
+   size changes nothing on screen. */
+.xterm .xterm-helper-textarea { font-size: 16px; }
+
+.term-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgb(14 17 19 / 0.82);
+  color: var(--term-fg);
+  text-align: center;
+  padding: 24px;
+}
+
+.term-overlay p { margin: 0; font-size: 16px; }
+
+.term-overlay button {
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 8px;
+  border: 0;
+  background: var(--term-accent);
+  color: var(--term-bg);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.keys {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--term-surface);
+  border-top: 1px solid var(--term-line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.keys button {
+  flex: 1 0 auto;
+  min-width: 44px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--term-line);
+  border-radius: 7px;
+  background: var(--term-bg);
+  color: var(--term-fg);
+  font: 600 15px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-x; /* the row scrolls sideways on a narrow screen */
+}
+
+.keys button.arrow { font-size: 19px; }
+
+.keys button:active, .keys button.pressed {
+  background: var(--term-accent);
+  border-color: var(--term-accent);
+  color: var(--term-bg);
+}
+
+/* The device column. */
+
+.device-col {
+  flex: none;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+@media (min-width: 900px) {
+  .device-col { justify-content: center; max-width: 45%; }
+}
+
+.status {
+  margin: 0;
+  min-height: 1.35em;
+  max-width: 100%;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status .alert { color: #d0532b; font-weight: 600; }
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border-radius: 18px;
+  background: var(--bezel);
+  box-shadow: inset 0 0 0 1px var(--bezel-edge);
+}
+
+.screen {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: pointer;
+}
+
+#panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+  max-width: none;
+  transform-origin: center;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+#panel.pixelated { image-rendering: pixelated; }
+#panel:not([src]) { visibility: hidden; }
+.screen.off #panel { visibility: hidden; }
+
+.screen-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 0.62);
+  color: #e7ecef;
+  text-align: center;
+  font-size: 15px;
+}
+
+.screen-overlay p { margin: 0; max-width: 28ch; }
+.screen.connected .screen-overlay { display: none; }
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.strip button {
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--strip-bg);
+  color: var(--strip-fg);
+  font: 600 13px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.strip button.down {
+  background: var(--strip-down);
+  border-color: var(--strip-down);
+  color: var(--strip-down-fg);
+  transform: translateY(1px);
+}
+
+.banner {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--banner-bg);
+  color: var(--banner-fg);
+  font-size: 13px;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 10;
+}

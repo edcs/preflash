@@ -29,10 +29,14 @@ type Server struct {
 
 	term *terminal // nil without a terminal app
 	runs *runs
+
+	// How often pages are checked and how long they have to answer, taken from pingInterval
+	// and pingTimeout when the server is made.
+	pingEvery, pingWait time.Duration
 }
 
 func New(o Options) *Server {
-	s := &Server{opts: o, mux: http.NewServeMux()}
+	s := &Server{opts: o, mux: http.NewServeMux(), pingEvery: pingInterval, pingWait: pingTimeout}
 	static, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		panic(err) // the directory is embedded at build time
@@ -80,7 +84,12 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 			<-deviceDone
 		}()
 	}
-	srv := &http.Server{Handler: s.mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{
+		Handler:           s.mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		// Shutdown leaves the hijacked sockets alone, so their handlers end with ctx instead.
+		BaseContext: func(net.Listener) context.Context { return ctx },
+	}
 	done := make(chan struct{})
 	stopped := make(chan struct{}) // closed when Serve fails, so the goroutine doesn't wait on ctx
 	go func() {

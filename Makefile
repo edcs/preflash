@@ -22,6 +22,7 @@ test: bash
 	tests/integration/crash.sh
 	tests/integration/check.sh
 	tests/integration/tui.sh
+	tests/integration/web.sh
 	tests/integration/demo.sh
 	tests/integration/snoozel.sh
 	tests/integration/nyx.sh

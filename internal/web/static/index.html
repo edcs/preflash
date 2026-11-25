@@ -1,1 +1,51 @@
-<!doctype html><title>Preflash</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Preflash</title>
+<link rel="stylesheet" href="vendor/xterm.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="app">
+  <section class="term-col" aria-label="Terminal">
+    <div class="term-frame">
+      <div id="term"></div>
+      <div id="stopped" class="term-overlay" hidden>
+        <p>The terminal app has stopped.</p>
+        <button type="button" id="start">Start again</button>
+      </div>
+    </div>
+    <div class="keys" role="toolbar" aria-label="Keys">
+      <button type="button" data-key="esc">Esc</button>
+      <button type="button" data-key="tab">Tab</button>
+      <button type="button" data-key="ctrl-c" title="Quit the terminal app">^C</button>
+      <button type="button" data-key="ctrl-r" title="Rebuild">^R</button>
+      <button type="button" class="arrow" data-key="left" aria-label="Left">←</button>
+      <button type="button" class="arrow" data-key="up" aria-label="Up">↑</button>
+      <button type="button" class="arrow" data-key="down" aria-label="Down">↓</button>
+      <button type="button" class="arrow" data-key="right" aria-label="Right">→</button>
+      <button type="button" data-key="slash" title="Filter">/</button>
+    </div>
+  </section>
+  <section class="device-col" aria-label="Device">
+    <p id="status" class="status"></p>
+    <div id="stage" class="stage">
+      <div id="screen" class="screen">
+        <img id="panel" alt="The device's panel">
+        <div id="waiting" class="screen-overlay">
+          <p>Waiting for the app: the terminal app is starting or building it</p>
+        </div>
+      </div>
+    </div>
+    <div id="strip" class="strip" aria-label="Buttons"></div>
+  </section>
+</main>
+<div id="banner" class="banner" role="status" hidden>Reconnecting…</div>
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-fit.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

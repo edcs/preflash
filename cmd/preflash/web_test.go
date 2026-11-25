@@ -5,15 +5,27 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
+	"os/signal"
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestMain stands in for the terminal app, which web starts as this binary run as "tui". It
+// exits at once rather than run the tests a second time inside the pty.
+func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "tui" {
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
 
 func TestWebRefusesATakenPort(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -46,6 +58,7 @@ func (l *lockedBuffer) String() string {
 
 func TestWebPrintsThePortItGot(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	out := &lockedBuffer{}
 	done := make(chan error, 1)
 	go func() { done <- serveWeb(ctx, out, []string{"--project", "../../examples/demo", "--port", "0"}) }()
@@ -61,4 +74,40 @@ func TestWebPrintsThePortItGot(t *testing.T) {
 	m := regexp.MustCompile(`Running on: http://localhost:(\d+)\n`).FindStringSubmatch(line)
 	require.NotNil(t, m, line)
 	assert.NotEqual(t, "0", m[1])
+}
+
+func TestAHangUpSaysWebIsStopping(t *testing.T) {
+	if signal.Ignored(syscall.SIGHUP) {
+		t.Skip("hang-ups are ignored here, as under nohup")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), webStopSignals()...)
+	defer stop()
+	require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGHUP))
+	select {
+	case <-ctx.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("SIGHUP didn't stop web")
+	}
+
+	stopped := false
+	var out bytes.Buffer
+	announceStop(ctx, func() { stopped = true; stop() }, &out)
+	assert.True(t, stopped, "a second signal would still be caught")
+	assert.Equal(t, "preflash: stopping…\n", out.String())
+}
+
+func TestAnIgnoredCtrlCStillStopsWeb(t *testing.T) {
+	// A script's background job starts with ^C ignored.
+	signal.Ignore(os.Interrupt)
+	defer signal.Reset(os.Interrupt)
+	assert.Contains(t, webStopSignals(), os.Interrupt)
+	assert.Contains(t, webStopSignals(), os.Signal(syscall.SIGTERM))
+}
+
+func TestReturningSaysNothing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var out bytes.Buffer
+	cancel()
+	announceStop(ctx, func() {}, &out)
+	assert.Empty(t, out.String())
 }

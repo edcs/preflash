@@ -46,6 +46,9 @@ func (s *Server) serveDevice(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		c.read(ctx, acks)
 	}()
+	// A page that has gone without closing, as one behind an SSH forward does, is let go
+	// of here, and so is what it held.
+	go keepAlive(ctx, conn, s.pingEvery, s.pingWait, cancel)
 
 	c.write(ctx, acks)
 	cancel()
@@ -163,12 +166,19 @@ func (c *deviceConn) pointer(ctx context.Context, m pageMessage) {
 		return
 	}
 	x, y := toPanel(m.U, m.V, s.BoardRotation, s.Width, s.Height)
+	// A press is counted as held before the call, since one that timed out may still have
+	// landed, and letting go of what isn't held does no harm. A lift counts only once it lands.
+	if m.Down {
+		c.pointerDown, c.pointerX, c.pointerY = true, x, y
+	}
 	err := c.dev.call(func(cl *client.Client) error { return cl.Pointer(x, y, m.Down) })
 	if err != nil {
 		c.fail(ctx, err.Error())
 		return
 	}
-	c.pointerDown, c.pointerX, c.pointerY = m.Down, x, y
+	if !m.Down {
+		c.pointerDown, c.pointerX, c.pointerY = false, x, y
+	}
 }
 
 func (c *deviceConn) button(ctx context.Context, m pageMessage) {
@@ -176,17 +186,19 @@ func (c *deviceConn) button(ctx context.Context, m pageMessage) {
 	if m.Down {
 		action = "press"
 	}
+	// As for the pointer, a press is held from before the call and a release counts once it lands.
+	if m.Down {
+		if c.held == nil {
+			c.held = map[string]bool{}
+		}
+		c.held[m.Name] = true
+	}
 	err := c.dev.call(func(cl *client.Client) error { return cl.Button(m.Name, action, 0) })
 	if err != nil {
 		c.fail(ctx, err.Error())
 		return
 	}
-	if c.held == nil {
-		c.held = map[string]bool{}
-	}
-	if m.Down {
-		c.held[m.Name] = true
-	} else {
+	if !m.Down {
 		delete(c.held, m.Name)
 	}
 }
