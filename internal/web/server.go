@@ -23,9 +23,10 @@ type Options struct {
 
 // Server is the HTTP side of preflash web.
 type Server struct {
-	opts Options
-	mux  *http.ServeMux
-	dev  *device // nil without a socket
+	opts  Options
+	mux   *http.ServeMux
+	dev   *device // nil without a socket
+	audio *audio  // nil without a socket
 
 	term *terminal // nil without a terminal app
 	runs *runs
@@ -45,6 +46,8 @@ func New(o Options) *Server {
 	if o.Socket != "" {
 		s.dev = newDevice(o.Socket)
 		s.handle("/device", http.HandlerFunc(s.serveDevice))
+		s.audio = newAudio(o.Socket)
+		s.handle("/audio", http.HandlerFunc(s.serveAudio))
 	}
 	if len(o.Terminal) > 0 {
 		term, err := newTerminal(o.Terminal, startCols, startRows)
@@ -82,6 +85,16 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		defer func() {
 			stopDevice()
 			<-deviceDone
+		}()
+		audioCtx, stopAudio := context.WithCancel(ctx)
+		audioDone := make(chan struct{})
+		go func() {
+			defer close(audioDone)
+			s.audio.run(audioCtx)
+		}()
+		defer func() {
+			stopAudio()
+			<-audioDone
 		}()
 	}
 	srv := &http.Server{
