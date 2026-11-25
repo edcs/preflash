@@ -7,6 +7,7 @@ bash:
 
 test: bash
 	go test ./...
+	@if command -v node >/dev/null; then node --test tests/web/audio-worklet.test.mjs; else echo "node not found: skipping the sound buffer's tests"; fi
 	cmake -S tests/runtime -B build/tests
 	cmake --build build/tests --parallel
 	ctest --test-dir build/tests --output-on-failure
