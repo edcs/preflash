@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "bsp/audio.h"
+#include "fake_clock.h"
 #include "freertos/task.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -721,7 +722,13 @@ TEST_F(SocketServe, AnAudioSubscriberThatHangsUpIsForgotten) {
 // Firmware's sound takes its own time, however far behind a listener falls: the listener
 // loses its oldest sound and hears how much.
 TEST_F(SocketServe, AStalledAudioSubscriberDoesNotSlowTheCodec) {
-  using Clock = std::chrono::steady_clock;
+  // The codec's pacing runs on a fake clock, so the waits it asks for are exact. A tap
+  // that waited on the stuck client would not return at all.
+  FakeClock fake;
+  preflash::audio::set_clock_for_test(fake.clock());
+  struct RealClockAfter {
+    ~RealClockAfter() { preflash::audio::set_clock_for_test({}); }
+  } real_clock_after;
   esp_codec_dev_handle_t speaker = bsp_audio_codec_speaker_init();
   esp_codec_dev_close(speaker);
   Client client(path());
@@ -732,14 +739,15 @@ TEST_F(SocketServe, AStalledAudioSubscriberDoesNotSlowTheCodec) {
   auto fs = sound_format(48000, 2);
   ASSERT_EQ(esp_codec_dev_open(speaker, &fs), ESP_CODEC_DEV_OK);
   std::vector<int16_t> pcm(48000);  // 500 ms of stereo
+  const auto start = fake.now;
+  const auto wall = std::chrono::steady_clock::now();
   for (int i = 0; i < 3; ++i) {
-    const auto start = Clock::now();
     ASSERT_EQ(esp_codec_dev_write(speaker, pcm.data(), static_cast<int>(pcm.size() * 2)),
               ESP_CODEC_DEV_OK);
-    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
-    EXPECT_GE(took, std::chrono::milliseconds(450));
-    EXPECT_LE(took, std::chrono::milliseconds(550));
   }
+  // Far over what three writes cost, and far under never.
+  EXPECT_LT(std::chrono::steady_clock::now() - wall, std::chrono::seconds(10));
+  EXPECT_EQ(fake.wakes_after(start), (std::vector<long long>{500'000, 1'000'000, 1'500'000}));
   ASSERT_EQ(esp_codec_dev_close(speaker), ESP_CODEC_DEV_OK);
   json line;
   do {

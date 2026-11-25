@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "bsp/audio.h"
+#include "fake_clock.h"
 #include "preflash/audio.h"
 
 namespace {
@@ -74,11 +75,15 @@ class Codec : public testing::Test {
     preflash::audio::set_device_request({});
   }
   void TearDown() override {
+    preflash::audio::set_clock_for_test({});
     esp_codec_dev_close(speaker_);
     preflash::audio::set_sink(nullptr);
     preflash::audio::set_device_request({});
   }
+  // Paces sound with nowhere to go by fake_, which TearDown takes out again.
+  void use_fake_clock() { preflash::audio::set_clock_for_test(fake_.clock()); }
   esp_codec_dev_handle_t speaker_ = bsp_audio_codec_speaker_init();
+  FakeClock fake_;
 };
 
 }  // namespace
@@ -236,15 +241,24 @@ TEST_F(Codec, WriteBeforeOpenFails) {
 }
 
 TEST_F(Codec, HeadlessAcceptsAudioAndPlaysNothing) {
+  use_fake_clock();
   auto fs = mono(16000);
   ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
-  int16_t pcm[160] = {};
+  int16_t pcm[160] = {};  // 10 ms
   const size_t before = preflash::audio_samples_written();
-  const auto start = std::chrono::steady_clock::now();
+  const auto start = fake_.now;
   for (int i = 0; i < 20; ++i)
     ASSERT_EQ(esp_codec_dev_write(speaker_, pcm, sizeof(pcm)), ESP_CODEC_DEV_OK);
   EXPECT_EQ(preflash::audio_samples_written() - before, 3200u);
-  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(1));
+  // Each write waits out its own 10 ms, so the waits add up to the sound's 200 ms.
+  ASSERT_EQ(fake_.wakes.size(), 20u);
+  std::chrono::steady_clock::duration waited{};
+  auto from = start;
+  for (const auto wake : fake_.wakes) {
+    waited += wake - from;
+    from = wake;
+  }
+  EXPECT_EQ(std::chrono::duration_cast<std::chrono::microseconds>(waited).count(), 200'000);
 }
 
 TEST_F(Codec, DroppedSoundTakesAsLongAsItWouldToPlay) {
@@ -258,18 +272,19 @@ TEST_F(Codec, DroppedSoundTakesAsLongAsItWouldToPlay) {
 }
 
 TEST_F(Codec, SinkFailingMidWriteOnlyPacesWhatItDropped) {
+  use_fake_clock();
   FakeSink sink;
   sink.fail_at_queue = 10;
   preflash::audio::set_sink(&sink);
   auto fs = mono(16000);
   ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
   std::vector<int16_t> pcm(16000);  // one second, of which the sink takes 900 ms
-  const auto start = std::chrono::steady_clock::now();
+  const auto start = fake_.now;
   ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
             ESP_CODEC_DEV_OK);
-  const auto took = std::chrono::steady_clock::now() - start;
-  EXPECT_GE(took, std::chrono::milliseconds(100));
-  EXPECT_LT(took, std::chrono::milliseconds(500));
+  EXPECT_EQ(sink.bytes, 9u * 1600 * 2);
+  // Only the 100 ms the sink never took is waited out.
+  EXPECT_EQ(fake_.wakes_after(start), (std::vector<long long>{100'000}));
 }
 
 TEST_F(Codec, RejectsFormatsItCannotPlay) {
@@ -327,25 +342,25 @@ TEST_F(Codec, TapAddedWhileOpenGetsTheFormat) {
 }
 
 TEST_F(Codec, TapDoesNotChangePacing) {
+  use_fake_clock();
   auto fs = mono(16000);
   ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
   std::vector<int16_t> pcm(1600);  // 100 ms
-  auto timed = [&] {
-    const auto start = std::chrono::steady_clock::now();
+  // The wakes one write asks for, counted from when it started.
+  auto paced = [&] {
+    const auto start = fake_.now;
+    const size_t first = fake_.wakes.size();
     EXPECT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
               ESP_CODEC_DEV_OK);
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start);
+    return fake_.wakes_after(start, first);
   };
-  const auto without = timed();
+  const auto without = paced();
   FakeTap tap;
   const int id = preflash::audio::add_tap(&tap);
-  const auto with = timed();
+  const auto with = paced();
   preflash::audio::remove_tap(id);
-  EXPECT_GE(without, std::chrono::milliseconds(100));
-  EXPECT_LE(without, std::chrono::milliseconds(120));
-  EXPECT_GE(with, std::chrono::milliseconds(100));
-  EXPECT_LE(with, std::chrono::milliseconds(120));
+  EXPECT_EQ(without, (std::vector<long long>{100'000}));
+  EXPECT_EQ(with, without);
   EXPECT_EQ(tap.writes.size(), 1u);
 }
 
