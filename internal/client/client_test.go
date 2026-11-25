@@ -969,3 +969,92 @@ func TestSavingWithNoPathLeavesItOutOfTheRequest(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, app.seen()[0], "path")
 }
+
+func TestAudioEventsDecode(t *testing.T) {
+	path := shortPath(t)
+	samples := base64.StdEncoding.EncodeToString([]byte{0x01, 0x00, 0xff, 0xff, 0x00, 0x80, 0xff, 0x7f})
+	startFake(t, path, func(req map[string]any, reply func(string)) {
+		reply(ok(req))
+		reply(`{"event":"audio_format","rate":48000,"channels":2}`)
+		reply(`{"event":"audio","data":"` + samples + `"}`)
+		reply(`{"event":"audio_stop"}`)
+	})
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+	require.NoError(t, c.Subscribe("audio"))
+
+	format, err := c.Next()
+	require.NoError(t, err)
+	assert.Equal(t, Event{Kind: "audio_format", Audio: AudioEvent{Rate: 48000, Channels: 2}}, format)
+	data, err := c.Next()
+	require.NoError(t, err)
+	assert.Equal(t, "audio", data.Kind)
+	assert.Equal(t, []int16{1, -1, -32768, 32767}, data.Audio.Samples)
+	stop, err := c.Next()
+	require.NoError(t, err)
+	assert.Equal(t, "audio_stop", stop.Kind)
+	assert.True(t, stop.Audio.Stop)
+}
+
+func TestAnOddAudioPayloadIsABadLine(t *testing.T) {
+	path := shortPath(t)
+	startFake(t, path, func(req map[string]any, reply func(string)) {
+		reply(ok(req))
+		reply(`{"event":"audio","data":"AAEC"}`)
+	})
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+	require.NoError(t, c.Subscribe("audio"))
+	_, err = c.Next()
+	assert.ErrorContains(t, err, "bad line")
+}
+
+func TestADroppedEventNamesItsStream(t *testing.T) {
+	path := shortPath(t)
+	startFake(t, path, func(req map[string]any, reply func(string)) {
+		reply(ok(req))
+		reply(`{"event":"dropped","stream":"audio","frames":7}`)
+		reply(`{"event":"dropped","bytes":12}`)
+		reply(`{"event":"restarting"}`)
+	})
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+	require.NoError(t, c.Subscribe("audio", "serial"))
+	first, err := c.Next()
+	require.NoError(t, err)
+	assert.Equal(t, Event{Kind: "dropped", Stream: "audio", Frames: 7}, first)
+	second, err := c.Next()
+	require.NoError(t, err)
+	assert.Equal(t, Event{Kind: "dropped", Bytes: 12}, second)
+}
+
+func TestWatchIgnoresAudioAndItsDrops(t *testing.T) {
+	path := shortPath(t)
+	startFake(t, path, func(req map[string]any, reply func(string)) {
+		reply(ok(req))
+		reply(`{"event":"audio_format","rate":48000,"channels":1}`)
+		reply(`{"event":"audio","data":"AAA="}`)
+		reply(`{"event":"dropped","stream":"audio","frames":3}`)
+		reply(`{"event":"dropped","bytes":5}`)
+		reply(`{"event":"serial","data":"` + base64.StdEncoding.EncodeToString([]byte("end")) + `"}`)
+	})
+	dropped := make(chan int, 4)
+	serial := make(chan string, 4)
+	stop := make(chan struct{})
+	finished := make(chan error, 1)
+	go func() {
+		finished <- Watch(path, Watcher{
+			Stop:    stop,
+			Dropped: func(n int) { dropped <- n },
+			Serial:  func(b []byte) error { serial <- string(b); return nil },
+		})
+	}()
+	assert.Equal(t, "end", <-serial)
+	close(stop)
+	require.NoError(t, <-finished)
+	assert.Equal(t, []int{5}, []int{<-dropped})
+	assert.Empty(t, dropped)
+}

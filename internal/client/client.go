@@ -3,6 +3,7 @@ package client
 
 import (
 	"bufio"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -100,11 +101,22 @@ type ButtonState struct {
 
 // Event is a message from the app that answers no request.
 type Event struct {
-	Kind  string      // "serial", "dropped", "restarting", "trace" or "frame"
-	Data  []byte      // what came out of the serial stream
-	Bytes int         // how much a dropped event lost
-	Trace TraceRecord // a trace event's record
-	Frame uint64      // the number of the frame a "frame" event says is ready
+	Kind   string      // "serial", "dropped", "restarting", "trace", "frame", "audio_format", "audio" or "audio_stop"
+	Data   []byte      // what came out of the serial stream
+	Bytes  int         // how much a serial dropped event lost
+	Stream string      // which stream a dropped event lost frames from; empty means serial
+	Frames int         // how many audio frames a dropped event lost
+	Audio  AudioEvent  // an audio event's content
+	Trace  TraceRecord // a trace event's record
+	Frame  uint64      // the number of the frame a "frame" event says is ready
+}
+
+// AudioEvent is what an audio_format, audio or audio_stop event carries. Samples are signed
+// 16-bit and interleaved, Channels to a frame.
+type AudioEvent struct {
+	Rate, Channels int
+	Samples        []int16
+	Stop           bool
 }
 
 // wire is every field a reply or an event can carry that this file reads itself.
@@ -116,6 +128,11 @@ type wire struct {
 	Data  []byte `json:"data"`
 	Bytes int    `json:"bytes"`
 	Frame uint64 `json:"frame"`
+
+	Stream   string `json:"stream"`
+	Frames   int    `json:"frames"`
+	Rate     int    `json:"rate"`
+	Channels int    `json:"channels"`
 }
 
 // Dial connects to the app at path. The error is ErrNotRunning if none is there.
@@ -243,7 +260,20 @@ func replyError(message wire) error {
 // event reads a message that has an event in it. A trace row's fields sit beside the event's
 // name, so they come from the raw line.
 func (w wire) event(raw []byte) Event {
-	e := Event{Kind: w.Event, Data: w.Data, Bytes: w.Bytes, Frame: w.Frame}
+	e := Event{Kind: w.Event, Data: w.Data, Bytes: w.Bytes, Frame: w.Frame, Stream: w.Stream, Frames: w.Frames}
+	switch w.Event {
+	case "audio_format":
+		e.Audio = AudioEvent{Rate: w.Rate, Channels: w.Channels}
+	case "audio":
+		// Data is base64 of little-endian int16; readLine has already checked its length.
+		e.Data = nil
+		e.Audio.Samples = make([]int16, len(w.Data)/2)
+		for i := range e.Audio.Samples {
+			e.Audio.Samples[i] = int16(binary.LittleEndian.Uint16(w.Data[2*i:]))
+		}
+	case "audio_stop":
+		e.Audio.Stop = true
+	}
 	if w.Event == "trace" {
 		// Numbers and strings that don't fit leave a row with less in it, which is all
 		// a client of a newer app can expect.
@@ -278,6 +308,9 @@ func (c *Client) readLine() ([]byte, wire, error) {
 	var message wire
 	if err := json.Unmarshal(raw, &message); err != nil {
 		return nil, wire{}, fmt.Errorf("a bad line from the app: %w", err)
+	}
+	if message.Event == "audio" && len(message.Data)%2 != 0 {
+		return nil, wire{}, errors.New("a bad line from the app: audio data is not whole samples")
 	}
 	return raw, message, nil
 }
@@ -498,7 +531,7 @@ func watchOne(c *Client, w Watcher) (bool, error) {
 				}
 			}
 		case "dropped":
-			if w.Dropped != nil {
+			if event.Stream == "" && w.Dropped != nil {
 				w.Dropped(event.Bytes)
 			}
 		case "restarting":
