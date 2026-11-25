@@ -275,23 +275,26 @@ function applyState(s) {
 
 function describe() {
   const s = state;
-  statusEl.textContent = '';
   if (s.board) lastBoard = s.board;
-  // Without an app, the overlay on the panel says why, and the line keeps only the board.
-  if (!s.connected) {
-    statusEl.textContent = lastBoard;
-    return;
-  }
-  const alert = (text) => {
+  const item = (cls, text) => {
     const span = document.createElement('span');
-    span.className = 'alert';
+    span.className = cls;
     span.textContent = text;
     return span;
   };
-  statusEl.append(`${s.board} · `);
-  statusEl.append(s.power === 'download' ? alert('download mode') : (s.power || 'on'));
-  statusEl.append(` · ${s.fps ?? 0} fps`);
-  if (s.crashed) statusEl.append(' · ', alert('crashed'));
+  const board = item('board', lastBoard);
+  board.title = lastBoard;
+  // Without an app, the overlay on the panel says why, and the toolbar keeps only the board.
+  if (!s.connected) {
+    statusEl.replaceChildren(board);
+    return;
+  }
+  let kind = s.power || 'on';
+  let words = { on: 'On', off: 'Off', download: 'Download mode' }[kind] || kind;
+  if (s.crashed) [kind, words] = ['crashed', 'Crashed'];
+  const power = item(`power ${kind}`, '');
+  power.append(item('lamp', ''), words);
+  statusEl.replaceChildren(board, power, item('fps', `${s.fps ?? 0} fps`));
 }
 
 function showPicture(blob, ws) {
@@ -336,6 +339,7 @@ const reconnectDevice = reconnecting('/device', 'device', (ws) => {
 const wideQuery = matchMedia('(min-width: 900px)');
 const deviceCol = document.querySelector('.device-col');
 const deviceHead = document.querySelector('.device-head');
+const zoomGroup = document.querySelector('.zoom');
 const keysRow = document.querySelector('.keys');
 const zoomOut = $('zoom-out');
 const zoomIn = $('zoom-in');
@@ -377,7 +381,9 @@ for (const key of Object.keys(split)) {
 }
 
 const bezel = 20; // the stage's padding on both sides
-const colGap = 10; // between the head, the stage and the strip
+const bodyPad = 12; // the device pane's padding around the stage and strip
+const bodyGap = 10; // between the stage and the strip
+const paneEdge = 2; // the device pane's border, both sides
 const minDevice = 200; // the device side keeps this much while the terminal has room
 // The TUI's own minimum size (internal/tui: minWidth, minHeight). Below it the terminal app shows
 // only "Window too small".
@@ -431,8 +437,8 @@ function clampDevice(size, content, wide) {
 // What the device side needs, along the split, to show the panel at the chosen zoom.
 function deviceNeed(shape, wide) {
   const z = fitMode ? 1 : zoom;
-  if (wide) return Math.max(shape.shownW * z + bezel, zoomOut.parentElement.offsetWidth);
-  return shape.shownH * z + bezel + deviceHead.offsetHeight + strip.offsetHeight + 2 * colGap;
+  if (wide) return Math.max(shape.shownW * z + bezel + 2 * bodyPad + paneEdge, zoomGroup.offsetWidth + 2 * bodyPad);
+  return shape.shownH * z + bezel + deviceHead.offsetHeight + strip.offsetHeight + bodyGap + 2 * bodyPad + paneEdge;
 }
 
 // deviceSize is the device side's size along the split: the dragged share, or else what the
@@ -456,8 +462,9 @@ function layout() {
   divider.setAttribute('aria-orientation', wide ? 'vertical' : 'horizontal');
   divider.setAttribute('aria-valuenow', String(Math.round((100 * size) / axis)));
 
-  const roomW = (wide ? size : content.w) - bezel;
-  const roomH = (wide ? content.h : size) - deviceHead.offsetHeight - strip.offsetHeight - 2 * colGap - bezel;
+  const roomW = (wide ? size : content.w) - bezel - 2 * bodyPad - paneEdge;
+  const roomH = (wide ? content.h : size) - deviceHead.offsetHeight - strip.offsetHeight - bodyGap
+    - 2 * bodyPad - paneEdge - bezel;
   const fitScale = Math.max(Math.min(roomW / shape.shownW, roomH / shape.shownH), 0.05);
   const scale = fitMode ? fitScale : Math.min(zoom, fitScale);
   shownScale = scale;

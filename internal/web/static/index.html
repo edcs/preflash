@@ -34,23 +34,27 @@
        aria-label="Split between terminal and device" title="Drag to resize. Double-tap to reset."></div>
   <section class="device-col" aria-label="Device">
     <div class="device-head">
-      <p id="status" class="status"></p>
+      <p id="status" class="readout"></p>
       <div class="zoom" role="group" aria-label="Zoom">
-        <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
-        <output id="zoom-label" aria-live="polite">100%</output>
-        <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
-        <button type="button" id="zoom-fit" aria-pressed="false" title="Fit the panel to the column">Fit</button>
+        <div class="zoom-steps">
+          <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+          <output id="zoom-label" aria-live="polite">100%</output>
+          <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+        </div>
+        <button type="button" id="zoom-fit" aria-pressed="false" title="Fit the panel to the pane">Fit</button>
       </div>
     </div>
-    <div id="stage" class="stage">
-      <div id="screen" class="screen">
-        <img id="panel" alt="The device's panel">
-        <div id="waiting" class="screen-overlay">
-          <p>Waiting for the app: the terminal app is starting or building it</p>
+    <div class="device-body">
+      <div id="stage" class="stage">
+        <div id="screen" class="screen">
+          <img id="panel" alt="The device's panel">
+          <div id="waiting" class="screen-overlay">
+            <p>Waiting for the app: the terminal app is starting or building it</p>
+          </div>
         </div>
       </div>
+      <div id="strip" class="strip" aria-label="Buttons"></div>
     </div>
-    <div id="strip" class="strip" aria-label="Buttons"></div>
   </section>
 </main>
 <div id="banner" class="banner" role="status" hidden>Reconnecting…</div>

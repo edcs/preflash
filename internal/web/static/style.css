@@ -13,6 +13,11 @@
   --strip-fg: #1b2024;
   --strip-down: #0a7488;
   --strip-down-fg: #ffffff;
+  --pane-bg: #e3e7ea;
+  --bar-bg: #f7f9fa;
+  --lamp-on: #13a07c;
+  --lamp-download: #d98a1c;
+  --lamp-crashed: #d0532b;
   --term-bg: #0e1113;
   --term-surface: #15191c;
   --term-line: #2a3036;
@@ -38,6 +43,11 @@
     --strip-fg: #e7ecef;
     --strip-down: #5fd4e8;
     --strip-down-fg: #0e1113;
+    --pane-bg: #0c0f11;
+    --bar-bg: #15191c;
+    --lamp-on: #3ccf9f;
+    --lamp-download: #f0a53a;
+    --lamp-crashed: #f0704a;
   }
 }
 
@@ -222,7 +232,8 @@ button {
 .divider.dragging::after,
 .divider:focus-visible::after { background: var(--accent); }
 
-/* The device column. */
+/* The device column: a pane like the terminal's, with its toolbar along the top where the
+   terminal has its keys along the bottom. */
 
 .device-col {
   flex: none;
@@ -230,74 +241,149 @@ button {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 10px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--pane-bg);
+  border: 1px solid var(--line);
 }
 
-@media (min-width: 900px) {
-  .device-col { justify-content: center; }
-}
-
-/* The status line, with the zoom controls at its right. */
 .device-head {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 4px 12px;
-  width: 100%;
+  gap: 6px 12px;
+  min-height: 46px;
+  padding: 6px 8px 6px 12px;
+  background: var(--bar-bg);
+  border-bottom: 1px solid var(--line);
 }
 
-.status {
+/* The board, its power and its frame rate, each its own item. */
+.readout {
   flex: 1 1 8em;
+  display: flex;
+  align-items: center;
+  gap: 14px;
   margin: 0;
   min-width: 0;
   min-height: 1.35em;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.status .alert { color: #d0532b; font-weight: 600; }
+.readout .board {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.readout .power {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+/* A lamp, as on the board: lit when on, hollow when off. */
+.readout .lamp {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lamp-on);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lamp-on) 22%, transparent);
+}
+
+.readout .power.off .lamp {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+}
+
+.readout .power.download .lamp { --lamp-on: var(--lamp-download); }
+.readout .power.crashed .lamp { --lamp-on: var(--lamp-crashed); }
+.readout .power.download,
+.readout .power.crashed { color: var(--fg); font-weight: 600; }
+
+.readout .fps {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 
 .zoom {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin-left: auto;
 }
 
-.zoom button {
-  min-width: 30px;
+/* −, the size and + read as one control. */
+.zoom-steps {
+  display: flex;
+  align-items: stretch;
   height: 32px;
-  padding: 0 8px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--strip-bg);
+}
+
+.zoom button {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 9px;
+  border: 0;
   background: var(--strip-bg);
   color: var(--strip-fg);
-  font: 600 14px/1 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font: 600 15px/1 ui-sans-serif, system-ui, -apple-system, sans-serif;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
+  touch-action: manipulation;
 }
 
-.zoom button:disabled { opacity: 0.4; cursor: default; }
+.zoom-steps button { height: 100%; }
+.zoom button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.zoom button:disabled { opacity: 0.35; cursor: default; }
 
-.zoom button[aria-pressed="true"] {
+#zoom-fit {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+#zoom-fit[aria-pressed="true"] {
   background: var(--strip-down);
   border-color: var(--strip-down);
   color: var(--strip-down-fg);
 }
 
 .zoom output {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-width: 5.6em;
-  color: var(--muted);
+  padding: 0 4px;
+  border-inline: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
-  text-align: center;
   white-space: nowrap;
+}
+
+/* The panel and its buttons, centred in what's left of the pane. */
+.device-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
 }
 
 .stage {
