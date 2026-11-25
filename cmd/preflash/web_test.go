@@ -19,6 +19,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestMain stands in for the terminal app, which web starts as this binary run as "tui". It
+// exits at once rather than run the tests a second time inside the pty.
+func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "tui" {
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
 func TestWebRefusesATakenPort(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -50,6 +59,7 @@ func (l *lockedBuffer) String() string {
 
 func TestWebPrintsThePortItGot(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	out := &lockedBuffer{}
 	done := make(chan error, 1)
 	go func() { done <- serveWeb(ctx, out, []string{"--project", "../../examples/demo", "--port", "0"}) }()
