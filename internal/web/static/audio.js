@@ -23,7 +23,7 @@
   let resuming = false; // a resume is under way
 
   // What the worklet last said, for the tests and anyone looking from the console.
-  const stats = { level: 0, target: 0, underruns: 0, playing: false };
+  const stats = { level: 0, target: 0, underruns: 0, trim: 0, playing: false };
   window.preflashAudio = { stats };
 
   // ---- The button ----------------------------------------------------------------------------
@@ -122,7 +122,9 @@
 
   function heard(m) {
     if (m.type !== 'stats') return;
-    Object.assign(stats, { level: m.level, target: m.target, underruns: m.underruns, playing: m.playing });
+    Object.assign(stats, {
+      level: m.level, target: m.target, underruns: m.underruns, trim: m.trim, playing: m.playing,
+    });
     if (m.playing !== playing) {
       playing = m.playing;
       show();

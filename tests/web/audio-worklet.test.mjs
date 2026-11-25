@@ -49,6 +49,22 @@ function load(sampleRate = 48000) {
       return out;
     },
     levelMs() { return p.level / 48; },
+    // stream plays for ms while 20 ms packets arrive in real time, calling look after each
+    // quantum.
+    stream(ms, look = () => {}) {
+      const calls = Math.round((ms / 1000) * sampleRate / quantum);
+      for (let i = 0; i < calls; i++) {
+        this.fed = (this.fed || 0) + quantum * 48000 / sampleRate;
+        while (this.fed >= 960) {
+          this.push(20);
+          this.fed -= 960;
+        }
+        this.run(quantum / sampleRate * 1000);
+        look();
+      }
+    },
+    // rate is how much faster than real time playback runs: 0.005 is 0.5% faster.
+    rate() { return p.step / (48000 / sampleRate) - 1; },
   };
   return player;
 }
@@ -150,4 +166,36 @@ test('a buffer 300 ms past its target skips to the target with a short crossfade
   const faded = out.findIndex((x) => x === 0);
   assert.ok(faded >= 5 * 48 && faded <= 10 * 48 + 1, `fades over 5 to 10 ms (${faded / 48} ms)`);
   assert.ok(out.slice(faded).every((x) => x === 0), 'then plays the new sound');
+});
+
+test('playback runs up to 0.5% fast to bring a full buffer down to its target', () => {
+  const a = load();
+  a.push(400, { burst: true }); // 250 ms over the target, short of a skip
+  a.run(1);
+  let fastest = 0;
+  let steepest = 0;
+  let last = a.rate();
+  a.stream(60000, () => {
+    fastest = Math.max(fastest, a.rate());
+    steepest = Math.max(steepest, Math.abs(a.rate() - last));
+    last = a.rate();
+  });
+  assert.ok(fastest > 0.004, `it trims (${fastest})`);
+  assert.ok(fastest <= 0.005 + 1e-12, `by 0.5% at most (${fastest})`);
+  assert.ok(steepest < 0.00005, `smoothly, not wobbling (${steepest} in one quantum)`);
+  assert.ok(a.levelMs() < a.p.target + 60, `it drained toward the target (${a.levelMs()} ms)`);
+  assert.equal(a.p.underruns, 0);
+});
+
+test('playback runs up to 0.5% slow to fill a low buffer, at any context rate', () => {
+  for (const rate of [48000, 44100]) {
+    const a = load(rate);
+    a.push(40, { burst: true });
+    a.run(110); // too short for the target: it plays once nothing more comes
+    assert.equal(a.p.playing, true);
+    let slowest = 0;
+    a.stream(10000, () => { slowest = Math.min(slowest, a.rate()); });
+    assert.ok(slowest < -0.004, `it trims (${slowest})`);
+    assert.ok(slowest >= -0.005 - 1e-12, `by 0.5% at most (${slowest})`);
+  }
 });

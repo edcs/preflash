@@ -8,6 +8,10 @@
 // after the tab was in the background, drops its oldest sound to get back to the target, fading
 // from the sound it was playing into the sound it skips to so the jump doesn't click.
 //
+// While it plays, playback runs up to 0.5% fast or slow, in proportion to how far a smoothed level
+// is from the target, which holds the buffer steady against the device's clock drifting from the
+// Mac's, and brings it back to the target without a skip. Skipping ahead is only the backstop.
+//
 // A new format keeps what is buffered, which plays out, as both channels are always stored; its
 // first packet counts as a burst start. Only a clear, at hang-up and sound off, empties the buffer.
 'use strict';
@@ -26,6 +30,9 @@ const statsEvery = 0.5; // seconds
 const primeWait = 0.1; // seconds
 const capacity = 2 * rate; // more than the most the buffer keeps, maxTarget + skipPast
 const fadeMs = 8; // the crossfade when playback skips ahead
+const maxTrim = 0.005; // the most playback runs fast or slow: 0.5%, under 9 cents
+const trimSpan = 100; // ms from the target at which the trim is at its most
+const trimSmooth = 1; // seconds: the level is smoothed over about this long, so the rate doesn't wobble
 
 class PreflashAudio extends AudioWorkletProcessor {
   constructor() {
@@ -35,7 +42,10 @@ class PreflashAudio extends AudioWorkletProcessor {
     this.start = 0; // index of the oldest sample
     this.level = 0; // samples held
     this.pos = 0; // fraction of a sample read, when the context's rate isn't 48 kHz
-    this.step = rate / sampleRate;
+    this.baseStep = rate / sampleRate;
+    this.step = this.baseStep;
+    this.trim = 0; // how much faster than real time playback runs
+    this.smooth = 0; // the level in ms, smoothed, while playing
     this.target = startTarget;
     this.underruns = 0;
     this.playing = false; // the buffer is primed and playing out
@@ -149,8 +159,20 @@ class PreflashAudio extends AudioWorkletProcessor {
 
     if (!this.playing && this.level > 0) {
       const waited = now - this.lastPush > primeWait;
-      if (this.level >= this.target * perMs || this.ended || waited) this.playing = true;
+      if (this.level >= this.target * perMs || this.ended || waited) {
+        this.playing = true;
+        this.smooth = this.target; // primed to it, so the trim starts at nothing and eases in
+      }
     }
+
+    if (this.playing) {
+      this.smooth += (this.level / perMs - this.smooth) * (frames / (sampleRate * trimSmooth));
+      const off = (this.smooth - this.target) / trimSpan;
+      this.trim = Math.max(-maxTrim, Math.min(maxTrim, off * maxTrim));
+    } else {
+      this.trim = 0;
+    }
+    this.step = this.baseStep * (1 + this.trim);
 
     if (this.playing) {
       const [l, r] = this.bufs;
@@ -210,6 +232,7 @@ class PreflashAudio extends AudioWorkletProcessor {
         level: Math.round(this.level / perMs),
         target: this.target,
         underruns: this.underruns,
+        trim: Math.round(this.trim * 10000) / 100, // percent
         playing: sounding,
       });
     }
