@@ -403,7 +403,7 @@ void close_for_good() {
   // The newline first ends any line the main thread was part way through, which the window
   // then drops as bad, so the close arrives on a line of its own.
   static constexpr char kClose[] = "\n{\"op\":\"close\"}\n";
-  (void)!write(fd, kClose, sizeof kClose - 1);
+  (void)!platform::send_some(fd, kClose, sizeof kClose - 1);
 }
 
 bool supervised() { return g_supervised; }

@@ -63,14 +63,18 @@ int exec_clean(const char* path, char* const argv[], char* const envp[]) {
   // close on exec.
   const int keep[] = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, preflash::port::master_fd(),
                       preflash::port::slave_fd()};
+  struct sigaction pipe_before {};
+  bool pipe_reset = false;
   if (preflash::platform::close_on_exec_except(keep, 5)) {
-    struct sigaction current {};
-    if (sigaction(SIGPIPE, nullptr, &current) == 0 && current.sa_handler == SIG_IGN) {
+    if (sigaction(SIGPIPE, nullptr, &pipe_before) == 0 && pipe_before.sa_handler == SIG_IGN) {
       signal(SIGPIPE, SIG_DFL);
+      pipe_reset = true;
     }
     pthread_sigmask(SIG_SETMASK, &none, nullptr);
     execve(path, argv, envp);
   }
+  // Only a failed exec gets here, and the app goes on as it was.
+  if (pipe_reset) sigaction(SIGPIPE, &pipe_before, nullptr);
   pthread_sigmask(SIG_SETMASK, &previous, nullptr);
   return -1;
 #else
