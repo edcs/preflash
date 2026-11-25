@@ -475,7 +475,7 @@ func TestAReportForAnAppAlreadyReplacedStaysUnsaid(t *testing.T) {
 		close(naming)
 		<-release
 	}
-	t.Cleanup(func() { resolveCrash = resolveWithAtos })
+	t.Cleanup(func() { resolveCrash = symbolise })
 
 	f := newTarget(t, "exec sleep 30")
 	s, _, begun := started(t, f)

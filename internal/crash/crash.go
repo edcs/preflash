@@ -163,7 +163,8 @@ func withoutThreadStart(stack []Frame) []Frame {
 	end := len(stack)
 	for end > 1 {
 		function := stack[end-1].Function
-		if !strings.Contains(function, "std::__1::") && !strings.Contains(function, "std::thread::") && function != "execute_native_thread_routine" &&
+		if !strings.Contains(function, "std::__1::") && !strings.Contains(function, "std::thread::") &&
+			!strings.Contains(function, "std::__invoke") && function != "execute_native_thread_routine" &&
 			!strings.Contains(function, "xTaskCreatePinnedToCore::") {
 			break
 		}
