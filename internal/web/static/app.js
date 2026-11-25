@@ -1,5 +1,6 @@
 // The Preflash web page: the terminal app on the left, the simulated device on the right.
 // It talks to the server over two sockets, /terminal and /device, and each reconnects on its own.
+// audio.js adds a third, /audio, while sound is on.
 'use strict';
 
 const $ = (id) => document.getElementById(id);
@@ -28,12 +29,15 @@ const silenceLimit = 40000;
 
 // reconnecting opens path and opens it again whenever it closes, waiting 0.5 s and then twice
 // as long each time, up to 5 s. It returns a function that checks the socket at once and skips
-// the wait.
+// the wait. Its close method closes the socket for good. Only the terminal and device sockets
+// bring up the banner.
 function reconnecting(path, name, setup) {
   let delay = 500;
   let timer = null;
   let ws = null;
   let heard = 0; // when ws last said anything
+  let closed = false;
+  const banner = name in socketUp;
   function open() {
     timer = null;
     const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -43,6 +47,7 @@ function reconnecting(path, name, setup) {
     setup(sock);
     sock.addEventListener('open', () => {
       heard = performance.now();
+      if (!banner) return;
       socketUp[name] = true;
       showBanner();
     });
@@ -56,10 +61,13 @@ function reconnecting(path, name, setup) {
       // may follow much later.
       if (ended) return;
       ended = true;
+      if (closed) return;
       if (e.reason) console.info(`${path} closed: ${e.reason}`);
-      socketUp[name] = false;
-      everDown = true;
-      showBanner();
+      if (banner) {
+        socketUp[name] = false;
+        everDown = true;
+        showBanner();
+      }
       timer = setTimeout(open, delay);
       delay = Math.min(delay * 2, 5000);
     });
@@ -73,14 +81,23 @@ function reconnecting(path, name, setup) {
     dead.dispatchEvent(new CloseEvent('close', { code: 4000, reason: 'silent too long' }));
   }
   open();
-  setInterval(check, 5000);
-  return function now() {
+  const checking = setInterval(check, 5000);
+  function now() {
+    if (closed) return;
     check();
     if (timer !== null) {
       clearTimeout(timer);
       open();
     }
+  }
+  now.close = () => {
+    closed = true;
+    clearInterval(checking);
+    clearTimeout(timer);
+    timer = null;
+    if (ws) ws.close();
   };
+  return now;
 }
 
 function sendJSON(ws, value) {
@@ -339,7 +356,7 @@ const reconnectDevice = reconnecting('/device', 'device', (ws) => {
 const wideQuery = matchMedia('(min-width: 900px)');
 const deviceCol = document.querySelector('.device-col');
 const deviceHead = document.querySelector('.device-head');
-const zoomGroup = document.querySelector('.zoom');
+const headTools = document.querySelector('.head-tools');
 const keysRow = document.querySelector('.keys');
 const zoomOut = $('zoom-out');
 const zoomIn = $('zoom-in');
@@ -437,7 +454,7 @@ function clampDevice(size, content, wide) {
 // What the device side needs, along the split, to show the panel at the chosen zoom.
 function deviceNeed(shape, wide) {
   const z = fitMode ? 1 : zoom;
-  if (wide) return Math.max(shape.shownW * z + bezel + 2 * bodyPad + paneEdge, zoomGroup.offsetWidth + 2 * bodyPad);
+  if (wide) return Math.max(shape.shownW * z + bezel + 2 * bodyPad + paneEdge, headTools.offsetWidth + 2 * bodyPad);
   return shape.shownH * z + bezel + deviceHead.offsetHeight + strip.offsetHeight + bodyGap + 2 * bodyPad + paneEdge;
 }
 

@@ -312,12 +312,68 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-.zoom {
+/* The speaker and the zoom controls, at the toolbar's end. */
+.head-tools {
   flex: none;
   display: flex;
   align-items: center;
   gap: 6px;
   margin-left: auto;
+}
+
+.zoom {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Off shows a crossed speaker; on fills it like a pressed control; on with nothing playing is
+   the same, dimmed; a remembered "on" after a reload is outlined, waiting for a tap. */
+.speaker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--strip-bg);
+  color: var(--strip-fg);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition: opacity 0.2s, background-color 0.2s, border-color 0.2s;
+}
+
+.speaker svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.speaker .cone { fill: currentColor; }
+.speaker .waves { display: none; }
+.speaker:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.speaker[data-state="playing"],
+.speaker[data-state="idle"],
+.speaker[data-state="starting"] {
+  background: var(--strip-down);
+  border-color: var(--strip-down);
+  color: var(--strip-down-fg);
+}
+.speaker[data-state="playing"] .waves,
+.speaker[data-state="idle"] .waves,
+.speaker[data-state="starting"] .waves,
+.speaker[data-state="resume"] .waves { display: inline; }
+.speaker[data-state="playing"] .cross,
+.speaker[data-state="idle"] .cross,
+.speaker[data-state="starting"] .cross,
+.speaker[data-state="resume"] .cross { display: none; }
+.speaker[data-state="idle"],
+.speaker[data-state="starting"] { opacity: 0.55; }
+
+.speaker[data-state="resume"] {
+  border: 1.5px dashed var(--accent);
+  color: var(--accent);
 }
 
 /* −, the size and + read as one control. */
