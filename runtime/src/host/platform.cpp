@@ -1,10 +1,12 @@
 #include "preflash/platform.h"
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <unistd.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <vector>
 
@@ -59,13 +61,37 @@ char** environment() {
 #endif
 }
 
+bool close_on_exec_by_listing() {
+  DIR* dir = opendir("/proc/self/fd");
+  if (!dir) return false;
+  const int own = dirfd(dir);
+  bool marked = true;
+  while (const dirent* entry = readdir(dir)) {
+    char* end = nullptr;
+    const long fd = std::strtol(entry->d_name, &end, 10);
+    // "." and "..", the standard three, and the listing's own descriptor, which closedir
+    // closes anyway.
+    if (end == entry->d_name || *end != '\0' || fd < 3 || fd == own) continue;
+    const int flags = fcntl(static_cast<int>(fd), F_GETFD);
+    if (flags == -1 || fcntl(static_cast<int>(fd), F_SETFD, flags | FD_CLOEXEC) == -1) {
+      marked = false;
+    }
+  }
+  closedir(dir);
+  return marked;
+}
+
 bool close_on_exec_except(const int* keep, int count) {
 #ifdef __APPLE__
   (void)keep;
   (void)count;
   return true;
 #else
-  if (syscall(SYS_close_range, 3u, ~0u, CLOSE_RANGE_CLOEXEC) != 0) return false;
+  // CLOSE_RANGE_CLOEXEC needs Linux 5.11, and some container seccomp profiles refuse
+  // close_range outright, so a failure falls back to marking each open descriptor by hand.
+  if (syscall(SYS_close_range, 3u, ~0u, CLOSE_RANGE_CLOEXEC) != 0 && !close_on_exec_by_listing()) {
+    return false;
+  }
   for (int i = 0; i < count; ++i) {
     if (keep[i] >= 0 && fcntl(keep[i], F_SETFD, 0) == -1) return false;
   }

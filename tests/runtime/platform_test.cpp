@@ -114,6 +114,28 @@ TEST(Platform, CloseOnExecExceptKeepsOnlyThoseNamed) {
 #endif
 }
 
+TEST(Platform, CloseOnExecFallbackMarksEveryFdAboveStderr) {
+#ifdef __APPLE__
+  GTEST_SKIP() << "lists /proc/self/fd";
+#else
+  EXPECT_EQ(in_child([] {
+              int a[2];
+              int b[2];
+              if (pipe(a) != 0 || pipe(b) != 0) return false;
+              if (!platform::close_on_exec_by_listing()) return false;
+              for (const int fd : {a[0], a[1], b[0], b[1]}) {
+                if ((fcntl(fd, F_GETFD) & FD_CLOEXEC) == 0) return false;
+              }
+              if ((fcntl(STDERR_FILENO, F_GETFD) & FD_CLOEXEC) != 0) return false;
+              // The keep list still comes back open after everything was marked.
+              if (!platform::close_on_exec_except(&a[0], 1)) return false;
+              return (fcntl(a[0], F_GETFD) & FD_CLOEXEC) == 0 &&
+                     (fcntl(b[0], F_GETFD) & FD_CLOEXEC) != 0;
+            }),
+            0);
+#endif
+}
+
 TEST(Exec, KeepsNohupAcrossRestart) {
 #ifdef __APPLE__
   GTEST_SKIP() << "reads the signal masks from /proc";

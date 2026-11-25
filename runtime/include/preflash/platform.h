@@ -19,4 +19,9 @@ char** environment();
 // there it does nothing.
 bool close_on_exec_except(const int* keep, int count);
 
+// Marks every open descriptor above stderr close-on-exec by listing /proc/self/fd, for
+// kernels or sandboxes without close_range. Returns false if it couldn't list them or mark
+// one. Where /proc is missing, as on macOS, it always returns false.
+bool close_on_exec_by_listing();
+
 }  // namespace preflash::platform
