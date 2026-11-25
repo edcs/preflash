@@ -5,12 +5,12 @@ import (
 	"math"
 	"testing"
 
-	"github.com/kazzmir/opus-go/opus"
 	"github.com/stretchr/testify/require"
+	"github.com/tphakala/go-opus/opus"
 )
 
 // decodeForTest returns a decoder for packets from newOpusEncoder, using the
-// encoder library's own libopus decoder.
+// encoder library's own decoder.
 func decodeForTest(channels int) (func([]byte) ([]int16, error), error) {
 	d, err := opus.NewDecoder(opusRate, channels)
 	if err != nil {
@@ -18,7 +18,7 @@ func decodeForTest(channels int) (func([]byte) ([]int16, error), error) {
 	}
 	pcm := make([]int16, opusFrame*channels)
 	return func(packet []byte) ([]int16, error) {
-		n, err := d.Decode(packet, pcm, opusFrame, false)
+		n, err := d.Decode(packet, pcm)
 		if err != nil {
 			return nil, err
 		}

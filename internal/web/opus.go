@@ -1,10 +1,11 @@
 package web
 
 import (
+	"errors"
 	"fmt"
-	"runtime"
+	"sync"
 
-	"github.com/kazzmir/opus-go/opus"
+	"github.com/tphakala/go-opus/opus"
 )
 
 const (
@@ -24,11 +25,15 @@ type opusEncoder interface {
 	Close() error
 }
 
-type kazzmirEncoder struct {
+var errOpusClosed = errors.New("opus: encoder closed")
+
+// goOpusEncoder wraps tphakala/go-opus, a pure-Go port of libopus whose
+// encoder codes CELT only, which suits music.
+type goOpusEncoder struct {
+	mu       sync.Mutex // go-opus encoders aren't safe for concurrent use
 	enc      *opus.Encoder
 	channels int
 	buf      []byte
-	cleanup  runtime.Cleanup
 }
 
 // newOpusEncoder returns an encoder for mono (64 kbps) or stereo (96 kbps)
@@ -43,34 +48,40 @@ func newOpusEncoder(channels int) (opusEncoder, error) {
 	default:
 		return nil, fmt.Errorf("opus: %d channels, want 1 or 2", channels)
 	}
-	enc, err := opus.NewEncoder(opusRate, channels, opus.ApplicationAudio)
+	enc, err := opus.NewEncoder(opus.EncoderConfig{
+		SampleRate: opusRate,
+		Channels:   channels,
+		Bitrate:    bitrate,
+		// libopus's default, which go-opus leaves off unless asked.
+		ConstrainedVBR: true,
+	})
 	if err != nil {
 		return nil, err
 	}
-	if err := enc.SetBitrate(bitrate); err != nil {
-		enc.Close()
-		return nil, err
-	}
-	e := &kazzmirEncoder{enc: enc, channels: channels, buf: make([]byte, opusMaxPacket)}
-	// The encoder holds memory outside the Go heap. Close frees it; this
-	// frees it anyway if the wrapper is dropped without a Close.
-	e.cleanup = runtime.AddCleanup(e, func(enc *opus.Encoder) { enc.Close() }, enc)
-	return e, nil
+	return &goOpusEncoder{enc: enc, channels: channels, buf: make([]byte, opusMaxPacket)}, nil
 }
 
-func (e *kazzmirEncoder) Encode(pcm []int16) ([]byte, error) {
+func (e *goOpusEncoder) Encode(pcm []int16) ([]byte, error) {
 	if len(pcm) != opusFrame*e.channels {
 		return nil, fmt.Errorf("opus: got %d samples, want %d (20 ms of %d channels)", len(pcm), opusFrame*e.channels, e.channels)
 	}
-	n, err := e.enc.Encode(pcm, opusFrame, e.buf)
-	runtime.KeepAlive(e) // the cleanup must not close enc mid-call
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.enc == nil {
+		return nil, errOpusClosed
+	}
+	n, err := e.enc.Encode(pcm, e.buf)
 	if err != nil {
 		return nil, err
 	}
 	return append([]byte(nil), e.buf[:n]...), nil
 }
 
-func (e *kazzmirEncoder) Close() error {
-	e.cleanup.Stop()
-	return e.enc.Close() // a no-op after the first call
+// Close drops the encoder's state. go-opus holds only Go memory, so there is
+// nothing else to free.
+func (e *goOpusEncoder) Close() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.enc = nil
+	return nil
 }
