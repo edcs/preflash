@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -60,6 +61,16 @@ int add_tap(Tap* tap);
 void remove_tap(int id);
 // How many taps are in, for tests.
 size_t tap_count();
+
+// The clock that paces sound with nowhere to go. Tests put in their own, so that they
+// check the waits the codec asks for rather than how long a loaded machine took to wake.
+// The codec calls sleep_until with no lock held. A member left empty is steady_clock's
+// own, so set_clock_for_test({}) puts the real clock back.
+struct Clock {
+  std::function<std::chrono::steady_clock::time_point()> now;
+  std::function<void(std::chrono::steady_clock::time_point)> sleep_until;
+};
+void set_clock_for_test(Clock clock);
 
 }  // namespace preflash::audio
 

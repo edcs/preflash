@@ -44,6 +44,11 @@ std::mutex g_request_mutex;
 std::function<void()> g_request;
 bool g_requested = false;
 std::atomic<size_t> g_frames{0};
+audio::Clock g_clock;  // under the speaker's lock; empty members are steady_clock's
+
+std::chrono::steady_clock::time_point clock_now() {
+  return g_clock.now ? g_clock.now() : std::chrono::steady_clock::now();
+}
 
 // Waits until the sink has room. False if it never drains, or if the codec is
 // being closed, which has no use for the sound.
@@ -96,6 +101,12 @@ size_t tap_count() {
   Speaker& s = speaker();
   std::lock_guard<std::mutex> hold(s.lock);
   return g_taps.size();
+}
+
+void set_clock_for_test(Clock clock) {
+  Speaker& s = speaker();
+  std::lock_guard<std::mutex> hold(s.lock);
+  g_clock = std::move(clock);
 }
 
 void set_device_request(std::function<void()> request) {
@@ -229,8 +240,13 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
     // I2S takes sound at its sample rate. Firmware can time itself by the writes, so
     // sound with nowhere to go still takes as long as it would to play.
     const auto playing = std::chrono::microseconds(dropped * 1000000 / static_cast<size_t>(s.rate));
+    const auto wake = preflash::clock_now() + playing;
+    auto sleep_until = preflash::g_clock.sleep_until;  // copied, as the lock is let go
     hold.unlock();
-    std::this_thread::sleep_for(playing);
+    if (sleep_until)
+      sleep_until(wake);
+    else
+      std::this_thread::sleep_until(wake);
   }
   return ESP_CODEC_DEV_OK;
 }
