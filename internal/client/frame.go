@@ -28,19 +28,14 @@ type Frame struct {
 
 // Save writes the frame as a PNG or a BMP, chosen by the file's extension.
 func (f Frame) Save(path string) error {
-	if f.Format != "rgb565le" {
-		return fmt.Errorf("a frame in %q, which this preflash can't read", f.Format)
-	}
-	// Divides instead of multiplying, which a bad reply could overflow.
-	if f.Width <= 0 || f.Height <= 0 || len(f.Data)%2 != 0 || len(f.Data)/2/f.Width != f.Height ||
-		len(f.Data)/2%f.Width != 0 {
-		return fmt.Errorf("a %dx%d frame of %d bytes", f.Width, f.Height, len(f.Data))
+	if err := f.check(); err != nil {
+		return err
 	}
 	var encoded []byte
 	var err error
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".png":
-		encoded, err = f.png()
+		encoded, err = f.PNG()
 	case ".bmp":
 		encoded = f.bmp()
 	default:
@@ -60,7 +55,24 @@ func (f Frame) pixel(x, y int) (r, g, b uint8) {
 	return red<<3 | red>>2, green<<2 | green>>4, blue<<3 | blue>>2
 }
 
-func (f Frame) png() ([]byte, error) {
+// check refuses a frame whose pixels can't be read.
+func (f Frame) check() error {
+	if f.Format != "rgb565le" {
+		return fmt.Errorf("a frame in %q, which this preflash can't read", f.Format)
+	}
+	// Divides instead of multiplying, which a bad reply could overflow.
+	if f.Width <= 0 || f.Height <= 0 || len(f.Data)%2 != 0 || len(f.Data)/2/f.Width != f.Height ||
+		len(f.Data)/2%f.Width != 0 {
+		return fmt.Errorf("a %dx%d frame of %d bytes", f.Width, f.Height, len(f.Data))
+	}
+	return nil
+}
+
+// PNG encodes the frame as a PNG picture.
+func (f Frame) PNG() ([]byte, error) {
+	if err := f.check(); err != nil {
+		return nil, err
+	}
 	img := image.NewNRGBA(image.Rect(0, 0, f.Width, f.Height))
 	for y := range f.Height {
 		for x := range f.Width {
