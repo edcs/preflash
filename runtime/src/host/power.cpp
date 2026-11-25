@@ -151,7 +151,7 @@ void enter(Mode next, Reset reason) {
   std::fflush(stdout);
   std::fflush(stderr);
   const std::string path = platform::executable_path();
-  if (path.empty()) {
+  if (path.empty() || !platform::arguments()[0]) {
     preflash_unsupported(caller, "the executable's path is too long to re-run");
   }
   carry_chips_across_restart();
