@@ -6,6 +6,9 @@
 // with no underrun the target comes down 10 ms, to 150 ms at least. Running dry before a burst
 // start isn't an underrun, as the device simply went quiet. A buffer well past its target, as
 // after the tab was in the background, drops its oldest sound to get back to the target.
+//
+// A new format keeps what is buffered, which plays out, as both channels are always stored; its
+// first packet counts as a burst start. Only a clear, at hang-up and sound off, empties the buffer.
 'use strict';
 
 const rate = 48000; // what the server sends, after its resampling
@@ -36,6 +39,7 @@ class PreflashAudio extends AudioWorkletProcessor {
     this.playing = false; // the buffer is primed and playing out
     this.dry = false; // it ran dry, and the next packet says whether that was an underrun
     this.ended = false; // a stop came: what is left plays out, and running dry is fine
+    this.fresh = false; // a format came: the next packet starts a burst
     this.lastPush = 0;
     this.lastChange = 0; // when the target last moved
     this.lastStats = 0;
@@ -47,7 +51,7 @@ class PreflashAudio extends AudioWorkletProcessor {
     switch (m.type) {
       case 'format':
         this.channels = m.channels === 2 ? 2 : 1;
-        this.clear();
+        this.fresh = true;
         break;
       case 'clear':
         this.clear();
@@ -68,12 +72,15 @@ class PreflashAudio extends AudioWorkletProcessor {
     this.playing = false;
     this.dry = false;
     this.ended = false;
+    this.fresh = false;
   }
 
   push(m) {
+    const burst = m.burst || this.fresh;
+    this.fresh = false;
     if (this.dry) {
       this.dry = false;
-      if (!m.burst) {
+      if (!burst) {
         // The sound was meant to carry on: the link was late.
         this.underruns++;
         this.target = Math.min(this.target + raiseBy, maxTarget);

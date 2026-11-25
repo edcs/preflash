@@ -104,3 +104,31 @@ test('the target eases down 10 ms for each 5 s without an underrun, to 150 ms', 
   a.run(60000);
   assert.equal(a.p.target, 150);
 });
+
+test('a format keeps what is buffered, and its first packet is a burst start', () => {
+  const a = load();
+  a.send({ type: 'format', channels: 1 });
+  a.push(200, { burst: true });
+  a.run(20);
+  assert.equal(a.p.playing, true);
+  const held = a.levelMs();
+  a.send({ type: 'format', channels: 2 }); // the codec reopened in stereo
+  assert.equal(a.levelMs(), held, 'the sound already here still plays');
+  assert.equal(a.p.playing, true);
+  a.run(400); // it plays out and runs dry
+  a.push(20, { channels: 2 }); // the new format's first packet, not marked by the server
+  assert.equal(a.p.underruns, 0);
+  // The flag is used up: running dry again mid-burst is an underrun.
+  a.run(300);
+  a.push(20, { channels: 2 });
+  assert.equal(a.p.underruns, 1);
+});
+
+test('clear, for hang-up and sound off, empties the buffer', () => {
+  const a = load();
+  a.push(200, { burst: true });
+  a.run(20);
+  a.send({ type: 'clear' });
+  assert.equal(a.p.level, 0);
+  assert.equal(a.p.playing, false);
+});
