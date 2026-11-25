@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -550,6 +551,40 @@ func TestBuildWritesToTheGivenOutputAndStopsOnFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "the build failed")
 	assert.Contains(t, output.String(), "/nowhere")
+}
+
+func TestBuildStartsTheCacheAfreshWhenTheToolchainChanges(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Find(idfProject(t, t.TempDir()))
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(p.BuildDir(), 0o755))
+	bin := t.TempDir()
+	writeFile(t, filepath.Join(bin, "cmake"), "#!/bin/sh\n"+
+		`if [ "$1" = --version ]; then echo "cmake version $CMAKE_VERSION"; echo; exit; fi`+"\n"+
+		`[ "$1" != "$FAIL" ]`+"\n")
+	writeFile(t, filepath.Join(bin, "xcrun"), "#!/bin/sh\necho \"$SDK\"\n")
+	for _, name := range []string{"cmake", "xcrun"} {
+		require.NoError(t, os.Chmod(filepath.Join(bin, name), 0o755))
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	cache, compilers := filepath.Join(p.BuildDir(), "CMakeCache.txt"), filepath.Join(p.BuildDir(), "CMakeFiles", "4.4.5")
+	keepsCache := func(toolchain ...string) bool {
+		writeFile(t, cache, "CURL_INCLUDE_DIR:PATH=/Xcode/MacOSX.sdk/usr/include\n")
+		require.NoError(t, os.MkdirAll(compilers, 0o755))
+		_ = p.Build(context.Background(), append([]string{"PATH=" + os.Getenv("PATH")}, toolchain...), io.Discard)
+		_, cacheErr := os.Stat(cache)
+		_, compilersErr := os.Stat(compilers)
+		require.Equal(t, cacheErr == nil, compilersErr == nil, "the cache and CMakeFiles go together")
+		return cacheErr == nil
+	}
+	before := []string{"CMAKE_VERSION=4.4.5", "SDK=/Xcode/MacOSX.sdk"}
+
+	assert.False(t, keepsCache(before...), "a folder no build has stamped")
+	assert.True(t, keepsCache(before...), "the same toolchain")
+	assert.False(t, keepsCache("CMAKE_VERSION=4.5.0", "SDK=/Xcode/MacOSX.sdk"), "a newer CMake")
+	assert.False(t, keepsCache("CMAKE_VERSION=4.5.0", "SDK=/CommandLineTools/MacOSX.sdk"), "another SDK")
+	keepsCache("CMAKE_VERSION=4.5.0", "SDK=/Xcode/MacOSX.sdk", "FAIL=-S")
+	assert.False(t, keepsCache("CMAKE_VERSION=4.5.0", "SDK=/Xcode/MacOSX.sdk"), "after a configure that failed")
 }
 
 func TestLogPathIsInTheBuildFolder(t *testing.T) {
