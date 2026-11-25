@@ -159,6 +159,9 @@ TEST(Outbox, UrgentMessagesGoAheadOfWhatIsQueued) {
 
 namespace {
 
+constexpr auto Format = serial::Outbox::AudioEvent::Format;
+constexpr auto Stop = serial::Outbox::AudioEvent::Stop;
+
 std::string audio_line(const std::vector<int16_t>& samples) {
   return "{\"event\":\"audio\",\"data\":\"" +
          serial::base64(samples.data(), samples.size() * sizeof(int16_t)) + "\"}\n";
@@ -235,11 +238,11 @@ TEST(Outbox, AudioEventsWithNoSoundBetweenDoNotPileUp) {
   const long before = serial::unsent();
   serial::Outbox box(1024);
   const std::vector<int16_t> a = {1};
-  box.push_audio_event("format 0");
+  box.push_audio_event("format 0", Format);
   box.push_audio(a.data(), 1, 1);
   for (int i = 1; i <= 1000; ++i) {
-    box.push_audio_event("stop " + std::to_string(i));
-    box.push_audio_event("format " + std::to_string(i));
+    box.push_audio_event("stop " + std::to_string(i), Stop);
+    box.push_audio_event("format " + std::to_string(i), Format);
   }
   EXPECT_EQ(serial::unsent(), before + 4);
   const std::vector<std::string> want = {"format 0\n", audio_line(a), "stop 1000\n",
@@ -251,6 +254,41 @@ TEST(Outbox, AudioEventsWithNoSoundBetweenDoNotPileUp) {
     box.sent();
   }
   EXPECT_EQ(box.message_bytes(), 0u);
+}
+
+// Firmware beeping over and over opens, writes and closes each time. A client that never
+// reads keeps a second of sound, and only the format each part of it needs.
+TEST(Outbox, RepeatedBeepsForAClientThatNeverReadsStayBounded) {
+  const long before = serial::unsent();
+  serial::Outbox box(1024);
+  box.set_audio_limit(16000 * sizeof(int16_t));  // a second of 16 kHz mono
+  const std::vector<int16_t> beep(1600, 7);       // 0.1 s
+  for (int i = 0; i < 2000; ++i) {
+    box.push_audio_event("format", Format);
+    box.push_audio(beep.data(), beep.size(), 1);
+    box.push_audio_event("stop", Stop);
+  }
+  EXPECT_LT(serial::unsent() - before, 40);
+  box.close();
+  int events = 0, sounds = 0;
+  bool formatted = false;
+  std::string line;
+  while (box.pop(&line)) {
+    box.sent();
+    if (line == "format\n") {
+      ++events;
+      formatted = true;
+    } else if (line == "stop\n") {
+      ++events;
+      formatted = false;
+    } else if (line.find("\"event\":\"audio\"") != std::string::npos) {
+      ++sounds;
+      EXPECT_TRUE(formatted) << "sound " << sounds << " has no format before it";
+    }
+  }
+  EXPECT_EQ(sounds, 10);
+  EXPECT_LE(events, 2 * sounds + 1);
+  EXPECT_EQ(serial::unsent(), before);
 }
 
 // Past the limit, older writes lose their front frames, and the newest write stays whole.
@@ -272,27 +310,35 @@ TEST(Outbox, AnOlderWriteLosesItsFrontFramesFirst) {
   box.sent();
 }
 
-TEST(Outbox, AudioFormatAndStopAreNeverDropped) {
+// A format and a stop keep their place while the sound they describe is queued. Once that
+// sound has gone, only the format the oldest sound left needs is kept.
+TEST(Outbox, AudioFormatAndStopGoOnlyWithTheSoundTheyDescribe) {
   const long before = serial::unsent();
   {
     serial::Outbox box(1024);
-    box.set_audio_limit(8);
-    const std::vector<int16_t> a = {1, 2}, b = {3, 4, 5, 6};
-    box.push_audio_event("format one");
+    box.set_audio_limit(8);  // four mono frames
+    const std::vector<int16_t> a = {1, 2}, b = {3, 4}, c = {5, 6};
+    box.push_audio_event("format one", Format);
     box.push_audio(a.data(), 2, 1);
-    box.push_audio_event("stop");
-    box.push_audio_event("format two");
-    box.push_audio(b.data(), 4, 1);
-    EXPECT_EQ(serial::unsent(), before + 4);
+    box.push_audio_event("stop one", Stop);
+    box.push_audio_event("format two", Format);
+    box.push_audio(b.data(), 2, 1);
+    box.push_audio_event("stop two", Stop);
+    box.push_audio_event("format three", Format);
+    box.push_audio(c.data(), 2, 1);  // a goes, and the events only it needed
+    EXPECT_EQ(serial::unsent(), before + 5);
+    box.close();
     const std::vector<std::string> want = {
-        "format one\n", "stop\n", "format two\n",
-        "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":2}\n", audio_line(b)};
+        "format two\n", "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":2}\n",
+        audio_line(b), "stop two\n", "format three\n", audio_line(c)};
     for (const std::string& expected : want) {
       std::string line;
       ASSERT_TRUE(box.pop(&line));
       EXPECT_EQ(line, expected);
       box.sent();
     }
+    std::string line;
+    EXPECT_FALSE(box.pop(&line));
     EXPECT_EQ(serial::unsent(), before);
   }
   EXPECT_EQ(serial::unsent(), before);

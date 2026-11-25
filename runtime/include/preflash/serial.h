@@ -61,7 +61,8 @@ class Outbox {
   // An event about the sound, such as its format or its end, kept in order with the
   // samples. Never dropped while sound follows it; of the events with no sound after
   // them, only the newest two are kept.
-  void push_audio_event(std::string line);
+  enum class AudioEvent { Format, Stop };
+  void push_audio_event(std::string line, AudioEvent event);
   // The most sound kept, in bytes. The socket keeps a second of what is open.
   void set_audio_limit(size_t bytes);
 
@@ -89,8 +90,10 @@ class Outbox {
     std::string bytes;
     Kind kind;
     size_t frame_bytes = 0;  // for audio
+    bool format = false;     // for an audio event
   };
   void forget(long items);
+  void tidy_audio_events();
 
   std::mutex mutex_;
   std::condition_variable ready_;

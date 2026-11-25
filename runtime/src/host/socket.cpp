@@ -83,12 +83,15 @@ class AudioTap : public audio::Tap {
     out_.set_audio_limit(static_cast<size_t>(format.rate) * static_cast<size_t>(format.channels) *
                          sizeof(int16_t));
     out_.push_audio_event("{\"event\":\"audio_format\",\"rate\":" + std::to_string(format.rate) +
-                          ",\"channels\":" + std::to_string(format.channels) + "}");
+                          ",\"channels\":" + std::to_string(format.channels) + "}",
+                          serial::Outbox::AudioEvent::Format);
   }
   void samples(const int16_t* data, size_t frames) override {
     out_.push_audio(data, frames, channels_);
   }
-  void stop() override { out_.push_audio_event("{\"event\":\"audio_stop\"}"); }
+  void stop() override {
+    out_.push_audio_event("{\"event\":\"audio_stop\"}", serial::Outbox::AudioEvent::Stop);
+  }
 
  private:
   serial::Outbox& out_;

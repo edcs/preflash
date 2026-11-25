@@ -321,6 +321,7 @@ void Outbox::push_audio(const int16_t* samples, size_t frames, int channels) {
     // oldest write left. The write just pushed, always the back, is never cut, however
     // long: firmware can play a whole clip in one write, and its start is real sound. An
     // erase moves what follows, so the back is checked afresh each time.
+    bool erased = false;
     for (auto it = items_.begin();
          audio_bytes_ > audio_limit_ && std::next(it) != items_.end();) {
       if (it->kind != Kind::Audio) {
@@ -340,12 +341,33 @@ void Outbox::push_audio(const int16_t* samples, size_t frames, int channels) {
       --audio_items_;
       it = items_.erase(it);
       forget(1);
+      erased = true;
     }
+    if (erased) tidy_audio_events();
   }
   ready_.notify_one();
 }
 
-void Outbox::push_audio_event(std::string line) {
+// The events left ahead of the oldest sound described sound that has gone. That sound
+// needs only the newest format among them; the stops and older formats go, or a client
+// that never reads would keep a pair for every beep firmware ever played.
+void Outbox::tidy_audio_events() {
+  size_t first_audio = 0;
+  while (first_audio < items_.size() && items_[first_audio].kind != Kind::Audio) ++first_audio;
+  size_t keep = first_audio;
+  for (size_t i = 0; i < first_audio; ++i) {
+    if (items_[i].kind == Kind::AudioEvent && items_[i].format) keep = i;
+  }
+  // Backwards, so an erase moves only what has been looked at.
+  for (size_t i = first_audio; i-- > 0;) {
+    if (items_[i].kind != Kind::AudioEvent || i == keep) continue;
+    message_bytes_ -= items_[i].bytes.size();
+    items_.erase(items_.begin() + static_cast<long>(i));
+    forget(1);
+  }
+}
+
+void Outbox::push_audio_event(std::string line, AudioEvent event) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (closed_) return;
@@ -363,7 +385,7 @@ void Outbox::push_audio_event(std::string line) {
       break;
     }
     message_bytes_ += line.size();
-    items_.push_back({std::move(line), Kind::AudioEvent});
+    items_.push_back({std::move(line), Kind::AudioEvent, 0, event == AudioEvent::Format});
     forget(-1);
   }
   ready_.notify_one();
