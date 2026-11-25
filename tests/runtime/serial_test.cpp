@@ -2,6 +2,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -52,6 +54,24 @@ TEST(Outbox, GivesLinesInOrder) {
   ASSERT_TRUE(box.pop(&line));
   EXPECT_EQ(line, "{\"event\":\"serial\",\"data\":\"aGk=\"}\n");
   box.sent();
+}
+
+// A reply queued while held waits for whatever the request also queues, so the client
+// can't act on the reply before it's true.
+TEST(Outbox, GivesNothingWhileHeld) {
+  serial::Outbox box(1024);
+  box.hold();
+  box.push_message("{\"id\":1}");
+  std::atomic<bool> popped{false};
+  std::thread writer([&] {
+    std::string line;
+    if (box.pop(&line)) popped = true;
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  EXPECT_FALSE(popped);
+  box.let_go();
+  writer.join();
+  EXPECT_TRUE(popped);
 }
 
 // A client that stops reading loses its oldest output and hears how much, while

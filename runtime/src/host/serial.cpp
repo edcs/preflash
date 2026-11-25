@@ -315,10 +315,24 @@ void Outbox::push_frame(uint64_t frame) {
   ready_.notify_one();
 }
 
+void Outbox::hold() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  held_ = true;
+}
+
+void Outbox::let_go() {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    held_ = false;
+  }
+  ready_.notify_all();
+}
+
 bool Outbox::pop(std::string* line) {
   std::unique_lock<std::mutex> lock(mutex_);
-  ready_.wait(lock,
-              [this] { return !items_.empty() || dropped_ > 0 || frame_waiting_ || closed_; });
+  ready_.wait(lock, [this] {
+    return closed_ || (!held_ && (!items_.empty() || dropped_ > 0 || frame_waiting_));
+  });
   if (dropped_ > 0) {
     *line = "{\"event\":\"dropped\",\"bytes\":" + std::to_string(dropped_) + "}\n";
     dropped_ = 0;

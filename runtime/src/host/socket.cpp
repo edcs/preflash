@@ -192,6 +192,13 @@ void op_subscribe(Connection& c, const json& request, const json& id) {
       return;
     }
   }
+  // The reply goes ahead of what the streams replay, but out only once they're live, so a
+  // client that acts on it can't miss what comes next.
+  struct Held {
+    serial::Outbox& out;
+    ~Held() { out.let_go(); }
+  } held{c.out};
+  c.out.hold();
   reply_ok(c, id);
   const auto asked_for = [streams](const char* name) {
     return std::find(streams->begin(), streams->end(), json(name)) != streams->end();

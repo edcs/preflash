@@ -53,6 +53,11 @@ class Outbox {
   // slow client's backlog.
   void push_urgent(std::string line);
 
+  // While held, pop gives nothing, so a request can queue its reply and what follows from it
+  // before the client hears either. Closing lets go too.
+  void hold();
+  void let_go();
+
   // Waits for the next line. False once closed with nothing left. Call sent() after
   // writing the line.
   bool pop(std::string* line);
@@ -87,6 +92,7 @@ class Outbox {
   long unsent_ = 0;
   long in_flight_ = 0;  // popped, and sent() not yet called
   bool closed_ = false;
+  bool held_ = false;
 };
 
 // Lines waiting in every Outbox and chunks waiting for the real stdout, which leaving the
