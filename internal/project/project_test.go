@@ -360,8 +360,15 @@ func TestSocketPathFallsBackWhenHomeIsLong(t *testing.T) {
 func TestRunRefusesASocketPathThatCannotFit(t *testing.T) {
 	t.Setenv("HOME", "/Users/"+strings.Repeat("x", 100))
 	t.Setenv("TMPDIR", "/tmp/"+strings.Repeat("y", 100))
+	t.Setenv("XDG_CACHE_HOME", "")
 
-	assert.ErrorContains(t, Project{Dir: "/x/demo"}.checkSocketPath(), "too long")
+	err := Project{Dir: "/x/demo"}.checkSocketPath()
+	assert.ErrorContains(t, err, "too long")
+	if runtime.GOOS == "darwin" {
+		assert.ErrorContains(t, err, "use a shorter HOME or TMPDIR")
+	} else {
+		assert.ErrorContains(t, err, "use a shorter HOME, XDG_CACHE_HOME or TMPDIR")
+	}
 }
 
 // A HOME whose cache folder fits the control socket but not the window's, which is two bytes

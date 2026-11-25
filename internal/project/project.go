@@ -256,7 +256,12 @@ func (p Project) WindowSocketPath() string {
 // control socket and the window's beside it.
 func (p Project) checkSocketPath() error {
 	if path := p.SocketPath(); !socketsFit(path) {
-		return fmt.Errorf("the socket's path is too long: %s: use a shorter HOME or TMPDIR", p.WindowSocketPath())
+		// On Linux the cache folder can come from XDG_CACHE_HOME as well as HOME.
+		folders := "HOME or TMPDIR"
+		if runtime.GOOS != "darwin" {
+			folders = "HOME, XDG_CACHE_HOME or TMPDIR"
+		}
+		return fmt.Errorf("the socket's path is too long: %s: use a shorter %s", p.WindowSocketPath(), folders)
 	}
 	return nil
 }
