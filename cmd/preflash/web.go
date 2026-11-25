@@ -31,9 +31,23 @@ func versionLine(v string) string {
 }
 
 func webCommand(args []string) error {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), project.StopSignals()...)
+	defer stop()
+	go announceStop(ctx, stop, os.Stderr)
 	return serveWeb(ctx, os.Stdout, args)
+}
+
+// announceStop says so when a signal starts the shutdown, and hands the signals back to their
+// defaults, so a second ^C ends preflash web at once. That leaves nothing behind: the pty
+// closes with the process, which hangs up the terminal app, and it stops its firmware.
+func announceStop(ctx context.Context, stop context.CancelFunc, out io.Writer) {
+	<-ctx.Done()
+	// A signal leaves a cause of its own, which wraps the plain error; stop leaves none.
+	if context.Cause(ctx) == ctx.Err() {
+		return // web returned, and no signal came
+	}
+	stop()
+	fmt.Fprintln(out, "preflash: stopping…")
 }
 
 func serveWeb(ctx context.Context, out io.Writer, args []string) error {

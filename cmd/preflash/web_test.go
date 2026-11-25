@@ -5,12 +5,16 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
+	"os/signal"
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/edcs/preflash/internal/project"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,4 +65,32 @@ func TestWebPrintsThePortItGot(t *testing.T) {
 	m := regexp.MustCompile(`Running on: http://localhost:(\d+)\n`).FindStringSubmatch(line)
 	require.NotNil(t, m, line)
 	assert.NotEqual(t, "0", m[1])
+}
+
+func TestAHangUpSaysWebIsStopping(t *testing.T) {
+	if signal.Ignored(syscall.SIGHUP) {
+		t.Skip("hang-ups are ignored here, as under nohup")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), project.StopSignals()...)
+	defer stop()
+	require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGHUP))
+	select {
+	case <-ctx.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("SIGHUP didn't stop web")
+	}
+
+	stopped := false
+	var out bytes.Buffer
+	announceStop(ctx, func() { stopped = true; stop() }, &out)
+	assert.True(t, stopped, "a second signal would still be caught")
+	assert.Equal(t, "preflash: stopping…\n", out.String())
+}
+
+func TestReturningSaysNothing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var out bytes.Buffer
+	cancel()
+	announceStop(ctx, func() {}, &out)
+	assert.Empty(t, out.String())
 }
