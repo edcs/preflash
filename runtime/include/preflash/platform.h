@@ -8,6 +8,10 @@ namespace preflash::platform {
 // The running executable's full path, or empty if the system won't say.
 std::string executable_path();
 
+// Gives back path without the " (deleted)" that Linux's /proc/self/exe adds once the file
+// was replaced.
+std::string without_deleted_mark(std::string path);
+
 // The arguments the process started with, as execve takes them.
 char** arguments();
 

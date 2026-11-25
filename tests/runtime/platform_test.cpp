@@ -136,6 +136,13 @@ TEST(Platform, CloseOnExecFallbackMarksEveryFdAboveStderr) {
 #endif
 }
 
+TEST(Platform, ExecutablePathDropsTheDeletedMark) {
+  EXPECT_EQ(platform::without_deleted_mark("/a/b/app (deleted)"), "/a/b/app");
+  EXPECT_EQ(platform::without_deleted_mark("/a/b/app"), "/a/b/app");
+  EXPECT_EQ(platform::without_deleted_mark("/a/(deleted)/app"), "/a/(deleted)/app");
+  EXPECT_EQ(platform::without_deleted_mark(""), "");
+}
+
 TEST(Exec, KeepsNohupAcrossRestart) {
 #ifdef __APPLE__
   GTEST_SKIP() << "reads the signal masks from /proc";

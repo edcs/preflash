@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <string_view>
 #include <vector>
 
 #ifdef __APPLE__
@@ -21,6 +22,12 @@ extern char** environ;
 
 namespace preflash::platform {
 
+std::string without_deleted_mark(std::string path) {
+  static constexpr std::string_view kDeleted = " (deleted)";
+  if (path.ends_with(kDeleted)) path.resize(path.size() - kDeleted.size());
+  return path;
+}
+
 std::string executable_path() {
   char path[PATH_MAX];
 #ifdef __APPLE__
@@ -31,7 +38,9 @@ std::string executable_path() {
   const ssize_t got = readlink("/proc/self/exe", path, sizeof path - 1);
   if (got <= 0) return "";
   path[got] = '\0';
-  return path;
+  // Install renames the running binary aside before it stops the app, so the kernel marks
+  // the link as deleted. A restart wants the new file that now sits at the original path.
+  return without_deleted_mark(path);
 #endif
 }
 
