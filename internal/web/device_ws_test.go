@@ -16,10 +16,11 @@ import (
 // page is a browser's side of /device: it reads in the background so a test can say that
 // nothing arrived.
 type page struct {
-	t     *testing.T
-	conn  *websocket.Conn
-	texts chan map[string]any
-	bins  chan []byte
+	t      *testing.T
+	conn   *websocket.Conn
+	texts  chan map[string]any
+	bins   chan []byte
+	closed chan struct{} // closed when the server ends the connection
 }
 
 type testSite struct {
@@ -53,9 +54,11 @@ func (s *testSite) open(t *testing.T) *page {
 		HTTPHeader: http.Header{"Origin": {"http://" + s.addr}},
 	})
 	require.NoError(t, err)
-	p := &page{t: t, conn: conn, texts: make(chan map[string]any, 256), bins: make(chan []byte, 256)}
+	p := &page{t: t, conn: conn, texts: make(chan map[string]any, 256), bins: make(chan []byte, 256),
+		closed: make(chan struct{})}
 	t.Cleanup(func() { conn.CloseNow() })
 	go func() {
+		defer close(p.closed)
 		for {
 			kind, data, err := conn.Read(context.Background())
 			if err != nil {
@@ -250,6 +253,35 @@ func TestAPageHearsAPing(t *testing.T) {
 	quickPings(t)
 	p := startSite(t, shortPath(t)).open(t)
 	p.next("ping")
+}
+
+func TestServeEndingClosesTheDevicePages(t *testing.T) {
+	socket := shortPath(t)
+	startFakeApp(t, socket, 172, 640)
+	srv := New(Options{Socket: socket})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		srv.Serve(ctx, ln)
+		close(done)
+	}()
+	p := (&testSite{srv: srv, addr: ln.Addr().String()}).open(t)
+	p.ready()
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Serve didn't return")
+	}
+	select {
+	case <-p.closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the page stayed connected after Serve returned")
+	}
 }
 
 func TestACrossSiteUpgradeIsRefused(t *testing.T) {

@@ -84,7 +84,12 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 			<-deviceDone
 		}()
 	}
-	srv := &http.Server{Handler: s.mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{
+		Handler:           s.mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		// Shutdown leaves the hijacked sockets alone, so their handlers end with ctx instead.
+		BaseContext: func(net.Listener) context.Context { return ctx },
+	}
 	done := make(chan struct{})
 	stopped := make(chan struct{}) // closed when Serve fails, so the goroutine doesn't wait on ctx
 	go func() {
