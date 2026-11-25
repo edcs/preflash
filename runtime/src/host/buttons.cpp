@@ -25,7 +25,8 @@ struct Hold {
   std::optional<int64_t> release_at = std::nullopt;
 };
 
-std::mutex g_mutex;
+// Never destroyed, like g_taps_wake: a tap may be waiting on them when the process ends.
+static auto& g_mutex = *new std::mutex;
 std::vector<Button> g_buttons;
 std::vector<std::string> g_held;  // down for anyone, in the order they went down
 std::vector<Hold> g_holds;        // each owner's holds, in the order they were made
@@ -34,7 +35,8 @@ std::vector<std::function<void(const std::string&, bool)>> g_listeners;
 uint64_t g_loads = 0;
 // Set by cut_taps, as the run ends, and cleared by load. Taps wait on it, under g_mutex.
 bool g_taps_cut = false;
-std::condition_variable g_taps_wake;
+// Never destroyed: glibc's destructor waits for a tap still waiting on it.
+static auto& g_taps_wake = *new std::condition_variable;
 
 int64_t realtime_ms() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
