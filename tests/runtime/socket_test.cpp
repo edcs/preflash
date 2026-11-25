@@ -217,6 +217,29 @@ TEST(SocketClaim, ToleratesAHolderAnsweringWithBadTypes) {
   fs::remove(path);
 }
 
+// Whatever holds the socket without answering is named, so a stuck holder can be found.
+TEST(SocketClaim, NamesTheProcessOfAHolderThatWontSayWhoItIs) {
+  const std::string path = socket_path("mute");
+  const int server = listen_on(path);
+  std::thread live([server] {
+    const int client = accept(server, nullptr, nullptr);
+    char buffer[256];
+    read(client, buffer, sizeof buffer);
+    write(client, "\n", 1);
+    close(client);
+  });
+  setenv("PREFLASH_SOCKET", path.c_str(), 1);
+
+  std::string error;
+  EXPECT_FALSE(preflash::socket::claim(&error));
+  live.join();
+  EXPECT_NE(error.find("another app (pid " + std::to_string(getpid()) + ", runtime_tests)"),
+            std::string::npos)
+      << error;
+  close(server);
+  fs::remove(path);
+}
+
 TEST(SocketClaim, GivesATricklingHolderOneDeadlineInAll) {
   const std::string path = socket_path("slow");
   const int server = listen_on(path);

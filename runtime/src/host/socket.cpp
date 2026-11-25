@@ -1,8 +1,10 @@
 #include "preflash/socket.h"
 
 #include <fcntl.h>
+#include <libproc.h>
 #include <poll.h>
 #include <sys/file.h>
+#include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -531,6 +533,16 @@ std::string answer_line(int fd) {
   return reply.substr(0, reply.find('\n'));
 }
 
+// The process at the other end of a connection, as "pid N, name", or empty if macOS won't say.
+std::string peer(int fd) {
+  pid_t pid = 0;
+  socklen_t size = sizeof pid;
+  if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &size) != 0 || pid <= 0) return "";
+  char name[2 * MAXCOMLEN + 1] = {};
+  proc_name(pid, name, sizeof name);
+  return "pid " + std::to_string(pid) + (name[0] ? std::string(", ") + name : "");
+}
+
 // Who answers on the socket, if anyone. Whatever doesn't reply in time still holds it.
 std::optional<std::string> holder(const char* path) {
   const int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
@@ -541,6 +553,7 @@ std::optional<std::string> holder(const char* path) {
     return std::nullopt;
   }
   ignore_hang_ups(fd);
+  const std::string process = peer(fd);
   timeval wait = {kHolderAnswerMs / 1000, (kHolderAnswerMs % 1000) * 1000};
   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &wait, sizeof wait);
   const std::string request = encode({{"id", 1}, {"op", "hello"}}) + "\n";
@@ -555,7 +568,7 @@ std::optional<std::string> holder(const char* path) {
     return answer["project"].get<std::string>() + " (pid " +
            std::to_string(answer["pid"].get<int64_t>()) + ")";
   }
-  return "another app";
+  return process.empty() ? "another app" : "another app (" + process + ")";
 }
 
 bool claim_locked(const char* path, const std::string& shown, std::string* error);

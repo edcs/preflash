@@ -161,6 +161,14 @@ TEST(Port, SurvivesARestart) {
   EXPECT_NE(output.find("control ran: waited"), std::string::npos) << output;
 }
 
+TEST(Port, ForgetsItsDescriptorsOnceItHangsUp) {
+  TempFolder folder;
+  int status = -1;
+  const std::string output = run_helper("hangup", with_port(folder), &status);
+  EXPECT_EQ(status, 0) << output;
+  EXPECT_NE(output.find("fds forgotten"), std::string::npos) << output;
+}
+
 TEST(Port, IgnoresDescriptorsItDidNotInherit) {
   TempFolder folder;
   int status = -1;

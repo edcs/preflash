@@ -384,8 +384,10 @@ void remove_links() {
 
 void hang_up() {
   g_holding = true;
-  for (const int fd : {g_master, g_slave}) {
-    if (fd >= 0) close(fd);
+  // Forgotten as well as closed, so a restart can't pass on whatever takes their numbers next.
+  for (int* fd : {&g_master, &g_slave}) {
+    if (*fd >= 0) close(*fd);
+    *fd = -1;
   }
 }
 
