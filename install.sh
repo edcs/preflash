@@ -67,12 +67,12 @@ main() {
 
 	if [ "$(uname -s)" = Linux ]; then
 		missing=""
-		command -v cmake >/dev/null || missing="$missing cmake"
-		command -v python3 >/dev/null || missing="$missing python3"
-		{ command -v c++ >/dev/null || command -v g++ >/dev/null; } || missing="$missing a-C++-compiler"
-		{ command -v pkg-config >/dev/null && pkg-config --exists sdl2 libcurl; } || missing="$missing sdl2/libcurl-development-files"
+		command -v cmake >/dev/null || missing="$missing, cmake"
+		command -v python3 >/dev/null || missing="$missing, python3"
+		{ command -v c++ >/dev/null || command -v g++ >/dev/null; } || missing="$missing, a C++ compiler"
+		{ command -v pkg-config >/dev/null && pkg-config --exists sdl2 libcurl; } || missing="$missing, the SDL2 and libcurl development files"
 		if [ -n "$missing" ]; then
-			say "Preflash also needs:$missing."
+			say "Preflash also needs ${missing#, }."
 			distro=""
 			[ ! -r /etc/os-release ] || distro="$(. /etc/os-release && echo "${ID:-} ${ID_LIKE:-}")"
 			case " $distro " in
