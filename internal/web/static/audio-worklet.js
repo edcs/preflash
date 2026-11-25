@@ -99,6 +99,7 @@ class PreflashAudio extends AudioWorkletProcessor {
   }
 
   drop(n) {
+    n = Math.max(Math.min(n, this.level), 0);
     this.start = (this.start + n) % capacity;
     this.level -= n;
   }
@@ -135,7 +136,8 @@ class PreflashAudio extends AudioWorkletProcessor {
         this.pos += this.step;
         const whole = Math.floor(this.pos);
         this.pos -= whole;
-        this.drop(whole);
+        // Below 24 kHz a step can pass the end of what is held.
+        this.drop(Math.min(whole, this.level));
       }
     } else {
       for (let c = 0; c < out.length; c++) out[c].fill(0);

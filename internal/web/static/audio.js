@@ -14,6 +14,7 @@
   let ctx = null; // the AudioContext, made on the first tap and kept
   let node = null; // the worklet's node, once its module has loaded
   let socket = null; // the reconnecting /audio socket while sound is on
+  let current = null; // its connection now: only this one's messages and close count
   let decoder = null; // a fresh one for each format
   let channels = 1;
   let lastSeq = -1; // the last packet decoded under this format
@@ -67,7 +68,7 @@
       } catch {
         ctx = new AudioContext(); // the worklet resamples
       }
-      ctx.addEventListener('statechange', show);
+      ctx.addEventListener('statechange', settle);
       ctx.audioWorklet.addModule('audio-worklet.js').then(() => {
         node = new AudioWorkletNode(ctx, 'preflash-audio', { numberOfInputs: 0, outputChannelCount: [2] });
         node.port.onmessage = (e) => heard(e.data);
@@ -90,19 +91,32 @@
     resuming = true;
     ctx.resume().catch(() => {}).finally(() => {
       resuming = false;
-      show();
+      settle();
     });
+  }
+
+  // settle closes /audio while sound is on but the context can't play, as when iPad Safari
+  // suspended it and wants a tap: nothing comes over the link until that tap.
+  function settle() {
+    if (wanted && ctx && ctx.state !== 'running' && !resuming) hangUp();
+    else if (wanted && node && ctx.state === 'running') listen(); // it resumed without a tap
+    show();
+  }
+
+  function hangUp() {
+    if (socket) socket.close();
+    socket = null;
+    current = null;
+    forget();
+    if (node) node.port.postMessage({ type: 'clear' });
+    playing = false;
   }
 
   function stop() {
     wanted = false;
     store.set('preflash.sound', null);
-    if (socket) socket.close();
-    socket = null;
-    forget();
-    if (node) node.port.postMessage({ type: 'clear' });
+    hangUp();
     if (ctx) ctx.suspend().catch(() => {});
-    playing = false;
     show();
   }
 
@@ -121,7 +135,9 @@
     if (socket) return;
     socket = reconnecting('/audio', 'audio', (ws) => {
       ws.binaryType = 'arraybuffer';
+      current = ws;
       ws.addEventListener('message', (e) => {
+        if (ws !== current) return;
         if (typeof e.data !== 'string') {
           packet(e.data);
           return;
@@ -138,8 +154,14 @@
             break;
         }
       });
-      // A new connection starts with a format, if there is sound to come.
-      ws.addEventListener('close', () => forget());
+      // A new connection starts with a format, if there is sound to come. A socket ended for
+      // silence may close for real much later, once its replacement is playing: that close is
+      // ignored.
+      ws.addEventListener('close', () => {
+        if (ws !== current) return;
+        current = null;
+        forget();
+      });
     });
   }
 
@@ -180,9 +202,14 @@
     }
     const view = new DataView(data);
     const seq = view.getUint32(0);
-    const burst = (view.getUint8(4) & 1) !== 0;
+    let burst = (view.getUint8(4) & 1) !== 0;
     if (lastSeq >= 0 && seq <= lastSeq) return; // a repeat, or out of order
-    if (!burst && lastSeq >= 0 && seq > lastSeq + 1) conceal(Math.min(seq - lastSeq - 1, maxConceal));
+    if (!burst && lastSeq >= 0 && seq > lastSeq + 1) {
+      // With the player quiet, the gap was most likely a lost burst start: the sound starts
+      // afresh here, with nothing to conceal and no underrun.
+      if (!playing) burst = true;
+      else conceal(Math.min(seq - lastSeq - 1, maxConceal));
+    }
     lastSeq = seq;
     const out = d.decodeFrame(new Uint8Array(data, 5));
     if (out.samplesDecoded === 0) return;
