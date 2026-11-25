@@ -278,11 +278,26 @@ func (p Project) Build(ctx context.Context, env []string, output io.Writer) erro
 		env = append(slices.Clone(env), "PREFLASH_MANAGED_COMPONENTS="+fetched)
 	}
 	jobs := strconv.Itoa(runtime.NumCPU())
+	stamp := filepath.Join(p.BuildDir(), "toolchain")
+	toolchain := toolchainOf(ctx, env)
+	// A stopped build's probes name no toolchain, so they mustn't cost the folder its cache.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if before, err := os.ReadFile(stamp); err != nil || string(before) != toolchain {
+		// What cmake --fresh does, which CMake before 3.24 lacks.
+		if err := os.Remove(filepath.Join(p.BuildDir(), "CMakeCache.txt")); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		if err := os.RemoveAll(filepath.Join(p.BuildDir(), "CMakeFiles")); err != nil {
+			return err
+		}
+	}
 	steps := [][]string{
 		{"-S", p.Dir, "-B", p.BuildDir()},
 		{"--build", p.BuildDir(), "--parallel", jobs},
 	}
-	for _, args := range steps {
+	for i, args := range steps {
 		cmd := exec.CommandContext(ctx, "cmake", args...)
 		cmd.Env = env
 		cmd.Stdout = output
@@ -293,8 +308,28 @@ func (p Project) Build(ctx context.Context, env []string, output io.Writer) erro
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("the build failed: cmake %s: %w", strings.Join(args, " "), err)
 		}
+		if i == 0 {
+			if err := os.WriteFile(stamp, []byte(toolchain), 0o644); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+// toolchainOf names the CMake and macOS SDK a build would use. A build folder configured
+// with others keeps what they found, such as headers in an SDK the compiler no longer
+// uses, which can stop libc++ finding its own, so Build starts that folder's cache afresh.
+func toolchainOf(ctx context.Context, env []string) string {
+	var named strings.Builder
+	for _, args := range [][]string{{"cmake", "--version"}, {"xcrun", "--show-sdk-path"}} {
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd.Env = env
+		out, _ := cmd.Output()
+		first, _, _ := strings.Cut(string(out), "\n")
+		named.WriteString(strings.TrimSpace(first) + "\n")
+	}
+	return named.String()
 }
 
 // Environment gets the folders ready and gives the variables a build and its app run with.
