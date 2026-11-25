@@ -559,6 +559,9 @@ function sizeNow() {
   return wideQuery.matches ? r.width : r.height;
 }
 
+// Safari can follow a tap with mouse events of its own, which would blur the terminal.
+divider.addEventListener('mousedown', (e) => e.preventDefault());
+
 divider.addEventListener('pointerdown', (e) => {
   // Cancelled, so a tap doesn't take the focus, and the iPad's keyboard, from the terminal.
   e.preventDefault();
