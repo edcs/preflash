@@ -40,11 +40,12 @@ func TestMain(m *testing.M) {
 //	echo            prints each line typed as "echo:<line>", and its size on SIGWINCH
 //	query           asks for the device attributes and exits 0 if they come within 2 s
 //	print           prints PREFLASH_WEB_PRINT
-//	flood           prints 10 MB and then an end marker
+//	flood           prints 3 MB and then an end marker
 //	ignore-ctrl-c   starts a sleeping child in its group, prints its pid, ignores ^C
 //	exit-on-ctrl-c  exits 0 on ^C
+//	deaf            never reads what's typed, and asks for the device attributes every 10 ms
 //
-// Every behaviour but ignore-ctrl-c exits 0 on ^C.
+// Every behaviour but ignore-ctrl-c and deaf exits 0 on ^C.
 func fakeTUI(behaviour string) {
 	if _, err := term.MakeRaw(0); err != nil {
 		fmt.Println("raw:", err)
@@ -76,7 +77,7 @@ func fakeTUI(behaviour string) {
 	case "flood":
 		line := strings.Repeat("x", 98) + "\r\n"
 		block := strings.Repeat(line, 1000)
-		for range 10 * 1024 * 1024 / len(block) {
+		for range 3 * 1024 * 1024 / len(block) {
 			out.WriteString(block)
 		}
 		out.WriteString("END-OF-FLOOD\r\n")
@@ -93,6 +94,11 @@ func fakeTUI(behaviour string) {
 			if _, err := os.Stdin.Read(b); err != nil {
 				select {}
 			}
+		}
+	case "deaf":
+		for {
+			out.WriteString("\x1b[c")
+			time.Sleep(10 * time.Millisecond)
 		}
 	case "echo":
 		winch := make(chan os.Signal, 1)
@@ -147,7 +153,8 @@ func newFake(t *testing.T, behaviour string) *terminal {
 	t.Setenv("PREFLASH_WEB_FAKE", behaviour)
 	// A race-enabled binary sleeps a second as it exits, unless told not to.
 	t.Setenv("GORACE", "atexit_sleep_ms=0")
-	term := newTerminal([]string{os.Args[0]}, 120, 40)
+	term, err := newTerminal([]string{os.Args[0]}, 120, 40)
+	require.NoError(t, err)
 	t.Cleanup(func() { term.Close() })
 	return term
 }
@@ -316,11 +323,30 @@ func TestASlowReaderIsCutOffNotTheChild(t *testing.T) {
 	require.NoError(t, term.Start())
 	fast.until(t, "END-OF-FLOOD")
 
-	chunks := 0
-	for range stuck {
-		chunks++
+	// The stuck reader keeps its full buffer and is then closed.
+	for chunks := 0; ; chunks++ {
+		select {
+		case _, ok := <-stuck:
+			if !ok {
+				require.Equal(t, liveBuffer, chunks)
+				return
+			}
+		default:
+			t.Fatalf("the stuck reader wasn't cut off after %d chunks", chunks)
+		}
 	}
-	require.Equal(t, 256, chunks, "the stuck reader keeps its full buffer and is then closed")
+}
+
+func TestSizesOutOfRangeAreRefused(t *testing.T) {
+	for _, size := range [][2]int{{0, 40}, {120, 0}, {-1, 40}, {1001, 40}, {120, 1001}, {70000, 40}} {
+		_, err := newTerminal([]string{"true"}, size[0], size[1])
+		require.Error(t, err, "%v", size)
+	}
+	term, err := newTerminal([]string{"true"}, 1000, 1)
+	require.NoError(t, err)
+	require.Error(t, term.Resize(0, 24))
+	require.Error(t, term.Resize(80, 65536))
+	require.NoError(t, term.Resize(1, 1000))
 }
 
 func TestResizeReachesTheChild(t *testing.T) {
@@ -414,6 +440,68 @@ func TestDetachTwiceAndAfterClose(t *testing.T) {
 	detach2()
 	require.NoError(t, term.Close(), "Close twice")
 	require.Error(t, term.Start(), "no Start after Close")
+}
+
+// TestAWedgedAppCannotHangTheSession fills the input of an app that never reads it, so
+// typing and the screen's replies to its queries both block, and checks that the output,
+// Attach and Close carry on regardless.
+func TestAWedgedAppCannotHangTheSession(t *testing.T) {
+	was := closePatience
+	closePatience = 500 * time.Millisecond
+	t.Cleanup(func() { closePatience = was })
+
+	before := runtime.NumGoroutine()
+	term := newFake(t, "deaf")
+	_, live, detach := term.Attach()
+	defer detach()
+	r := read(live)
+	require.NoError(t, term.Start())
+	r.until(t, "ready")
+	pid := term.pid()
+
+	typed := make(chan error, 1)
+	go func() { typed <- term.Input(bytes.Repeat([]byte("x"), 1<<20)) }()
+	// The app keeps asking long after its input is full.
+	r.until(t, strings.Repeat("\x1b[c", 100))
+	// macOS drops what doesn't fit in a raw terminal's input, so there it never fills.
+	if runtime.GOOS == "linux" {
+		select {
+		case err := <-typed:
+			t.Fatalf("the input never filled: %v", err)
+		default:
+		}
+	}
+
+	attached := make(chan struct{})
+	go func() {
+		_, _, detach := term.Attach()
+		detach()
+		close(attached)
+	}()
+	select {
+	case <-attached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Attach hangs while the input is stuck")
+	}
+
+	closed := make(chan error, 1)
+	start := time.Now()
+	go func() { closed <- term.Close() }()
+	select {
+	case err := <-closed:
+		require.NoError(t, err)
+		require.Less(t, time.Since(start), 2*closePatience+500*time.Millisecond)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close hangs while the input is stuck")
+	}
+	require.True(t, gone(pid), "the app is gone")
+	select {
+	case <-typed:
+	case <-time.After(termPatience):
+		t.Fatal("Input stays blocked after Close")
+	}
+	<-r.done
+	settles(t, before)
 }
 
 // TestNothingIsLeftRunning checks that an exit and a Close each leave no goroutine behind.

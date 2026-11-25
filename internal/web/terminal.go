@@ -2,12 +2,14 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -22,11 +24,26 @@ var closePatience = 10 * time.Second
 // is cut off.
 const liveBuffer = 256
 
+// replyBuffer is how many of the screen's replies may wait for an app that isn't reading
+// before more are dropped. They only answer the app's queries.
+const replyBuffer = 64
+
+// maxSize is the most columns or rows the terminal takes.
+const maxSize = 1000
+
 var (
 	errRunning    = errors.New("the terminal app is already running")
 	errNotRunning = errors.New("the terminal app isn't running")
 	errClosed     = errors.New("the terminal is closed")
+	errBadSize    = fmt.Errorf("a terminal is 1 to %d columns by 1 to %d rows", maxSize, maxSize)
 )
+
+func checkSize(cols, rows int) error {
+	if cols < 1 || cols > maxSize || rows < 1 || rows > maxSize {
+		return errBadSize
+	}
+	return nil
+}
 
 // terminal runs the terminal app in a pseudo-terminal, keeps a virtual terminal in step with
 // it so a tab that attaches late gets the screen, and passes the app's output to every
@@ -52,7 +69,10 @@ type attachment struct {
 	live chan []byte
 }
 
-func newTerminal(argv []string, cols, rows int) *terminal {
+func newTerminal(argv []string, cols, rows int) (*terminal, error) {
+	if err := checkSize(cols, rows); err != nil {
+		return nil, err
+	}
 	t := &terminal{
 		argv:    argv,
 		cols:    cols,
@@ -61,7 +81,7 @@ func newTerminal(argv []string, cols, rows int) *terminal {
 		readers: map[*attachment]struct{}{},
 	}
 	t.emu, t.modes = t.newScreen()
-	return t
+	return t, nil
 }
 
 // newScreen is a blank virtual terminal whose mode changes are noted in the map it returns.
@@ -91,7 +111,14 @@ func (t *terminal) Start() error {
 	// StartWithSize makes the app a session and process group leader, so Close can kill its group.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(t.cols), Rows: uint16(t.rows)})
+	if err == nil {
+		ptmx, err = pollable(ptmx)
+	}
 	if err != nil {
+		if cmd.Process != nil {
+			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			cmd.Wait()
+		}
 		return err
 	}
 	emu, modes := t.newScreen()
@@ -103,15 +130,39 @@ func (t *terminal) Start() error {
 	default:
 	}
 
-	// What the screen answers, such as replies to the app's queries, goes back to the app.
-	// Once the app has gone, the rest is thrown away, so the screen never blocks on a reply.
 	replies := emu.InputPipe().(io.Closer)
-	go func() {
-		io.Copy(ptmx, emu)
-		io.Copy(io.Discard, emu)
-	}()
+	go passReplies(emu, ptmx)
 	go t.output(cmd, ptmx, emu, replies, t.exited)
 	return nil
+}
+
+// passReplies passes what the screen answers, such as replies to the app's queries, back to
+// the app. The screen writes its replies into a pipe while it holds its lock, so the pipe is
+// always read at once, and the replies queue for a writer of their own: an app that stops
+// reading must not stop the screen. When the queue is full, replies are dropped. Both
+// goroutines end once the run is over: the pipe is closed, and closing the pty makes a
+// pending write fail.
+func passReplies(emu *vt.SafeEmulator, ptmx *os.File) {
+	queue := make(chan []byte, replyBuffer)
+	go func() {
+		for reply := range queue {
+			ptmx.Write(reply)
+		}
+	}()
+	defer close(queue)
+	buf := make([]byte, 4096)
+	for {
+		n, err := emu.Read(buf)
+		if n > 0 {
+			select {
+			case queue <- append([]byte(nil), buf[:n]...):
+			default:
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
 }
 
 // output feeds what the app prints to the screen and to every attached reader, until the
@@ -189,6 +240,9 @@ func (t *terminal) Input(b []byte) error {
 
 // Resize changes the size of the screen and of the app's terminal, now and for later starts.
 func (t *terminal) Resize(cols, rows int) error {
+	if err := checkSize(cols, rows); err != nil {
+		return err
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.cols, t.rows = cols, rows
@@ -196,7 +250,7 @@ func (t *terminal) Resize(cols, rows int) error {
 	if t.ptmx == nil {
 		return nil
 	}
-	return pty.Setsize(t.ptmx, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+	return setSize(t.ptmx, cols, rows)
 }
 
 // Exited is closed when the app exits. Start replaces it for the next run.
@@ -235,11 +289,26 @@ func (t *terminal) Close() error {
 		return nil
 	}
 
-	ptmx.Write([]byte("\x03"))
-	select {
-	case <-exited:
-		return nil
-	case <-time.After(closePatience):
+	// The ^C is sent from a goroutine, since an app that has stopped reading blocks it, and
+	// the kill below must still come. That goroutine ends once the kill closes the pty.
+	ctrlC := make(chan error, 1)
+	go func() {
+		_, err := ptmx.Write([]byte("\x03"))
+		ctrlC <- err
+	}()
+	patience := time.After(closePatience)
+	for waiting := true; waiting; {
+		select {
+		case <-exited:
+			return nil
+		case err := <-ctrlC:
+			ctrlC = nil
+			if err != nil {
+				waiting = false // the app can't hear it
+			}
+		case <-patience:
+			waiting = false
+		}
 	}
 	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return err
@@ -253,4 +322,48 @@ func (t *terminal) Close() error {
 		ptmx.Close()
 		return errors.New("the terminal app's pty stayed open after it was killed")
 	}
+}
+
+// pollable swaps the pty for a non-blocking copy that Go's poller handles. Then closing it
+// ends a write that's waiting, which a blocking pty never does on Linux: there, a write to
+// an app whose raw-mode input is full blocks for good, even once the app is dead.
+func pollable(ptmx *os.File) (*os.File, error) {
+	defer ptmx.Close()
+	// Hold the fork lock so no child started meanwhile inherits the copy before it is
+	// marked close-on-exec.
+	syscall.ForkLock.RLock()
+	fd, err := syscall.Dup(int(ptmx.Fd()))
+	if err == nil {
+		syscall.CloseOnExec(fd)
+	}
+	syscall.ForkLock.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.SetNonblock(fd, true); err != nil {
+		syscall.Close(fd)
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), ptmx.Name()), nil
+}
+
+// setSize sets the pty's size. pty.Setsize would call Fd, which puts the pty back into
+// blocking mode, so this goes through SyscallConn instead.
+func setSize(ptmx *os.File, cols, rows int) error {
+	conn, err := ptmx.SyscallConn()
+	if err != nil {
+		return err
+	}
+	size := pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)}
+	var errno syscall.Errno
+	err = conn.Control(func(fd uintptr) {
+		_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TIOCSWINSZ, uintptr(unsafe.Pointer(&size)))
+	})
+	if err != nil {
+		return err
+	}
+	if errno != 0 {
+		return errno
+	}
+	return nil
 }
