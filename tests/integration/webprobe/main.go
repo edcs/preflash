@@ -3,15 +3,19 @@
 //
 //	webprobe start ADDR
 //	webprobe device ADDR PREFLASH PROJECT
+//	webprobe audio ADDR PREFLASH PROJECT
 //
 // start opens /terminal as a page does on load, and checks that the app's output arrives.
 // device opens /device, waits for a connected state and a PNG frame, taps the middle of the
 // panel, holds BOOT, checks that preflash status sees it down, and lets go.
+// audio opens /audio, sends the demo's beep to the console, and checks that a format message
+// and Opus packets arrive, the first of them marking the start of a burst.
 package main
 
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,8 +44,10 @@ func run(args []string) error {
 		return start(ctx, args[1])
 	case len(args) == 4 && args[0] == "device":
 		return device(ctx, args[1], args[2], args[3])
+	case len(args) == 4 && args[0] == "audio":
+		return audio(ctx, args[1], args[2], args[3])
 	}
-	return errors.New("usage: webprobe start ADDR | webprobe device ADDR PREFLASH PROJECT")
+	return errors.New("usage: webprobe start ADDR | webprobe device ADDR PREFLASH PROJECT | webprobe audio ADDR PREFLASH PROJECT")
 }
 
 // dial connects with an Origin that matches the Host, which the server insists on.
@@ -219,4 +225,65 @@ func waitBoot(ctx context.Context, preflash, project string, down bool, problems
 		time.Sleep(100 * time.Millisecond)
 	}
 	return fmt.Errorf("BOOT never went down=%v in status:\n%s", down, last)
+}
+
+// audio listens on /audio before the beep goes out, so that the relay is subscribed, then
+// expects a format message and at least five packets with valid headers within 5 s.
+func audio(ctx context.Context, addr, preflash, project string) error {
+	conn, err := dial(ctx, addr, "/audio")
+	if err != nil {
+		return err
+	}
+	defer conn.CloseNow()
+
+	// Give the server a moment to subscribe to the app's sound before the beep.
+	time.Sleep(500 * time.Millisecond)
+	if out, err := exec.CommandContext(ctx, preflash, "send", "--project", project, "beep").CombinedOutput(); err != nil {
+		return fmt.Errorf("sending the beep: %w\n%s", err, out)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	gotFormat, packets := false, 0
+	var last uint32
+	for packets < 5 {
+		kind, data, err := conn.Read(ctx)
+		if err != nil {
+			return fmt.Errorf("waiting for sound (format %v, %d packets): %w", gotFormat, packets, err)
+		}
+		if kind == websocket.MessageText {
+			var m struct {
+				Type     string `json:"type"`
+				Rate     int    `json:"rate"`
+				Channels int    `json:"channels"`
+			}
+			if err := json.Unmarshal(data, &m); err != nil {
+				return err
+			}
+			if m.Type == "format" {
+				if m.Rate != 48000 || (m.Channels != 1 && m.Channels != 2) {
+					return fmt.Errorf("an odd format: %s", data)
+				}
+				gotFormat = true
+			}
+			continue
+		}
+		if !gotFormat {
+			return errors.New("a packet came before the format message")
+		}
+		if len(data) <= 5 || data[4]&^1 != 0 {
+			return fmt.Errorf("a packet has a bad header: %d bytes, flags %#x", len(data), data[min(4, len(data)-1)])
+		}
+		seq := binary.BigEndian.Uint32(data)
+		burst := data[4]&1 != 0
+		if packets == 0 && !burst {
+			return errors.New("the first packet doesn't mark the start of a burst")
+		}
+		if packets > 0 && !burst && seq != last+1 {
+			return fmt.Errorf("sequence jumped from %d to %d inside a burst", last, seq)
+		}
+		last = seq
+		packets++
+	}
+	return nil
 }
