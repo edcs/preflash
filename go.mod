@@ -11,6 +11,7 @@ require (
 	github.com/charmbracelet/x/vt v0.1.0
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
+	github.com/kazzmir/opus-go v1.7.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/term v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
