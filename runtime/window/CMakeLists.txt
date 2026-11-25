@@ -2,7 +2,10 @@
 # beside the app, and links nothing of the runtime but the two winlink sources it shares.
 add_executable(preflash_window
     main.cpp
+    chrome.cpp
+    layout.cpp
     link.cpp
+    pad.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../src/winlink/frame_buffer.cpp
     ${CMAKE_CURRENT_LIST_DIR}/../src/winlink/protocol.cpp)
 set_target_properties(preflash_window PROPERTIES

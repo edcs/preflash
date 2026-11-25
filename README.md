@@ -177,6 +177,10 @@ preflash run [--project dir] [--board file] [--headless] [--sanitize address|thr
 
 The window is a process of its own, `preflash-window`, built beside the app. It stays where it is while the firmware restarts, whether by `esp_restart` or a crash, and keeps the last frame up until the new boot draws. Under `preflash run`, closing the window quits the app and quitting the app closes the window. The terminal app keeps the window up while it rebuilds or restarts the app, and closes it when you quit the terminal app. If the window process dies, the app starts a new one.
 
+The title bar shows the project's name. Under it, a strip holds the board's buttons on the left and the rotate button on the right, and a status bar under the panel shows the board's full name and how far it's turned. A narrow panel, such as the 3.49 V2's, sits centred on black in a window at least 250 points wide. Hovering a button shows what it's wired to in the status bar.
+
+The rotate button and ⌘→ turn the board a quarter clockwise, and ⌘← turns it back. The window turns with it: it swaps between portrait and landscape and draws the panel's picture turned the same way, so firmware that ignores the motion sensor shows sideways. A click lands on the panel pixel under the pointer however it's turned, and the strip and status bar stay upright. This is the `rotation` [hardware setting](#break-the-hardware), so it lasts through restarts, and boards with no motion sensor can turn too. `shot`, `touch` and the frames stream keep the panel's own orientation and coordinates.
+
 `--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked Mac.
 
 To boot firmware at a chosen moment, set `PREFLASH_RTC_START=2026-11-01T22:00:00Z`. The simulated RTC starts there and runs on, and it keeps the firmware's time across a restart.
@@ -264,7 +268,7 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 | Command | What it does |
 | --- | --- |
 | `preflash send <line...>` | Sends a line to the firmware's console and returns without waiting for it to run. Put `--project` before the line |
-| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, rotation, frames, fps, Wi-Fi state and serial port |
+| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, rotation (LVGL's), board rotation (the way the board is turned), frames, fps, Wi-Fi state and serial port |
 | `preflash serial` | Prints the serial stream, starting with what this boot has kept (up to 256 KiB), and follows it through restarts until the app stops |
 | `preflash port` | Prints the virtual serial port's path |
 | `preflash shot <file.png\|file.bmp>` | Saves what the panel shows |
@@ -333,11 +337,11 @@ NVS rows show keys and sizes and leave the values out, because a value can be a 
 
 ### Break the hardware
 
-`preflash hardware` lists each name, its current setting and its choices. `preflash hardware rotation 90` turns the board a quarter clockwise, and your driver reads it from the motion sensor. `preflash hardware i2c pcf85063` makes that chip stop answering, and `preflash hardware i2c all` does the same for the whole bus. The demo's [Faults page](examples/demo/main/ui/page_faults.cpp) shows what firmware sees of each one.
+`preflash hardware` lists each name, its current setting and its choices. `preflash hardware rotation 90` turns the board a quarter clockwise, the window turns with it, and your driver reads it from the motion sensor. `preflash hardware i2c pcf85063` makes that chip stop answering, and `preflash hardware i2c all` does the same for the whole bus. The demo's [Faults page](examples/demo/main/ui/page_faults.cpp) shows what firmware sees of each one.
 
 | Name | Choices | Applies |
 | --- | --- | --- |
-| `rotation` | `0`, `90`, `180`, `270`, as gravity on the QMI8658 | Now |
+| `rotation` | `0`, `90`, `180`, `270` on every board: the window turns, and a QMI8658 reports gravity | Now |
 | `usb` | `plugged`, `unplugged`, through the AXP2101 | Now |
 | `battery` | `none`, `100`, `50`, `15`, `0`, through the AXP2101 | Now |
 | `internet` | `real`, `offline` | Now |
@@ -475,6 +479,7 @@ If your firmware stops on a call Preflash doesn't implement, that call needs a s
 `make test` can't do these, so try them yourself with the demo:
 
 - **A mouse click in the window.** The tests press the panel through the socket. Click a tile with a real mouse and watch the page open.
+- **The window's strip, status bar and turning.** The tests check the layout and the turned picture without a screen. Run the demo on both boards and check the strip and status bar, every turn with the rotate button, ⌘→ and ⌘←, that a click lands on the pixel under the pointer when turned, and the status bar wrapping the 3.49 V2's long name.
 - **The window through a restart.** The tests run the window with SDL's dummy driver. Run the demo, send `restart` and press `^R`, and check the window stays put with its last frame until the new boot draws.
 - **The audible chime.** The tests count the sample frames firmware writes. Press the Beep shortcut and listen.
 - **The debug and crash screens with a window open.** The tests run these screens headless. Run the demo with a window, press `^D`, then send `crash null`.

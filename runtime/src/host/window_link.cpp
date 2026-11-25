@@ -25,6 +25,7 @@
 
 #include "preflash/board.h"
 #include "preflash/crash.h"
+#include "preflash/hardware.h"
 #include "preflash/panel.h"
 #include "preflash/socket.h"
 #include "preflash/touch.h"
@@ -197,8 +198,9 @@ void send_board() {
         {"frame_path", g_frame_path}});
 }
 
+// The rotation is the board's, which the window turns by, and not LVGL's.
 void send_state(bool always) {
-  const Shown now{panel::brightness(), panel::rotation()};
+  const Shown now{panel::brightness(), hardware::rotation()};
   if (!always && now.backlight == g_shown.backlight && now.rotation == g_shown.rotation) return;
   if (send({{"op", "state"},
             {"power", "on"},
@@ -243,9 +245,16 @@ void handle(const json& message) {
     if (held != message.end() && held->is_array() && !held->empty()) {
       std::fprintf(stderr, "preflash: the window holds buttons, which this app can't press\n");
     }
-  } else if (name == "button" || name == "rotate") {
-    std::fprintf(stderr, "preflash: the window sent %s, which this app can't do yet\n",
-                 name.c_str());
+  } else if (name == "rotate") {
+    const int by = as_int(message, "by");
+    if (by != 90 && by != -90) return;
+    const int next = (hardware::rotation() + by + 360) % 360;
+    const std::string error = hardware::set("rotation", std::to_string(next));
+    if (!error.empty()) {
+      std::fprintf(stderr, "preflash: couldn't turn the board: %s\n", error.c_str());
+    }
+  } else if (name == "button") {
+    std::fprintf(stderr, "preflash: the window sent a button, which this app can't press yet\n");
   }
 }
 

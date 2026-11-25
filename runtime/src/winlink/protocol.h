@@ -11,6 +11,7 @@
 // App to window:
 //   board {project, board, width, height, buttons:[{name, wiring}], frame_path}
 //   state {power:"on"|"off"|"download", backlight:0-100, rotation:0|90|180|270, held:[names]}
+//                           rotation is the board's, clockwise, which the window turns by
 //   close {}
 // Window to app:
 //   touch {x, y, down}      panel coordinates

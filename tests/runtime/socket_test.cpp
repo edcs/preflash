@@ -319,6 +319,8 @@ TEST_F(SocketServe, StatusDescribesTheRunningApp) {
   EXPECT_EQ(reply["pid"], getpid());
   EXPECT_TRUE(reply["uptime_ms"].is_number_integer());
   EXPECT_TRUE(reply["backlight"].is_number_integer());
+  EXPECT_TRUE(reply["rotation"].is_number_integer());
+  EXPECT_EQ(reply["board_rotation"], preflash::hardware::rotation());
   EXPECT_TRUE(reply["frames"].is_number_integer());
   EXPECT_TRUE(reply["fps"].is_number_integer());
   EXPECT_EQ(reply["wifi"], "off");

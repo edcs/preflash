@@ -74,9 +74,12 @@ type Status struct {
 	UptimeMs  int64  `json:"uptime_ms"`
 	Backlight int    `json:"backlight"`
 	Rotation  int    `json:"rotation"`
-	Frames    uint64 `json:"frames"`
-	FPS       int    `json:"fps"`
-	WiFi      string `json:"wifi"`
+	// BoardRotation is the way the board is turned, clockwise, which the window turns by.
+	// Rotation stays LVGL's.
+	BoardRotation int    `json:"board_rotation"`
+	Frames        uint64 `json:"frames"`
+	FPS           int    `json:"fps"`
+	WiFi          string `json:"wifi"`
 	// SerialPort is the path a companion app opens, empty if the app has no port.
 	SerialPort string `json:"serial_port"`
 	// Crashed says firmware has crashed and the app is held where it stopped.
