@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -15,6 +16,14 @@ namespace preflash::panel {
 void draw(int x1, int y1, int x2, int y2, const void* rgb565, bool last_of_frame = true);
 
 uint64_t frames_drawn();
+
+// Called with the frame's number each time a frame finishes, on firmware's thread, once its
+// pixels and the count have changed. It says only that a frame is ready. The callback must be
+// quick and never wait for anything slow, and mustn't subscribe or unsubscribe. Returns a number
+// for unsubscribe_frames.
+using FrameSubscriber = std::function<void(uint64_t frame)>;
+int subscribe_frames(FrameSubscriber subscriber);
+void unsubscribe_frames(int subscription);
 
 // Frames finished in the last second.
 int fps();
@@ -50,8 +59,9 @@ void stop_sharing();
 // Copies the whole panel. False, leaving out alone, if nothing changed since the last call.
 bool take_frame(std::vector<uint8_t>* out);
 
-// Copies the whole panel without touching what take_frame reports.
-std::vector<uint8_t> copy_frame();
+// Copies the whole panel without touching what take_frame reports. If number isn't null it
+// gets the frame the pixels belong to, as frames_drawn counted it, read under the same lock.
+std::vector<uint8_t> copy_frame(uint64_t* number = nullptr);
 
 // Writes the panel as a 24-bit BMP. Throws std::runtime_error if it can't.
 void save_bmp(const char* path);

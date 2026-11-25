@@ -21,4 +21,10 @@ std::optional<Event> pop();
 // whole. False, doing nothing, if the point is off the panel or ms is negative.
 bool press(int x, int y, int ms);
 
+// The panel's pointer, in the panel's own coordinates: a press, a move while pressed, or a
+// release. A point off the panel lands on its nearest edge. Nothing happens once firmware has
+// crashed, since nothing reads touches then. Returns at once. The window and the socket both
+// come through here, and nothing else queues a pointer's touches.
+void pointer(int x, int y, bool down);
+
 }  // namespace preflash::touch

@@ -85,10 +85,11 @@ type Status struct {
 
 // Event is a message from the app that answers no request.
 type Event struct {
-	Kind  string      // "serial", "dropped", "restarting" or "trace"
+	Kind  string      // "serial", "dropped", "restarting", "trace" or "frame"
 	Data  []byte      // what came out of the serial stream
 	Bytes int         // how much a dropped event lost
 	Trace TraceRecord // a trace event's record
+	Frame uint64      // the number of the frame a "frame" event says is ready
 }
 
 // wire is every field a reply or an event can carry that this file reads itself.
@@ -99,6 +100,7 @@ type wire struct {
 	Event string `json:"event"`
 	Data  []byte `json:"data"`
 	Bytes int    `json:"bytes"`
+	Frame uint64 `json:"frame"`
 }
 
 // Dial connects to the app at path. The error is ErrNotRunning if none is there.
@@ -226,7 +228,7 @@ func replyError(message wire) error {
 // event reads a message that has an event in it. A trace row's fields sit beside the event's
 // name, so they come from the raw line.
 func (w wire) event(raw []byte) Event {
-	e := Event{Kind: w.Event, Data: w.Data, Bytes: w.Bytes}
+	e := Event{Kind: w.Event, Data: w.Data, Bytes: w.Bytes, Frame: w.Frame}
 	if w.Event == "trace" {
 		// Numbers and strings that don't fit leave a row with less in it, which is all
 		// a client of a newer app can expect.
@@ -299,6 +301,12 @@ func (c *Client) TouchDefault(x, y int) error {
 	return c.Call("touch", map[string]any{"x": x, "y": y}, nil)
 }
 
+// Pointer moves, presses or lets go of the panel's pointer and returns at once, in the panel's
+// own coordinates. Points off the panel land on its nearest edge.
+func (c *Client) Pointer(x, y int, down bool) error {
+	return c.Call("pointer", map[string]any{"x": x, "y": y, "down": down}, nil)
+}
+
 // Quit stops the app and returns once it has gone. A quit that lands just as a restart
 // execs is lost, with or without its reply, so a hang-up isn't proof: the new boot gets as
 // long as a restart can take to answer, and is asked again. Quitting removes the socket,
@@ -358,7 +366,8 @@ func Follow(path string, out io.Writer, warn func(string)) error {
 	})
 }
 
-// Watcher hears what happens on an app's stream. Any of these can be nil.
+// Watcher hears what happens on an app's stream. Any of these can be nil. Watch doesn't pass
+// "frames" events on, so follow frames with Client.Subscribe and Client.Next instead.
 type Watcher struct {
 	Connected  func(Hello)        // a boot answered
 	Serial     func([]byte) error // the next bytes of the stream

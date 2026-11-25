@@ -463,6 +463,103 @@ TEST_F(SocketServe, TouchMustLandOnThePanel) {
   EXPECT_FALSE(preflash::touch::pop());
 }
 
+TEST_F(SocketServe, PointerPressMoveAndReleaseReachTouchInOrder) {
+  while (preflash::touch::pop()) {
+  }
+  Client client(path());
+  EXPECT_EQ(client.call({{"op", "pointer"}, {"x", 10}, {"y", 4}, {"down", true}})["ok"], true);
+  EXPECT_EQ(client.call({{"op", "pointer"}, {"x", 12}, {"y", 4}, {"down", true}})["ok"], true);
+  EXPECT_EQ(client.call({{"op", "pointer"}, {"x", 12}, {"y", 4}, {"down", false}})["ok"], true);
+  const int want[3][3] = {{10, 4, 1}, {12, 4, 1}, {12, 4, 0}};
+  for (const auto& w : want) {
+    const auto e = preflash::touch::pop();
+    ASSERT_TRUE(e);
+    EXPECT_EQ(e->x, w[0]);
+    EXPECT_EQ(e->y, w[1]);
+    EXPECT_EQ(e->down, w[2] == 1);
+  }
+  EXPECT_FALSE(preflash::touch::pop());
+}
+
+TEST_F(SocketServe, PointerOffThePanelClampsToTheEdge) {
+  while (preflash::touch::pop()) {
+  }
+  Client client(path());
+  EXPECT_EQ(client.call({{"op", "pointer"}, {"x", -5}, {"y", 9999}, {"down", true}})["ok"], true);
+  const auto e = preflash::touch::pop();
+  ASSERT_TRUE(e);
+  EXPECT_EQ(e->x, 0);
+  EXPECT_EQ(e->y, 7);  // the suite's board is 16 by 8
+  EXPECT_TRUE(e->down);
+}
+
+TEST_F(SocketServe, AMissingDownIsAPointerError) {
+  while (preflash::touch::pop()) {
+  }
+  Client client(path());
+  const json reply = client.call({{"op", "pointer"}, {"x", 1}, {"y", 1}});
+  EXPECT_EQ(reply["ok"], false);
+  EXPECT_EQ(reply["error"], "pointer needs x, y and down");
+  EXPECT_EQ(client.call({{"op", "pointer"}, {"x", "1"}, {"y", 1}, {"down", true}})["ok"], false);
+  EXPECT_EQ(client.call({{"op", "pointer"}, {"x", 1}, {"y", 1}, {"down", 1}})["ok"], false);
+  EXPECT_FALSE(preflash::touch::pop());
+}
+
+TEST_F(SocketServe, ASubscriberSeesFrameNumbersRise) {
+  Client client(path());
+  ASSERT_EQ(client.call({{"op", "subscribe"}, {"streams", {"frames"}}})["ok"], true);
+  const uint16_t pixel = 0xffff;
+  for (int i = 0; i < 3; ++i) {
+    preflash::panel::draw(0, 0, 1, 1, &pixel);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  const uint64_t last = preflash::panel::frames_drawn();
+  uint64_t seen = 0;
+  int events = 0;
+  for (json line = client.read_line(); line.is_object(); line = client.read_line()) {
+    ASSERT_EQ(line["event"], "frame");
+    const uint64_t number = line["frame"];
+    EXPECT_GT(number, seen);
+    seen = number;
+    ++events;
+    if (number == last) break;
+  }
+  EXPECT_EQ(seen, last);
+  EXPECT_GE(events, 1);
+}
+
+TEST_F(SocketServe, AStalledSubscriberGetsOnlyTheNewestFrame) {
+  Client client(path());
+  // Reply lines the client doesn't read fill the socket, so the server's writer is stuck on
+  // the first of them while the frames below come.
+  for (int i = 0; i < 400; ++i) client.send_raw("{\"op\":\"frame\",\"id\":-1}\n");
+  client.send_raw("{\"op\":\"subscribe\",\"id\":-2,\"streams\":[\"frames\"]}\n");
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  const uint16_t pixel = 0x1234;
+  for (int i = 0; i < 1000; ++i) preflash::panel::draw(0, 0, 1, 1, &pixel);
+  const uint64_t last = preflash::panel::frames_drawn();
+  int events = 0;
+  uint64_t seen = 0;
+  for (json line = client.read_line(); line.is_object(); line = client.read_line()) {
+    if (!line.contains("event")) continue;
+    ASSERT_EQ(line["event"], "frame");
+    ++events;
+    seen = line["frame"];
+    if (seen == last) break;
+  }
+  EXPECT_EQ(seen, last);
+  EXPECT_LE(events, 2);
+}
+
+TEST_F(SocketServe, TheFrameReplyNamesItsFrame) {
+  const uint16_t pixel = 0xffff;
+  for (int i = 0; i < 5; ++i) preflash::panel::draw(0, 0, 1, 1, &pixel);
+  Client client(path());
+  const json reply = client.call({{"op", "frame"}});
+  EXPECT_EQ(reply["ok"], true);
+  EXPECT_EQ(reply["frame"], preflash::panel::frames_drawn());
+}
+
 TEST_F(SocketServe, FrameGivesThePanelAndLeavesTheWindowsCopyAlone) {
   const uint16_t pixels[2] = {0xf800, 0x07e0};
   preflash::panel::draw(0, 0, 2, 1, pixels);

@@ -155,6 +155,17 @@ TEST_F(Crash, HoldingFreezesFirmwareAndLeavesTheProcessUp) {
   EXPECT_EQ(counted, 0);
 }
 
+TEST_F(Crash, APointerAfterACrashGoesNowhere) {
+  setenv("PREFLASH_CRASH_HOLD", "1", 1);
+  const fs::path result = dir_ / "held.txt";
+  const int status = run("read '" + result.string() + "'");
+  ASSERT_TRUE(WIFEXITED(status)) << status << output_;
+  std::ifstream in(result);
+  std::stringstream text;
+  text << in.rdbuf();
+  EXPECT_NE(text.str().find("touched 0"), std::string::npos) << text.str();
+}
+
 // Firmware's bad bitmap faults with the pixels' lock held, and the panel must still answer.
 TEST_F(Crash, AFaultInsideTheDrawLeavesTheFrameReadable) {
   setenv("PREFLASH_CRASH_HOLD", "1", 1);

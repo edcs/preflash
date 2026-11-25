@@ -186,6 +186,50 @@ func TestRequestsCarryTheirFields(t *testing.T) {
 	assert.NotContains(t, seen[2], "ms")
 }
 
+func TestPointerSendsTheOp(t *testing.T) {
+	path := shortPath(t)
+	app := startFake(t, path, func(req map[string]any, reply func(string)) { reply(ok(req)) })
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+
+	require.NoError(t, c.Pointer(3, 4, true))
+	seen := app.seen()
+	require.Len(t, seen, 1)
+	assert.Equal(t, "pointer", seen[0]["op"])
+	assert.EqualValues(t, 3, seen[0]["x"])
+	assert.EqualValues(t, 4, seen[0]["y"])
+	assert.Equal(t, true, seen[0]["down"])
+}
+
+func TestFrameEventsCarryTheNumber(t *testing.T) {
+	path := shortPath(t)
+	startFake(t, path, func(req map[string]any, reply func(string)) {
+		reply(ok(req))
+		reply(`{"event":"frame","frame":42}`)
+	})
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+	require.NoError(t, c.Subscribe("frames"))
+	event, err := c.Next()
+	require.NoError(t, err)
+	assert.Equal(t, Event{Kind: "frame", Frame: 42}, event)
+}
+
+func TestAFrameReplyCarriesItsNumber(t *testing.T) {
+	path := shortPath(t)
+	startFake(t, path, func(req map[string]any, reply func(string)) {
+		reply(fmt.Sprintf(`{"id":%d,"ok":true,"width":1,"height":1,"format":"rgb565le","data":"AAA=","frame":9}`, int(req["id"].(float64))))
+	})
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+	frame, err := c.Frame()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(9), frame.Number)
+}
+
 func TestEventsArrivingBeforeAReplyAreKept(t *testing.T) {
 	path := shortPath(t)
 	startFake(t, path, func(req map[string]any, reply func(string)) {
