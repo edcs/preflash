@@ -46,6 +46,9 @@ func (s *Server) serveDevice(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		c.read(ctx, acks)
 	}()
+	// A page that has gone without closing, as one behind an SSH forward does, is let go
+	// of here, and so is what it held.
+	go keepAlive(ctx, conn, s.pingEvery, s.pingWait, cancel)
 
 	c.write(ctx, acks)
 	cancel()

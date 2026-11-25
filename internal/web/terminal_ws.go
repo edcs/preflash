@@ -118,6 +118,8 @@ func (s *Server) serveTerminal(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		c.read(ctx)
 	}()
+	// A tab that has gone without closing is detached here.
+	go keepAlive(ctx, conn, s.pingEvery, s.pingWait, cancel)
 
 	c.write(ctx)
 	cancel()

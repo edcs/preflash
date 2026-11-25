@@ -29,10 +29,14 @@ type Server struct {
 
 	term *terminal // nil without a terminal app
 	runs *runs
+
+	// How often pages are checked and how long they have to answer, taken from pingInterval
+	// and pingTimeout when the server is made.
+	pingEvery, pingWait time.Duration
 }
 
 func New(o Options) *Server {
-	s := &Server{opts: o, mux: http.NewServeMux()}
+	s := &Server{opts: o, mux: http.NewServeMux(), pingEvery: pingInterval, pingWait: pingTimeout}
 	static, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		panic(err) // the directory is embedded at build time

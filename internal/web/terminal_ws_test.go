@@ -351,3 +351,18 @@ func TestStartedComesBeforeTheNewRunsOutput(t *testing.T) {
 		}
 	}
 }
+
+func TestATabThatStopsAnsweringIsDetached(t *testing.T) {
+	quickPings(t)
+	site := startTermSite(t, "echo", "")
+	dialSilent(t, site.addr, "/terminal")
+	require.Eventually(t, func() bool { return site.srv.term.attached() == 1 }, termPatience, 5*time.Millisecond)
+	require.Eventually(t, func() bool { return site.srv.term.attached() == 0 }, 2*time.Second, 5*time.Millisecond,
+		"the tab stayed attached")
+}
+
+func TestATabHearsAPing(t *testing.T) {
+	quickPings(t)
+	site := startTermSite(t, "echo", "")
+	site.open(t).next("ping")
+}

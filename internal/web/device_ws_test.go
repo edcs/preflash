@@ -206,6 +206,52 @@ func TestClosingReleasesWhatThePageHeld(t *testing.T) {
 	}, time.Second, 5*time.Millisecond)
 }
 
+// quickPings has the server check its pages every few milliseconds until the test ends. It
+// goes before the site starts, which takes the timings when it is made.
+func quickPings(t *testing.T) {
+	t.Helper()
+	every, wait := pingInterval, pingTimeout
+	pingInterval, pingTimeout = 20*time.Millisecond, 100*time.Millisecond
+	t.Cleanup(func() { pingInterval, pingTimeout = every, wait })
+}
+
+// dialSilent connects to path and never reads, so it answers no ping, as a page on an iPad
+// that slept behind an SSH forward doesn't.
+func dialSilent(t *testing.T, addr, path string) *websocket.Conn {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws://"+addr+path, &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {"http://" + addr}},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.CloseNow() })
+	return conn
+}
+
+func TestAPageThatStopsAnsweringIsReleased(t *testing.T) {
+	quickPings(t)
+	socket := shortPath(t)
+	app := startFakeApp(t, socket, 172, 640)
+	site := startSite(t, socket)
+	conn := dialSilent(t, site.addr, "/device")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	require.NoError(t, conn.Write(ctx, websocket.MessageText, []byte(`{"type":"button","name":"BOOT","down":true}`)))
+
+	require.Eventually(t, func() bool {
+		buttons := app.requests("button")
+		return len(buttons) == 2 && buttons[1]["action"] == "release" && buttons[1]["name"] == "BOOT"
+	}, 2*time.Second, 5*time.Millisecond, "BOOT was never let go")
+}
+
+func TestAPageHearsAPing(t *testing.T) {
+	quickPings(t)
+	p := startSite(t, shortPath(t)).open(t)
+	p.next("ping")
+}
+
 func TestACrossSiteUpgradeIsRefused(t *testing.T) {
 	site := startSite(t, shortPath(t))
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

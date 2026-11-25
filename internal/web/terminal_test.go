@@ -553,3 +553,10 @@ func (t *terminal) pid() int {
 	defer t.mu.Unlock()
 	return t.cmd.Process.Pid
 }
+
+// attached counts the tabs attached to the output.
+func (t *terminal) attached() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.readers)
+}
