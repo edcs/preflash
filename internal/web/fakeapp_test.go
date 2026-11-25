@@ -55,6 +55,7 @@ type fakeApp struct {
 	rotation int
 	gate     chan struct{}
 	maxWrite time.Duration
+	stubborn bool // quit is answered but the app never goes
 }
 
 func startFakeApp(t *testing.T, path string, width, height int) *fakeApp {
@@ -122,6 +123,17 @@ func (a *fakeApp) serve(c *fakeConn) {
 			c.line(fmt.Sprintf(`{"id":%d,"ok":true,%s`, id, body[1:]))
 		case "fail":
 			c.line(fmt.Sprintf(`{"id":%d,"ok":false,"error":"nope"}`, id))
+		case "quit":
+			// As an app that quits does: answer, then leave and take the socket with it.
+			c.line(fmt.Sprintf(`{"id":%d,"ok":true}`, id))
+			a.mu.Lock()
+			stubborn := a.stubborn
+			a.mu.Unlock()
+			if stubborn {
+				continue
+			}
+			a.hangUp()
+			return
 		case "hang":
 			// No reply, as a wedged app gives.
 		default:

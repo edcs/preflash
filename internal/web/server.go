@@ -26,6 +26,9 @@ type Server struct {
 	opts Options
 	mux  *http.ServeMux
 	dev  *device // nil without a socket
+
+	term *terminal // nil without a terminal app
+	runs *runs
 }
 
 func New(o Options) *Server {
@@ -39,6 +42,15 @@ func New(o Options) *Server {
 		s.dev = newDevice(o.Socket)
 		s.handle("/device", http.HandlerFunc(s.serveDevice))
 	}
+	if len(o.Terminal) > 0 {
+		term, err := newTerminal(o.Terminal, startCols, startRows)
+		if err != nil {
+			panic(err) // the starting size is a constant
+		}
+		s.term, s.runs = term, newRuns(term)
+	}
+	// Without a terminal app the page still connects, and is told why it has nothing.
+	s.handle("/terminal", http.HandlerFunc(s.serveTerminal))
 	return s
 }
 
@@ -49,6 +61,13 @@ func (s *Server) handle(pattern string, h http.Handler) {
 
 // Serve answers on ln until ctx ends, and then returns nil.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	if s.term != nil {
+		// Deferred first, so it runs after the device follower has stopped.
+		defer s.stopTerminal()
+		if err := s.runs.start(); err != nil {
+			return err
+		}
+	}
 	if s.dev != nil {
 		devCtx, stopDevice := context.WithCancel(ctx)
 		deviceDone := make(chan struct{})
@@ -87,4 +106,13 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		return nil
 	}
 	return err
+}
+
+// stopTerminal quits the terminal app, and the firmware app it may have left behind.
+func (s *Server) stopTerminal() {
+	s.term.Close()
+	s.runs.shutdown()
+	if s.opts.Socket != "" {
+		quitFirmware(s.opts.Socket)
+	}
 }
