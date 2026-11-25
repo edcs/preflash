@@ -698,11 +698,16 @@ TEST_F(SocketServe, AudioSubscriberHearsFormatSamplesAndStop) {
 TEST_F(SocketServe, AnAudioSubscriberThatHangsUpIsForgotten) {
   esp_codec_dev_handle_t speaker = bsp_audio_codec_speaker_init();
   esp_codec_dev_close(speaker);
+  const size_t taps = preflash::audio::tap_count();
   {
     Client client(path());
     ASSERT_EQ(client.call({{"op", "subscribe"}, {"streams", {"audio"}}})["ok"], true);
+    EXPECT_EQ(preflash::audio::tap_count(), taps + 1);
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  for (int i = 0; i < 200 && preflash::audio::tap_count() != taps; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_EQ(preflash::audio::tap_count(), taps);
   auto fs = sound_format(16000, 1);
   ASSERT_EQ(esp_codec_dev_open(speaker, &fs), ESP_CODEC_DEV_OK);
   std::vector<int16_t> pcm(160);

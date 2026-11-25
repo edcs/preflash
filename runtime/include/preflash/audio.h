@@ -58,6 +58,8 @@ class Tap {
 int add_tap(Tap* tap);
 // Never returns while that tap is being called; the tap is not called afterwards.
 void remove_tap(int id);
+// How many taps are in, for tests.
+size_t tap_count();
 
 }  // namespace preflash::audio
 

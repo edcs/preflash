@@ -59,7 +59,8 @@ class Outbox {
   // the client.
   void push_audio(const int16_t* samples, size_t frames, int channels);
   // An event about the sound, such as its format or its end, kept in order with the
-  // samples and never dropped.
+  // samples. Never dropped while sound follows it; of the events with no sound after
+  // them, only the newest two are kept.
   void push_audio_event(std::string line);
   // The most sound kept, in bytes. The socket keeps a second of what is open.
   void set_audio_limit(size_t bytes);
@@ -83,7 +84,7 @@ class Outbox {
   size_t message_bytes();
 
  private:
-  enum class Kind { Message, Serial, Trace, Audio };
+  enum class Kind { Message, Serial, Trace, Audio, AudioEvent };
   struct Item {
     std::string bytes;
     Kind kind;

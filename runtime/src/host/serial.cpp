@@ -318,10 +318,11 @@ void Outbox::push_audio(const int16_t* samples, size_t frames, int channels) {
     ++audio_items_;
     forget(-1);
     // The oldest frames go first, whole writes while they can, then the front of the
-    // oldest write left. The write just pushed is never cut, however long: firmware can
-    // play a whole clip in one write, and its start is real sound.
-    const auto newest = std::prev(items_.end());
-    for (auto it = items_.begin(); audio_bytes_ > audio_limit_ && it != newest;) {
+    // oldest write left. The write just pushed, always the back, is never cut, however
+    // long: firmware can play a whole clip in one write, and its start is real sound. An
+    // erase moves what follows, so the back is checked afresh each time.
+    for (auto it = items_.begin();
+         audio_bytes_ > audio_limit_ && std::next(it) != items_.end();) {
       if (it->kind != Kind::Audio) {
         ++it;
         continue;
@@ -344,7 +345,29 @@ void Outbox::push_audio(const int16_t* samples, size_t frames, int channels) {
   ready_.notify_one();
 }
 
-void Outbox::push_audio_event(std::string line) { push_message(std::move(line)); }
+void Outbox::push_audio_event(std::string line) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_) return;
+    // Of the events since the last sound still queued, a client needs only the newest two,
+    // a stop and the format after it, so opening and closing the codec over and over can't
+    // pile them up for a client that never reads.
+    int seen = 0;
+    for (auto it = items_.end(); it != items_.begin();) {
+      --it;
+      if (it->kind == Kind::Audio) break;
+      if (it->kind != Kind::AudioEvent || ++seen < 2) continue;
+      message_bytes_ -= it->bytes.size();
+      items_.erase(it);
+      forget(1);
+      break;
+    }
+    message_bytes_ += line.size();
+    items_.push_back({std::move(line), Kind::AudioEvent});
+    forget(-1);
+  }
+  ready_.notify_one();
+}
 
 void Outbox::set_audio_limit(size_t bytes) {
   std::lock_guard<std::mutex> lock(mutex_);

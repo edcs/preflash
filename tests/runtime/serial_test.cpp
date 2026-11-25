@@ -208,6 +208,51 @@ TEST(Outbox, ASingleWriteLongerThanTheLimitIsKeptWhole) {
   box.sent();
 }
 
+// Erasing from the middle of the queue moves what follows, so the new write must still be
+// found as the newest afterwards, however much is queued ahead of it.
+TEST(Outbox, ANewWriteBehindSerialItemsIsKeptWhole) {
+  serial::Outbox box(1024);
+  box.set_audio_limit(4);  // two mono frames
+  const std::vector<int16_t> old = {1}, big = {2, 3, 4, 5, 6, 7, 8, 9};
+  box.push_serial("aa", 2);
+  box.push_serial("bb", 2);
+  box.push_audio(old.data(), 1, 1);
+  box.push_audio(big.data(), big.size(), 1);
+  const std::vector<std::string> want = {
+      "{\"event\":\"serial\",\"data\":\"YWE=\"}\n", "{\"event\":\"serial\",\"data\":\"YmI=\"}\n",
+      "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":1}\n", audio_line(big)};
+  for (const std::string& expected : want) {
+    std::string line;
+    ASSERT_TRUE(box.pop(&line));
+    EXPECT_EQ(line, expected);
+    box.sent();
+  }
+}
+
+// A client that never reads, while firmware opens and closes the codec over and over, keeps
+// only the newest of the format and stop events that no sound came between.
+TEST(Outbox, AudioEventsWithNoSoundBetweenDoNotPileUp) {
+  const long before = serial::unsent();
+  serial::Outbox box(1024);
+  const std::vector<int16_t> a = {1};
+  box.push_audio_event("format 0");
+  box.push_audio(a.data(), 1, 1);
+  for (int i = 1; i <= 1000; ++i) {
+    box.push_audio_event("stop " + std::to_string(i));
+    box.push_audio_event("format " + std::to_string(i));
+  }
+  EXPECT_EQ(serial::unsent(), before + 4);
+  const std::vector<std::string> want = {"format 0\n", audio_line(a), "stop 1000\n",
+                                         "format 1000\n"};
+  for (const std::string& expected : want) {
+    std::string line;
+    ASSERT_TRUE(box.pop(&line));
+    EXPECT_EQ(line, expected);
+    box.sent();
+  }
+  EXPECT_EQ(box.message_bytes(), 0u);
+}
+
 // Past the limit, older writes lose their front frames, and the newest write stays whole.
 TEST(Outbox, AnOlderWriteLosesItsFrontFramesFirst) {
   serial::Outbox box(1024);

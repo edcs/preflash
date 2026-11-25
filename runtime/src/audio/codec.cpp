@@ -92,6 +92,12 @@ void remove_tap(int id) {
                g_taps.end());
 }
 
+size_t tap_count() {
+  Speaker& s = speaker();
+  std::lock_guard<std::mutex> hold(s.lock);
+  return g_taps.size();
+}
+
 void set_device_request(std::function<void()> request) {
   std::lock_guard<std::mutex> hold(g_request_mutex);
   g_request = std::move(request);
