@@ -25,7 +25,7 @@
 
 ---
 
-You change one line of a screen on an ESP32 board, then wait for a build, wait for a flash and walk over to the device to look. Preflash cuts out the board. It builds your unmodified ESP-IDF project for your Mac and runs it in a window the shape of the board's screen, so your own drivers and UI run while ESP-IDF's services and the board's chips are simulated underneath them.
+You change one line of a screen on an ESP32 board, then wait for a build, wait for a flash and walk over to the device to look. Preflash cuts out the board. It builds your unmodified ESP-IDF project for your computer and runs it in a window the shape of the board's screen, so your own drivers and UI run while ESP-IDF's services and the board's chips are simulated underneath them.
 
 Use it for quick development and debugging, then test on real hardware before you ship.
 
@@ -43,7 +43,7 @@ Every capture here comes from [`examples/demo`](examples/demo), an ordinary ESP-
 - **Boards are YAML.** A board using known chips needs no tool code. Extend a stock board to describe your own hardware change, or write one from scratch for a custom PCB.
 - **It fails loudly.** A call Preflash doesn't implement stops the build or the run and names the call. Firmware never carries on as if it had worked.
 - **Scriptable.** Run with no window for CI and coding agents, tap the screen from a script and save what the panel shows.
-- **Real network, real saved state.** HTTPS goes out over your Mac's connection, so live APIs work, and what firmware saves survives a restart.
+- **Real network, real saved state.** HTTPS goes out over your computer's connection, so live APIs work, and what firmware saves survives a restart.
 
 <p align="center">
   <img src=".github/assets/panels.png" alt="Five frames from the demo: on the 4B, the Faults page with the RTC not answering, the home page turned a quarter, and the Power page with the battery forced to 15 percent; on the 3.49 V2, the Faults and Network pages." width="100%">
@@ -58,7 +58,7 @@ Every capture here comes from [`examples/demo`](examples/demo), an ordinary ESP-
 | Firmware | FreeRTOS tasks, queues and notifications on host threads, `esp_timer`, the task watchdog, restart |
 | Storage | NVS, saved per checkout. Flash partitions registered at run time are kept in the board's state folder |
 | Network | Simulated Wi-Fi, SNTP, and real HTTP and HTTPS through `esp_http_client` |
-| Audio | The speaker path through `esp_codec_dev`, played on your Mac |
+| Audio | The speaker path through `esp_codec_dev`, played on your computer |
 | Chips | PCF85063 RTC, QMI8658 motion sensor, AXP2101 power chip, TCA9554 expander and AXS15231B touch at register level. ES8311, ES7210 and GT911 answer on the bus without a behaviour model |
 | [Terminal app](#terminal-app) | The firmware's serial console under a status bar, shortcut buttons per project, a board picker, rebuilds that keep the old app on failure, debug views and a hardware panel |
 | [Scripting](#drive-it-from-a-script) | A control socket and command line for console lines, status, the serial stream, traces, hardware changes, screenshots and touch |
@@ -69,10 +69,22 @@ Every capture here comes from [`examples/demo`](examples/demo), an ordinary ESP-
 
 ## Install
 
-Preflash runs on Apple Silicon Macs. It builds your firmware with CMake and Python 3 and draws the window with SDL2, so install those first:
+Preflash runs on Apple Silicon Macs and x86_64 Linux. It builds your firmware with CMake, Python 3 and a C++ compiler, and draws the window with SDL2, so install those first. On a Mac:
 
 ```sh
 brew install cmake sdl2
+```
+
+On Fedora:
+
+```sh
+sudo dnf install cmake gcc-c++ SDL2-devel libcurl-devel
+```
+
+On Debian or Ubuntu (glibc 2.34 or later):
+
+```sh
+sudo apt install cmake g++ libsdl2-dev libcurl4-openssl-dev
 ```
 
 Then install Preflash:
@@ -126,6 +138,15 @@ git clone https://github.com/edcs/preflash
 cd preflash
 ```
 
+### Linux notes
+
+- Preflash keeps its sockets, pseudo-terminal links and downloads in `${XDG_CACHE_HOME:-~/.cache}/preflash`. Only an absolute `XDG_CACHE_HOME` counts.
+- The window uses SDL2 on X11 or Wayland, so it needs a desktop. On a headless box, use [`preflash web`](#browser) or run with `--headless`.
+- `preflash crash` names frames with `addr2line`, which comes with binutils.
+- The terminal app's `g` key and your own debugging use `gdb -p <pid>`. Set `PREFLASH_LLDB` to run another debugger, on either system.
+- Copying from the terminal app uses `wl-copy` on Wayland, or `xclip` or `xsel` on X11.
+- The sanitizer builds need `libasan` and `libtsan`. Ubuntu ships them with `g++`. On Fedora, install the `libasan` and `libtsan` packages.
+
 ### Build from source
 
 Building needs Go as well:
@@ -178,7 +199,7 @@ preflash run [--project dir] [--board file] [--headless] [--sanitize address|thr
 
 ### The window, buttons and power
 
-The window is a process of its own, `preflash-window`, built beside the app. It stays where it is while the firmware restarts, whether by `esp_restart`, RST, a power change or a crash, and keeps the last frame up until the new boot draws. Power-off and download mode run no firmware, so they black the panel out, and the boot after them starts from black as the board does. Under `preflash run`, closing the window quits the app and quitting the app closes the window. The terminal app keeps the window up while it rebuilds or restarts the app, and closes it when you quit the terminal app. If the window process dies, the app starts a new one. The window writes its errors to a log beside the control socket, `~/Library/Caches/preflash/<hash>.window.log`. If no window stays open, the app stops with `preflash: couldn't open the window: ` and the log's last line. `--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked Mac, and buttons, rotation and power still work from the command line and the socket.
+The window is a process of its own, `preflash-window`, built beside the app. It stays where it is while the firmware restarts, whether by `esp_restart`, RST, a power change or a crash, and keeps the last frame up until the new boot draws. Power-off and download mode run no firmware, so they black the panel out, and the boot after them starts from black as the board does. Under `preflash run`, closing the window quits the app and quitting the app closes the window. The terminal app keeps the window up while it rebuilds or restarts the app, and closes it when you quit the terminal app. If the window process dies, the app starts a new one. The window writes its errors to a log beside the control socket, `~/Library/Caches/preflash/<hash>.window.log`. If no window stays open, the app stops with `preflash: couldn't open the window: ` and the log's last line. `--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked screen, and buttons, rotation and power still work from the command line and the socket.
 
 The title bar shows the project's name. Under it, a strip holds the board's buttons on the left and the rotate button on the right, and a status bar under the panel shows the board's full name and how far it's turned. A narrow panel, such as the 3.49 V2's, sits centred on black in a window at least 250 points wide. Hovering a button shows what it's wired to in the status bar.
 
@@ -243,7 +264,7 @@ When firmware [crashes](#when-firmware-crashes), the screen shows the console, t
 
 | Key | What it does |
 | --- | --- |
-| `g` | Opens `lldb` attached to the frozen app, in this terminal, and returns here when you quit it |
+| `g` | Opens `lldb` (`gdb` on Linux) attached to the frozen app, in this terminal, and returns here when you quit it |
 | `e` | Opens `$EDITOR` at the crash's line |
 | `y` | Copies the report |
 | `^R` | Rebuilds and restarts. If the build fails, the crashed app stays frozen |
@@ -292,7 +313,7 @@ sdkconfig:
 
 ## Browser
 
-`preflash web` runs the terminal app and the panel in a browser tab, so you can use Preflash from a machine with no window of its own, or from an iPad.
+`preflash web` runs the terminal app and the panel in a browser tab, so you can use Preflash from a machine with no window of its own, such as a headless Linux box, or from an iPad.
 
 ```sh
 preflash web
@@ -308,7 +329,7 @@ ssh -L 7480:localhost:7480 <mac>
 
 Then open `http://localhost:7480` on the machine you're sitting at. A page is refused unless its address is `localhost`, `127.0.0.1` or `[::1]`, on any port, so a forward onto another port works. For a name of your own, pass `--allow-host name`, once for each name. A refused request gets a page that names the host and the flag. Sound needs a secure page, so under a name of your own it plays only over https: on plain http the speaker button stays off and says so.
 
-The device pane's header has a speaker button, off in every tab. One tap turns sound on, and the device's sound plays in that tab. A tab streams nothing until you tap, and turning sound off stops the data. Safari wants that tap again after a reload. The sound travels as Opus, at about 12 KB/s for stereo, so a cellular link copes. The Mac stays silent during `web`, because the sound goes to the browser and not to the Mac's speakers.
+The device pane's header has a speaker button, off in every tab. One tap turns sound on, and the device's sound plays in that tab. A tab streams nothing until you tap, and turning sound off stops the data. Safari wants that tap again after a reload. The sound travels as Opus, at about 12 KB/s for stereo, so a cellular link copes. The computer stays silent during `web`, because the sound goes to the browser and not to its speakers.
 
 The key row under the terminal sends the keys a touch screen lacks: Esc, Tab, `^C`, `^R`, the arrows and `/`. `^C` typed in the page ends only the terminal app, and the page offers to start it again. `^C` to `preflash web` itself stops the terminal app and the firmware, and leaves nothing running.
 
@@ -417,7 +438,7 @@ NVS rows show keys and sizes and leave the values out, because a value can be a 
 | `rtc` | `healthy`, `flat`, which sets the PCF85063's OS bit and loses the time | Next boot |
 | `motion` | `healthy`, `gone` | Next boot |
 
-The list also has a `wifi` row, which says that the simulated Wi-Fi uses your Mac's connection, and has no other choice. A board shows only the rows its chips can act on. The 3.49 V2 has `usb` and `battery` because its PWR runs from a battery, but with no ADC or VBUS pin modelled, they only decide whether its power stays on: its firmware can't read them. Preflash refuses to leave the board with no USB and no battery, so set `battery` before you unplug USB.
+The list also has a `wifi` row, which says that the simulated Wi-Fi uses your computer's connection, and has no other choice. A board shows only the rows its chips can act on. The 3.49 V2 has `usb` and `battery` because its PWR runs from a battery, but with no ADC or VBUS pin modelled, they only decide whether its power stays on: its firmware can't read them. Preflash refuses to leave the board with no USB and no battery, so set `battery` before you unplug USB.
 
 Everything you set stays in `faults.json` in the state folder, across restarts, rebuilds and new runs, until you set it back. A boot with anything forced prints what it forced. A flat cell comes back on every boot, including after `esp_restart`, which a real cell wouldn't do.
 
@@ -440,7 +461,7 @@ memory error on the console task, SIGSEGV at 0x0
   console::crash_command    console.cpp:154
 ```
 
-With a window, the app stops in place. Firmware's tasks freeze where they were, the window keeps its last frame, and `preflash status`, `shot` and `quit` still work, so you can attach `lldb -p <pid>`. `preflash send` refuses, and ^C or `preflash quit` ends the app. A `--headless` `preflash run` has no frame to keep, so it exits with the signal and a script sees the failure. Under the terminal app, a headless run holds too, so `g` has something to attach to.
+With a window, the app stops in place. Firmware's tasks freeze where they were, the window keeps its last frame, and `preflash status`, `shot` and `quit` still work, so you can attach `lldb -p <pid>` (`gdb -p <pid>` on Linux). `preflash send` refuses, and ^C or `preflash quit` ends the app. A `--headless` `preflash run` has no frame to keep, so it exits with the signal and a script sees the failure. Under the terminal app, a headless run holds too, so `g` has something to attach to.
 
 Rebuilding replaces the app, so a report older than the build prints addresses in place of names. Only the newest report is kept for each kind of build, and a report stays until the next crash replaces it.
 
@@ -450,13 +471,13 @@ Rebuilding replaces the app, so a report older than the build prints addresses i
 
 The first report stops the firmware and counts as a crash, so you read it through `preflash crash` or the crash screen, with the sanitizer's full text at the end. It also goes to the serial stream. Your project's own `ASAN_OPTIONS` and `TSAN_OPTIONS` stay in force, with Preflash's added after them.
 
-A sanitizer build always uses `malloc` and libc's string calls for LVGL, whatever your `sdkconfig` chose, because LVGL's own allocator hides overflows inside its pool. Firmware tasks are real threads, so a race report describes your code running on your Mac, and its timing differs from the chip's.
+A sanitizer build always uses `malloc` and libc's string calls for LVGL, whatever your `sdkconfig` chose, because LVGL's own allocator hides overflows inside its pool. Firmware tasks are real threads, so a race report describes your code running on your computer, and its timing differs from the chip's.
 
 [`runtime/tsan.supp`](runtime/tsan.supp) lists what the thread sanitizer ignores, with the reason beside each entry. Preflash's own code runs with no suppressions.
 
 ## Connect a companion app
 
-`preflash port` prints a path for your app to open as it would a board's serial port, such as `~/Library/Caches/preflash/<hash>.tty`. The path is a link to a pseudo-terminal, and it stays the same from one run to the next. The port carries the serial stream, so your app reads what `preflash serial` shows, and each line it writes joins the console queue, ending in `\n`, `\r` or `\r\n`. Preflash doesn't read your protocol. With the demo running, write `status` to the port and read the answer back.
+`preflash port` prints a path for your app to open as it would a board's serial port, such as `~/Library/Caches/preflash/<hash>.tty` (`~/.cache/preflash/<hash>.tty` on Linux). The path is a link to a pseudo-terminal, and it stays the same from one run to the next. The port carries the serial stream, so your app reads what `preflash serial` shows, and each line it writes joins the console queue, ending in `\n`, `\r` or `\r\n`. Preflash doesn't read your protocol. With the demo running, write `status` to the port and read the answer back.
 
 If your firmware installs the USB serial driver, it owns the wire. Everything your app writes to the port reaches `usb_serial_jtag_read_bytes` byte for byte, `@sim ` lines and line endings included. Lines from stdin and `preflash send` reach it too, each with a `\n`, except `@sim ` lines, which stay with Preflash. Until the driver is in, these lines wait in the queue. Firmware reads serial input through that call, because stdin stays with Preflash.
 
@@ -523,7 +544,7 @@ A channel set up with `ledc_channel_config` on the backlight pin sets the bright
 ## How it compares
 
 - **Flashing a real board** is the only test that counts before you ship, and Preflash doesn't replace it. It saves the round trips while you work.
-- **Wokwi and QEMU** emulate the chip and run a flashed image, so they get closer to the hardware. Preflash builds native code, so you can step through firmware in your Mac's debugger.
+- **Wokwi and QEMU** emulate the chip and run a flashed image, so they get closer to the hardware. Preflash builds native code, so you can step through firmware in your computer's debugger.
 - **ESP-IDF's `linux` target** runs a subset of components natively. It has no `esp_lcd`, I2C, GPIO or Wi-Fi drivers, so a project with a screen and chips doesn't run on it unchanged.
 - **LVGL's PC simulators** preview a UI, and you split that UI out of the firmware and write a host `main` yourself. Preflash runs the whole app, including its tasks, storage and drivers.
 - **Esprite** is the closest relative. It simulates Arduino projects, where Preflash stands in for ESP-IDF.
@@ -557,9 +578,10 @@ If your firmware stops on a call Preflash doesn't implement, that call needs a s
 - **The window through a restart.** The tests run the window with SDL's dummy driver. Run the demo and check the window stays put with its last frame until the new boot draws after each of: `restart`, `^R`, `crash null` followed by `^R`, RST, and `^B` to the other board (which reshapes the window in place). After power off and on, the window stays put and the panel stays black until the new boot draws. Kill the `preflash-window` process with `kill -9`: a new window appears within about 2 seconds and the firmware keeps running. Close the window with its button, press `^C` in the terminal app, or run `preflash quit`: the app and the window both go. Hold the mouse down on the panel, send `restart`, and check the new boot shows no stuck press.
 - **Mouse touch.** Click a tile and watch the page open. Drag on a page that scrolls. The panel dims as the firmware lowers the backlight, and the title stays the project's name.
 - **PWR on battery with a real key circuit.** Run a board that has a power key, such as the 3.49 V2, on battery and check the PWR hold behaves as the schematic says: GPIO16 is the key, and TCA9554 bit 6 is its hold.
-- **The audible chime.** The tests count the sample frames firmware writes. Press the Beep shortcut and listen.
+- **The audible chime.** The tests count the sample frames firmware writes. Press the Beep shortcut and listen. On Linux, listen through PipeWire.
+- **The window on a Linux desktop.** The tests run the window with SDL's dummy driver. Run the demo under X11 and under Wayland, and check the window opens, draws and takes a mouse tap on a tile.
 - **The debug and crash screens with a window open.** The tests run these screens headless. Run the demo with a window, press `^D`, then send `crash null`.
-- **`g` in the crash screen.** The tests use a stand-in for `lldb`. Press `g` with the real one and check it attaches.
+- **`g` in the crash screen.** The tests use a stand-in for the debugger. Press `g` with the real `lldb` or `gdb` and check it attaches.
 - **Hardware captures.** These need a board on your desk, as the next section says.
 
 ### Check the models against a board

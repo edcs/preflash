@@ -17,6 +17,12 @@ fail() {
   exit 1
 }
 
+case "$(uname -s)-$(uname -m)" in
+Darwin-arm64) archive="preflash-darwin-arm64.tar.gz" ;;
+Linux-x86_64) archive="preflash-linux-amd64.tar.gz" ;;
+*) echo "SKIP: install: no release for this platform"; exit 0 ;;
+esac
+
 "$root/scripts/package.sh" 9.9.9 "$scratch/release" >/dev/null
 
 prefix="$scratch/prefix"
@@ -29,7 +35,7 @@ case "$log" in *"installed 9.9.9"*) ;; *) fail "install.sh didn't report the ver
 # A second install replaces the first, and a bad checksum leaves it alone.
 PREFLASH_PREFIX="$prefix" PREFLASH_DOWNLOAD_URL="file://$scratch/release" sh "$root/install.sh" >/dev/null 2>&1 ||
   fail "installing over an install failed"
-echo "0000  preflash-darwin-arm64.tar.gz" > "$scratch/release/preflash-darwin-arm64.tar.gz.sha256"
+echo "0000  $archive" > "$scratch/release/$archive.sha256"
 if log="$(PREFLASH_PREFIX="$prefix" PREFLASH_DOWNLOAD_URL="file://$scratch/release" sh "$root/install.sh" 2>&1)"; then
   fail "install.sh accepted a bad checksum" "$log"
 fi
