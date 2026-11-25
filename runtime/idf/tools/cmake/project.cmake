@@ -394,6 +394,11 @@ function(preflash_link_app config_dir)
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
   target_link_libraries(preflash_app PRIVATE preflash_runtime)
 
+  # The crash report walks the stack by frame pointer, and GCC drops them when optimising.
+  if(NOT APPLE)
+    list(APPEND options -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
+  endif()
+
   foreach(lib IN LISTS libs ITEMS preflash_runtime)
     get_target_property(type ${lib} TYPE)
     if(type STREQUAL "INTERFACE_LIBRARY")
