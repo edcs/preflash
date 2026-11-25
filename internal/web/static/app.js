@@ -378,9 +378,11 @@ for (const key of Object.keys(split)) {
 
 const bezel = 20; // the stage's padding on both sides
 const colGap = 10; // between the head, the stage and the strip
-const minDevice = 200; // the device side is never squeezed below this
-const minTermCols = 40;
-const minTermRows = 16; // the TUI's own minimum height
+const minDevice = 200; // the device side keeps this much while the terminal has room
+// The TUI's own minimum size (internal/tui: minWidth, minHeight). Below it the terminal app shows
+// only "Window too small".
+const minTermCols = 60;
+const minTermRows = 16;
 
 // The terminal's cell, measured from its font, so the split can leave it enough columns.
 const cell = (() => {
@@ -389,9 +391,11 @@ const cell = (() => {
   return { w: ctx.measureText('M').width || 8 };
 })();
 
-// A row's height as xterm draws it, read back after a fit, with an estimate before the first.
+// A row's height as xterm draws it, the same one its fit addon divides by, with a generous
+// estimate until xterm has measured its font.
 function rowHeight() {
-  return term.rows > 0 && termEl.clientHeight > 0 ? termEl.clientHeight / term.rows : term.options.fontSize * 1.4;
+  const measured = term._core?._renderService?.dimensions?.css?.cell?.height;
+  return measured > 0 ? measured : term.options.fontSize * 1.4;
 }
 
 function contentBox() {
@@ -418,8 +422,10 @@ function maxDevice(content, wide) {
   return content.h - divider.offsetHeight - keysRow.offsetHeight - Math.ceil(minTermRows * rowHeight()) - 12;
 }
 
+// clampDevice keeps the device side at minDevice or more, unless the terminal app would then have
+// less than its minimum: the terminal wins, and the panel shrinks further.
 function clampDevice(size, content, wide) {
-  return Math.max(Math.min(size, maxDevice(content, wide)), minDevice);
+  return Math.max(Math.min(Math.max(size, minDevice), maxDevice(content, wide)), 0);
 }
 
 // What the device side needs, along the split, to show the panel at the chosen zoom.
@@ -512,7 +518,8 @@ if (window.visualViewport) {
   followViewport();
 }
 new ResizeObserver(() => layout()).observe(main);
-new ResizeObserver(() => requestAnimationFrame(refit)).observe(termEl);
+// Layout runs again after a refit, as the terminal's minimum depends on xterm's measured rows.
+new ResizeObserver(() => requestAnimationFrame(() => { refit(); layout(); })).observe(termEl);
 wideQuery.addEventListener('change', layout);
 layout();
 
