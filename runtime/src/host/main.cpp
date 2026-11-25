@@ -45,8 +45,7 @@ std::optional<int> parse_number(const std::string& word) {
   return value;
 }
 
-// A press straight into the touch queue, because this runs on the console task and
-// only the main thread may touch SDL.
+// A press straight into the touch queue, from the console task.
 void control_touch(const std::vector<std::string>& args) {
   const auto x = args.size() >= 2 ? parse_number(args[0]) : std::nullopt;
   const auto y = args.size() >= 2 ? parse_number(args[1]) : std::nullopt;
@@ -90,6 +89,9 @@ int main() {
   for (const int stop : {SIGTERM, SIGHUP}) {
     if (signal(stop, on_interrupt) == SIG_IGN) signal(stop, SIG_IGN);
   }
+  // The window process is this one's child, and nothing waits for it: when it ends, it goes
+  // without a zombie left behind.
+  signal(SIGCHLD, SIG_IGN);
 
   try {
     // Before the chips, which read it as they start.
@@ -102,7 +104,7 @@ int main() {
 
   const char* headless_env = std::getenv("PREFLASH_HEADLESS");
   const bool headless = headless_env && std::strcmp(headless_env, "1") == 0;
-  // Before the window, so that a second app stops without opening one.
+  // Before the window, so that a second app stops without taking over the first one's.
   std::string socket_error;
   if (!preflash::socket::claim(&socket_error)) {
     std::fprintf(stderr, "preflash: %s\n", socket_error.c_str());

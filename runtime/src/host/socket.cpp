@@ -40,6 +40,7 @@
 #include "preflash/tasks.h"
 #include "preflash/touch.h"
 #include "preflash/trace.h"
+#include "window.h"
 
 namespace preflash::socket {
 namespace {
@@ -588,6 +589,8 @@ void announce_restart() {
 }
 
 void leave(int code) {
+  // A supervised app comes back, after a rebuild, and finds its window where it left it.
+  if (!window::supervised()) window::close_for_good();
   serial::release();
   if (g_path[0]) unlink(g_path);
   _exit(code);

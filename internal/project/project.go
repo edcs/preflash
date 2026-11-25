@@ -218,6 +218,12 @@ func (p Project) PortPath() string {
 	return strings.TrimSuffix(p.SocketPath(), ".sock") + ".tty"
 }
 
+// WindowSocketPath is where this checkout's window process listens for its app, beside the
+// control socket. The window outlives the app's restarts, so it has a socket of its own.
+func (p Project) WindowSocketPath() string {
+	return strings.TrimSuffix(p.SocketPath(), ".sock") + ".window"
+}
+
 // checkSocketPath fails if neither of SocketPath's folders leaves room for the socket.
 func (p Project) checkSocketPath() error {
 	if path := p.SocketPath(); len(path) >= socketPathLimit {

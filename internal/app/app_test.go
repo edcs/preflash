@@ -76,10 +76,11 @@ func (f *fakeTarget) Install(b board.Board, env []string) (string, []string, err
 	f.mu.Unlock()
 	return path, env, nil
 }
-func (f *fakeTarget) SocketPath() string { return filepath.Join(f.dir, "s") }
-func (f *fakeTarget) LogPath() string    { return filepath.Join(f.dir, "app.log") }
-func (f *fakeTarget) CrashPath() string  { return filepath.Join(f.dir, "crash.json") }
-func (f *fakeTarget) ProjectDir() string { return f.dir }
+func (f *fakeTarget) SocketPath() string       { return filepath.Join(f.dir, "s") }
+func (f *fakeTarget) WindowSocketPath() string { return filepath.Join(f.dir, "w") }
+func (f *fakeTarget) LogPath() string          { return filepath.Join(f.dir, "app.log") }
+func (f *fakeTarget) CrashPath() string        { return filepath.Join(f.dir, "crash.json") }
+func (f *fakeTarget) ProjectDir() string       { return f.dir }
 func (f *fakeTarget) Sanitized(kind string) Target {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -604,6 +605,41 @@ func TestCloseAsksTheAppToQuit(t *testing.T) {
 
 	quits.Wait()
 	assert.False(t, alive(begun.PID))
+}
+
+func TestSupervisorMarksItsAppSupervised(t *testing.T) {
+	f := newTarget(t, "echo supervised=$PREFLASH_SUPERVISED; exec sleep 30")
+	started(t, f)
+	eventually(t, "the app never said whether it was supervised", func() bool {
+		return strings.Contains(f.log(t), "supervised=1")
+	})
+}
+
+func TestCloseTellsTheWindowToClose(t *testing.T) {
+	f := newTarget(t, "exec sleep 30")
+	window, err := net.Listen("unix", f.WindowSocketPath())
+	require.NoError(t, err)
+	t.Cleanup(func() { window.Close() })
+	heard := make(chan string, 1)
+	go func() {
+		conn, err := window.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		line, _ := bufio.NewReader(conn).ReadString('\n')
+		heard <- line
+	}()
+	s, _, _ := started(t, f)
+
+	s.Close()
+
+	select {
+	case line := <-heard:
+		assert.JSONEq(t, `{"op":"close"}`, line)
+	case <-time.After(patience):
+		t.Fatal("the window heard nothing")
+	}
 }
 
 func TestCloseSignalsAnAppWithNoSocket(t *testing.T) {

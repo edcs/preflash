@@ -1,12 +1,25 @@
 #pragma once
 
-// The window onto the virtual panel. The only code that makes SDL video calls.
+// The app's end of the link to its window, which is a process of its own (runtime/window) so
+// that it stays put while the app restarts. The app writes frames into a shared file and tells
+// the window the board and how the device stands. The window sends back touches and a quit.
 namespace preflash::window {
 
-// Call on the main thread. Exits with a message if there can be no window.
+// Call on the main thread. Shares the panel's frames and connects to the window at
+// PREFLASH_WINDOW_SOCKET, starting PREFLASH_WINDOW_EXE if nothing answers. Ends the process
+// with a message if no window will stay open.
 void open();
 
-// Runs the window on the main thread until it's closed, which ends the process.
+// The main thread from here on: opens the sound card when firmware asks, tells the window
+// when the device changes, and brings the window back if it goes.
 [[noreturn]] void run();
+
+// Tells the window to close, and stops bringing it back. Nothing if there's no window.
+// Async-signal-safe.
+void close_for_good();
+
+// Whether the terminal app supervises this app, which then leaves its window up on the way
+// out for the app it starts next.
+bool supervised();
 
 }  // namespace preflash::window

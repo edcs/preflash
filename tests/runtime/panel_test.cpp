@@ -18,6 +18,7 @@
 #include "esp_lvgl_port.h"
 #include "preflash/panel.h"
 #include "preflash/touch.h"
+#include "winlink/frame_buffer.h"
 
 namespace fs = std::filesystem;
 namespace panel = preflash::panel;
@@ -417,4 +418,74 @@ TEST(Touch, PressRefusesAPointOffThePanel) {
   EXPECT_FALSE(touch::press(-1, 0, 0));
   EXPECT_FALSE(touch::press(0, 0, -1));
   EXPECT_FALSE(touch::pop());
+}
+
+// A folder for the window's frame file, removed with what's in it.
+struct FrameFolder {
+  FrameFolder() {
+    std::string pattern = (fs::temp_directory_path() / "preflash-panel-XXXXXX").string();
+    path = mkdtemp(pattern.data());
+  }
+  ~FrameFolder() {
+    panel::stop_sharing();
+    fs::remove_all(path);
+  }
+  std::string file() const { return path + "/frame"; }
+  std::string path;
+};
+
+// How many frames have gone into the frame file: each write moves its count on by two.
+uint64_t frames_shared(preflash::winlink::FrameBuffer& window) {
+  uint64_t seq = 0;
+  std::vector<uint8_t> ignored;
+  window.read_if_newer(&seq, &ignored);
+  return seq / 2;
+}
+
+// The window process reads the panel from a shared file, a whole frame at a time.
+TEST(Panel, SharesEachFinishedFrameWithTheWindow) {
+  FrameFolder dir;
+  panel::share_frames(dir.file());
+  auto window = preflash::winlink::FrameBuffer::open(dir.file());
+  ASSERT_TRUE(window);
+  EXPECT_EQ(window->width(), kWidth);
+  EXPECT_EQ(window->height(), kHeight);
+
+  const std::vector<uint16_t> red(kWidth * kHeight / 2, kRed);
+  panel::draw(0, 0, kWidth, kHeight / 2, red.data(), false);
+  uint64_t seq = 0;
+  std::vector<uint8_t> shown;
+  EXPECT_FALSE(window->read_if_newer(&seq, &shown)) << "half a frame reached the window";
+
+  panel::draw(0, kHeight / 2, kWidth, kHeight, red.data(), true);
+  ASSERT_TRUE(window->read_if_newer(&seq, &shown));
+  EXPECT_EQ(shown, panel::copy_frame());
+  EXPECT_EQ(pixel(shown, kWidth - 1, kHeight - 1), kRed);
+}
+
+// Firmware that draws through esp_lcd in strips finishes a "frame" with every strip. The
+// window's copy of the whole panel must not be made that often on the firmware's thread, and
+// must still end up with the last picture.
+TEST(Panel, StripsReachTheWindowAtThePanelsRateNotEachOne) {
+  FrameFolder dir;
+  panel::share_frames(dir.file());
+  auto window = preflash::winlink::FrameBuffer::open(dir.file());
+  ASSERT_TRUE(window);
+
+  constexpr int kFrames = 10;
+  std::vector<uint16_t> strip(kWidth);
+  for (int frame = 0; frame < kFrames; ++frame) {
+    std::fill(strip.begin(), strip.end(), static_cast<uint16_t>(0x0841 * (frame + 1)));
+    for (int y = 0; y < kHeight; ++y) {
+      ASSERT_EQ(esp_lcd_panel_draw_bitmap(virtual_panel(), 0, y, kWidth, y + 1, strip.data()), ESP_OK);
+    }
+  }
+  constexpr int kDraws = kFrames * kHeight;
+  EXPECT_LT(frames_shared(*window), uint64_t(kDraws / 4)) << "the window's copy was made for most strips";
+
+  panel::share_pending();
+  uint64_t seq = 0;
+  std::vector<uint8_t> shown;
+  ASSERT_TRUE(window->read_if_newer(&seq, &shown));
+  EXPECT_EQ(shown, panel::copy_frame()) << "the window was left without the last picture";
 }
