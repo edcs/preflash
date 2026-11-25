@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "preflash/serial.h"
 
@@ -153,6 +154,217 @@ TEST(Outbox, UrgentMessagesGoAheadOfWhatIsQueued) {
   box.sent();
   ASSERT_TRUE(box.pop(&line));
   EXPECT_EQ(line, "{\"event\":\"serial\",\"data\":\"YWE=\"}\n");
+  box.sent();
+}
+
+namespace {
+
+constexpr auto Format = serial::Outbox::AudioEvent::Format;
+constexpr auto Stop = serial::Outbox::AudioEvent::Stop;
+
+std::string audio_line(const std::vector<int16_t>& samples) {
+  return "{\"event\":\"audio\",\"data\":\"" +
+         serial::base64(samples.data(), samples.size() * sizeof(int16_t)) + "\"}\n";
+}
+
+}  // namespace
+
+// A listener that stops reading loses its oldest sound, past a second of it, and hears how
+// many frames went just before the next sound it gets. Replies keep their place.
+TEST(Outbox, AudioPastItsLimitDropsTheOldestAndSaysSo) {
+  serial::Outbox box(1024);
+  box.set_audio_limit(8);  // four mono frames
+  const std::vector<int16_t> a = {1, 2}, b = {3, 4}, c = {5, 6};
+  box.push_audio(a.data(), 2, 1);
+  box.push_message("{\"id\":1}");
+  box.push_audio(b.data(), 2, 1);
+  box.push_audio(c.data(), 2, 1);
+  std::string line;
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"id\":1}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":2}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line(b));
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line(c));
+  box.sent();
+}
+
+// A write longer than the limit is kept whole, since firmware can play a whole clip in one
+// write, while older sound still queued makes way for it.
+TEST(Outbox, ASingleWriteLongerThanTheLimitIsKeptWhole) {
+  serial::Outbox box(1024);
+  box.set_audio_limit(8);  // two stereo frames
+  const std::vector<int16_t> old = {1, 2}, big = {3, 4, 5, 6, 7, 8};
+  box.push_audio(old.data(), 1, 2);
+  box.push_audio(big.data(), 3, 2);
+  std::string line;
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":1}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line(big));
+  box.sent();
+}
+
+// Erasing from the middle of the queue moves what follows, so the new write must still be
+// found as the newest afterwards, however much is queued ahead of it.
+TEST(Outbox, ANewWriteBehindSerialItemsIsKeptWhole) {
+  serial::Outbox box(1024);
+  box.set_audio_limit(4);  // two mono frames
+  const std::vector<int16_t> old = {1}, big = {2, 3, 4, 5, 6, 7, 8, 9};
+  box.push_serial("aa", 2);
+  box.push_serial("bb", 2);
+  box.push_audio(old.data(), 1, 1);
+  box.push_audio(big.data(), big.size(), 1);
+  const std::vector<std::string> want = {
+      "{\"event\":\"serial\",\"data\":\"YWE=\"}\n", "{\"event\":\"serial\",\"data\":\"YmI=\"}\n",
+      "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":1}\n", audio_line(big)};
+  for (const std::string& expected : want) {
+    std::string line;
+    ASSERT_TRUE(box.pop(&line));
+    EXPECT_EQ(line, expected);
+    box.sent();
+  }
+}
+
+// A client that never reads, while firmware opens and closes the codec over and over, keeps
+// only the newest of the format and stop events that no sound came between.
+TEST(Outbox, AudioEventsWithNoSoundBetweenDoNotPileUp) {
+  const long before = serial::unsent();
+  serial::Outbox box(1024);
+  const std::vector<int16_t> a = {1};
+  box.push_audio_event("format 0", Format);
+  box.push_audio(a.data(), 1, 1);
+  for (int i = 1; i <= 1000; ++i) {
+    box.push_audio_event("stop " + std::to_string(i), Stop);
+    box.push_audio_event("format " + std::to_string(i), Format);
+  }
+  EXPECT_EQ(serial::unsent(), before + 4);
+  const std::vector<std::string> want = {"format 0\n", audio_line(a), "stop 1000\n",
+                                         "format 1000\n"};
+  for (const std::string& expected : want) {
+    std::string line;
+    ASSERT_TRUE(box.pop(&line));
+    EXPECT_EQ(line, expected);
+    box.sent();
+  }
+  EXPECT_EQ(box.message_bytes(), 0u);
+}
+
+// Firmware beeping over and over opens, writes and closes each time. A client that never
+// reads keeps a second of sound, and only the format each part of it needs.
+TEST(Outbox, RepeatedBeepsForAClientThatNeverReadsStayBounded) {
+  const long before = serial::unsent();
+  serial::Outbox box(1024);
+  box.set_audio_limit(16000 * sizeof(int16_t));  // a second of 16 kHz mono
+  const std::vector<int16_t> beep(1600, 7);       // 0.1 s
+  for (int i = 0; i < 2000; ++i) {
+    box.push_audio_event("format", Format);
+    box.push_audio(beep.data(), beep.size(), 1);
+    box.push_audio_event("stop", Stop);
+  }
+  EXPECT_LT(serial::unsent() - before, 40);
+  box.close();
+  int events = 0, sounds = 0;
+  bool formatted = false;
+  std::string line;
+  while (box.pop(&line)) {
+    box.sent();
+    if (line == "format\n") {
+      ++events;
+      formatted = true;
+    } else if (line == "stop\n") {
+      ++events;
+      formatted = false;
+    } else if (line.find("\"event\":\"audio\"") != std::string::npos) {
+      ++sounds;
+      EXPECT_TRUE(formatted) << "sound " << sounds << " has no format before it";
+    }
+  }
+  EXPECT_EQ(sounds, 10);
+  EXPECT_LE(events, 2 * sounds + 1);
+  EXPECT_EQ(serial::unsent(), before);
+}
+
+// Past the limit, older writes lose their front frames, and the newest write stays whole.
+TEST(Outbox, AnOlderWriteLosesItsFrontFramesFirst) {
+  serial::Outbox box(1024);
+  box.set_audio_limit(8);  // four mono frames
+  const std::vector<int16_t> a = {1, 2, 3}, b = {4, 5};
+  box.push_audio(a.data(), 3, 1);
+  box.push_audio(b.data(), 2, 1);
+  std::string line;
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":1}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line({2, 3}));
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line(b));
+  box.sent();
+}
+
+// A format and a stop keep their place while the sound they describe is queued. Once that
+// sound has gone, only the format the oldest sound left needs is kept.
+TEST(Outbox, AudioFormatAndStopGoOnlyWithTheSoundTheyDescribe) {
+  const long before = serial::unsent();
+  {
+    serial::Outbox box(1024);
+    box.set_audio_limit(8);  // four mono frames
+    const std::vector<int16_t> a = {1, 2}, b = {3, 4}, c = {5, 6};
+    box.push_audio_event("format one", Format);
+    box.push_audio(a.data(), 2, 1);
+    box.push_audio_event("stop one", Stop);
+    box.push_audio_event("format two", Format);
+    box.push_audio(b.data(), 2, 1);
+    box.push_audio_event("stop two", Stop);
+    box.push_audio_event("format three", Format);
+    box.push_audio(c.data(), 2, 1);  // a goes, and the events only it needed
+    EXPECT_EQ(serial::unsent(), before + 5);
+    box.close();
+    const std::vector<std::string> want = {
+        "format two\n", "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":2}\n",
+        audio_line(b), "stop two\n", "format three\n", audio_line(c)};
+    for (const std::string& expected : want) {
+      std::string line;
+      ASSERT_TRUE(box.pop(&line));
+      EXPECT_EQ(line, expected);
+      box.sent();
+    }
+    std::string line;
+    EXPECT_FALSE(box.pop(&line));
+    EXPECT_EQ(serial::unsent(), before);
+  }
+  EXPECT_EQ(serial::unsent(), before);
+}
+
+// What fell off a full serial queue is still told as bytes, with no stream named.
+TEST(Outbox, SerialAndAudioAreDroppedApart) {
+  serial::Outbox box(2);
+  box.set_audio_limit(2);
+  const std::vector<int16_t> a = {1}, b = {2};
+  box.push_serial("aa", 2);
+  box.push_serial("bb", 2);
+  box.push_audio(a.data(), 1, 1);
+  box.push_audio(b.data(), 1, 1);
+  std::string line;
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"dropped\",\"bytes\":2}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"serial\",\"data\":\"YmI=\"}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":1}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line(b));
   box.sent();
 }
 

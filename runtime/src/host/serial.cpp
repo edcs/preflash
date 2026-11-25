@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <iterator>
 #include <map>
 #include <system_error>
 #include <thread>
@@ -304,6 +305,97 @@ void Outbox::push_trace(std::string line) {
   ready_.notify_one();
 }
 
+void Outbox::push_audio(const int16_t* samples, size_t frames, int channels) {
+  const size_t frame_bytes = sizeof(int16_t) * static_cast<size_t>(channels);
+  if (frames == 0 || frame_bytes == 0) return;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_) return;
+    const size_t size = frames * frame_bytes;
+    items_.push_back({std::string(reinterpret_cast<const char*>(samples), size), Kind::Audio,
+                      frame_bytes});
+    audio_bytes_ += size;
+    ++audio_items_;
+    forget(-1);
+    // The oldest frames go first, whole writes while they can, then the front of the
+    // oldest write left. The write just pushed, always the back, is never cut, however
+    // long: firmware can play a whole clip in one write, and its start is real sound. An
+    // erase moves what follows, so the back is checked afresh each time.
+    bool erased = false;
+    for (auto it = items_.begin();
+         audio_bytes_ > audio_limit_ && std::next(it) != items_.end();) {
+      if (it->kind != Kind::Audio) {
+        ++it;
+        continue;
+      }
+      const size_t over = audio_bytes_ - audio_limit_;
+      const size_t cut = (over + it->frame_bytes - 1) / it->frame_bytes * it->frame_bytes;
+      if (cut < it->bytes.size()) {
+        it->bytes.erase(0, cut);
+        audio_bytes_ -= cut;
+        audio_dropped_ += cut / it->frame_bytes;
+        break;
+      }
+      audio_bytes_ -= it->bytes.size();
+      audio_dropped_ += it->bytes.size() / it->frame_bytes;
+      --audio_items_;
+      it = items_.erase(it);
+      forget(1);
+      erased = true;
+    }
+    if (erased) tidy_audio_events();
+  }
+  ready_.notify_one();
+}
+
+// The events left ahead of the oldest sound described sound that has gone. That sound
+// needs only the newest format among them; the stops and older formats go, or a client
+// that never reads would keep a pair for every beep firmware ever played.
+void Outbox::tidy_audio_events() {
+  size_t first_audio = 0;
+  while (first_audio < items_.size() && items_[first_audio].kind != Kind::Audio) ++first_audio;
+  size_t keep = first_audio;
+  for (size_t i = 0; i < first_audio; ++i) {
+    if (items_[i].kind == Kind::AudioEvent && items_[i].format) keep = i;
+  }
+  // Backwards, so an erase moves only what has been looked at.
+  for (size_t i = first_audio; i-- > 0;) {
+    if (items_[i].kind != Kind::AudioEvent || i == keep) continue;
+    message_bytes_ -= items_[i].bytes.size();
+    items_.erase(items_.begin() + static_cast<long>(i));
+    forget(1);
+  }
+}
+
+void Outbox::push_audio_event(std::string line, AudioEvent event) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_) return;
+    // Of the events since the last sound still queued, a client needs only the newest two,
+    // a stop and the format after it, so opening and closing the codec over and over can't
+    // pile them up for a client that never reads.
+    int seen = 0;
+    for (auto it = items_.end(); it != items_.begin();) {
+      --it;
+      if (it->kind == Kind::Audio) break;
+      if (it->kind != Kind::AudioEvent || ++seen < 2) continue;
+      message_bytes_ -= it->bytes.size();
+      items_.erase(it);
+      forget(1);
+      break;
+    }
+    message_bytes_ += line.size();
+    items_.push_back({std::move(line), Kind::AudioEvent, 0, event == AudioEvent::Format});
+    forget(-1);
+  }
+  ready_.notify_one();
+}
+
+void Outbox::set_audio_limit(size_t bytes) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  audio_limit_ = bytes;
+}
+
 void Outbox::push_frame(uint64_t frame) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -331,11 +423,22 @@ void Outbox::let_go() {
 bool Outbox::pop(std::string* line) {
   std::unique_lock<std::mutex> lock(mutex_);
   ready_.wait(lock, [this] {
-    return closed_ || (!held_ && (!items_.empty() || dropped_ > 0 || frame_waiting_));
+    return closed_ ||
+           (!held_ && (!items_.empty() || dropped_ > 0 || audio_dropped_ > 0 || frame_waiting_));
   });
   if (dropped_ > 0) {
     *line = "{\"event\":\"dropped\",\"bytes\":" + std::to_string(dropped_) + "}\n";
     dropped_ = 0;
+    forget(-1);
+    in_flight_ = 1;
+    return true;
+  }
+  // Told just before the next sound, so a listener knows where the gap is.
+  if (audio_dropped_ > 0 &&
+      (items_.empty() || items_.front().kind == Kind::Audio || audio_items_ == 0)) {
+    *line = "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":" +
+            std::to_string(audio_dropped_) + "}\n";
+    audio_dropped_ = 0;
     forget(-1);
     in_flight_ = 1;
     return true;
@@ -354,6 +457,11 @@ bool Outbox::pop(std::string* line) {
     serial_bytes_ -= item.bytes.size();
     lock.unlock();
     *line = "{\"event\":\"serial\",\"data\":\"" + base64(item.bytes.data(), item.bytes.size()) + "\"}\n";
+  } else if (item.kind == Kind::Audio) {
+    audio_bytes_ -= item.bytes.size();
+    --audio_items_;
+    lock.unlock();
+    *line = "{\"event\":\"audio\",\"data\":\"" + base64(item.bytes.data(), item.bytes.size()) + "\"}\n";
   } else {
     (item.kind == Kind::Trace ? trace_bytes_ : message_bytes_) -= item.bytes.size();
     lock.unlock();
@@ -383,6 +491,9 @@ void Outbox::abandon() {
     closed_ = true;
     items_.clear();
     dropped_ = 0;
+    audio_dropped_ = 0;
+    audio_bytes_ = 0;
+    audio_items_ = 0;
     frame_waiting_ = false;
     serial_bytes_ = 0;
     trace_bytes_ = 0;
