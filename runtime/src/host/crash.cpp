@@ -2,8 +2,13 @@
 
 #include <fcntl.h>
 #include <limits.h>
+#ifdef __APPLE__
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
+#else
+#include <elf.h>
+#include <link.h>
+#endif
 #include <pthread.h>
 #include <signal.h>
 #include <sys/mman.h>
@@ -18,6 +23,7 @@
 #include <cstring>
 
 #include "esp_timer.h"
+#include "preflash/platform.h"
 #include "preflash/port.h"
 #include "preflash/serial.h"
 
@@ -62,7 +68,7 @@ static_assert(std::atomic<pthread_t>::is_always_lock_free);
 static_assert(std::atomic<int>::is_always_lock_free);
 
 struct Thread {
-  std::atomic<pthread_t> owner{nullptr};
+  std::atomic<pthread_t> owner{pthread_t{}};
   char name[kNameBytes] = "";  // only its owner reads or writes this
   void* alternate_stack = nullptr;
 };
@@ -76,14 +82,14 @@ char g_file_next[PATH_MAX] = "";
 char g_sanitizer_log[PATH_MAX] = "";
 bool g_hold = false;
 char g_executable[PATH_MAX] = "";
-char g_uuid[37] = "";
+char g_uuid[41] = "";  // a Mach-O UUID, or an ELF build ID in hex
 uintptr_t g_load_address = 0;
 uint64_t g_image_size = 0;
 int64_t g_boot_ns = 0;
 int g_probe[2] = {-1, -1};
 
 std::atomic<bool> g_note_taken{false};
-std::atomic<pthread_t> g_note_owner{nullptr};
+std::atomic<pthread_t> g_note_owner{pthread_t{}};
 char g_note_kind[kKindBytes] = "";
 char g_note_message[kMessageBytes] = "";
 
@@ -220,9 +226,47 @@ const char* signal_name(int number) {
   }
 }
 
+// The registers a report needs, from wherever this CPU and system keep them.
+uintptr_t pc_of(const ucontext_t* c) {
+#if defined(__APPLE__)
+  return c->uc_mcontext->__ss.__pc;
+#elif defined(__x86_64__)
+  return static_cast<uintptr_t>(c->uc_mcontext.gregs[REG_RIP]);
+#elif defined(__aarch64__)
+  return c->uc_mcontext.pc;
+#endif
+}
+uintptr_t fp_of(const ucontext_t* c) {
+#if defined(__APPLE__)
+  return c->uc_mcontext->__ss.__fp;
+#elif defined(__x86_64__)
+  return static_cast<uintptr_t>(c->uc_mcontext.gregs[REG_RBP]);
+#elif defined(__aarch64__)
+  return c->uc_mcontext.regs[29];
+#endif
+}
+uintptr_t lr_of(const ucontext_t* c) {
+#if defined(__APPLE__)
+  return c->uc_mcontext->__ss.__lr;
+#elif defined(__aarch64__)
+  return c->uc_mcontext.regs[30];
+#else
+  (void)c;
+  return 0;  // x86_64 keeps the return address on the stack, where the frame walk finds it
+#endif
+}
+
 // What a fault was doing, from the exception the CPU took.
 const char* access_of(int number, const ucontext_t* context) {
   if (number != SIGSEGV && number != SIGBUS) return "";
+#if !defined(__APPLE__) && defined(__x86_64__)
+  const auto error = static_cast<uint64_t>(context->uc_mcontext.gregs[REG_ERR]);
+  if (error & 0x10) return "execute";
+  return (error & 0x2) ? "write" : "read";
+#elif !defined(__APPLE__)
+  (void)context;
+  return "";
+#else
   const uint32_t esr = context->uc_mcontext->__es.__esr;
   const uint32_t exception_class = (esr >> kEsrClassShift) & kEsrClassMask;
   if (exception_class == kInstructionAbortLower || exception_class == kInstructionAbortSame) {
@@ -232,6 +276,7 @@ const char* access_of(int number, const ucontext_t* context) {
     return (esr & kEsrWrite) ? "write" : "read";
   }
   return "";
+#endif
 }
 
 // Copies memory that could be anywhere. The kernel checks a pipe write's buffer and fails it
@@ -249,8 +294,8 @@ bool copy_safely(uintptr_t from, void* to, size_t size) {
 
 int walk_frames(const ucontext_t* context, uintptr_t* frames) {
   int count = 0;
-  frames[count++] = context->uc_mcontext->__ss.__pc & kAddressBits;
-  uintptr_t frame = context->uc_mcontext->__ss.__fp;
+  frames[count++] = pc_of(context) & kAddressBits;
+  uintptr_t frame = fp_of(context);
   while (count < kMostFrames && frame != 0 && (frame & 7) == 0) {
     uintptr_t record[2];  // the caller's frame, then the return address
     if (!copy_safely(frame, record, sizeof record)) break;
@@ -344,7 +389,7 @@ void write_report(int number, const siginfo_t* info, const ucontext_t* context, 
   out.string_field("uuid", g_uuid);
   out.hex_field("load_address", g_load_address);
   out.number_field("image_size", static_cast<int64_t>(g_image_size));
-  out.hex_field("lr", context->uc_mcontext->__ss.__lr & kAddressBits);
+  out.hex_field("lr", lr_of(context) & kAddressBits);
   out.field("frames");
   out.put('[');
   for (int i = 0; i < count; ++i) {
@@ -433,6 +478,39 @@ void use_alternate_stack(void* stack) {
   sigaltstack(&alternate, nullptr);
 }
 
+#ifndef __APPLE__
+// The main executable is the first object the dynamic linker lists.
+int read_first_object(dl_phdr_info* info, size_t, void*) {
+  g_load_address = info->dlpi_addr;
+  for (int i = 0; i < info->dlpi_phnum; ++i) {
+    const ElfW(Phdr)& header = info->dlpi_phdr[i];
+    if (header.p_type == PT_LOAD && (header.p_flags & PF_X)) g_image_size += header.p_memsz;
+    if (header.p_type != PT_NOTE) continue;
+    const auto* at = reinterpret_cast<const char*>(info->dlpi_addr + header.p_vaddr);
+    const char* end = at + header.p_memsz;
+    while (at + sizeof(ElfW(Nhdr)) <= end) {
+      const auto* note = reinterpret_cast<const ElfW(Nhdr)*>(at);
+      const char* name = at + sizeof *note;
+      const auto* desc = reinterpret_cast<const uint8_t*>(name + ((note->n_namesz + 3) & ~3u));
+      if (note->n_type == NT_GNU_BUILD_ID && note->n_namesz == 4 &&
+          std::memcmp(name, "GNU", 4) == 0) {
+        size_t at_hex = 0;
+        for (uint32_t b = 0; b < note->n_descsz && at_hex + 2 < sizeof g_uuid; ++b) {
+          std::snprintf(g_uuid + at_hex, 3, "%02x", desc[b]);
+          at_hex += 2;
+        }
+      }
+      at = reinterpret_cast<const char*>(desc) + ((note->n_descsz + 3) & ~3u);
+    }
+  }
+  return 1;
+}
+
+void read_image() {
+  copy_text(g_executable, sizeof g_executable, platform::executable_path().c_str());
+  dl_iterate_phdr(read_first_object, nullptr);
+}
+#else
 void read_image() {
   uint32_t size = sizeof g_executable;
   if (_NSGetExecutablePath(g_executable, &size) != 0) g_executable[0] = '\0';
@@ -455,6 +533,7 @@ void read_image() {
     at += command->cmdsize;
   }
 }
+#endif
 
 }  // namespace
 
@@ -494,7 +573,7 @@ void install() {
 void enter_task(const char* name) {
   const pthread_t self = pthread_self();
   for (Thread& thread : g_threads) {
-    pthread_t empty = nullptr;
+    pthread_t empty{};
     if (thread.owner.compare_exchange_strong(empty, self, std::memory_order_acq_rel)) {
       copy_text(thread.name, sizeof thread.name, name);
       if (!thread.alternate_stack) thread.alternate_stack = new_alternate_stack();
@@ -512,7 +591,7 @@ void leave_task() {
     stack_t none{};
     none.ss_flags = SS_DISABLE;
     sigaltstack(&none, nullptr);
-    thread.owner.store(nullptr, std::memory_order_release);
+    thread.owner.store(pthread_t{}, std::memory_order_release);
     return;
   }
 }

@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <pthread.h>
 #include <signal.h>
 #include <spawn.h>
 #include <unistd.h>
@@ -17,6 +18,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "preflash/crash.h"
+#include "preflash/platform.h"
 #include "preflash/port.h"
 #include "preflash/power.h"
 
@@ -32,6 +34,34 @@ namespace preflash {
 // any ignored ones, so this closes every descriptor but the standard three and the virtual
 // serial port, and resets the signals in the same step, whichever thread opened what.
 int exec_clean(const char* path, char* const argv[], char* const envp[]) {
+#ifndef __APPLE__
+  // Linux has no spawn that replaces the process, so this does by hand what the flags below
+  // do. Every signal waits while the dispositions and descriptors change, and the new run
+  // starts with none blocked. A caught signal that arrived meanwhile runs its handler as the
+  // mask clears, before the exec, as it would have in an app that wasn't restarting.
+  sigset_t all;
+  sigset_t none;
+  sigset_t previous;
+  sigfillset(&all);
+  sigemptyset(&none);
+  pthread_sigmask(SIG_SETMASK, &all, &previous);
+  for (int number = 1; number < NSIG; ++number) {
+    // main keeps these ignored only if they arrived that way, as under nohup, and the next
+    // run must inherit that, unlike any other ignored signal. The exec resets caught ones.
+    if (number == SIGKILL || number == SIGSTOP || number == SIGTERM || number == SIGHUP) continue;
+    struct sigaction current {};
+    if (sigaction(number, nullptr, &current) == 0 && current.sa_handler == SIG_IGN) {
+      signal(number, SIG_DFL);
+    }
+  }
+  const int keep[] = {preflash::port::master_fd(), preflash::port::slave_fd()};
+  if (preflash::platform::close_on_exec_except(keep, 2)) {
+    pthread_sigmask(SIG_SETMASK, &none, nullptr);
+    execve(path, argv, envp);
+  }
+  pthread_sigmask(SIG_SETMASK, &previous, nullptr);
+  return -1;
+#else
   posix_spawnattr_t attr;
   posix_spawn_file_actions_t actions;
   if (posix_spawnattr_init(&attr) != 0) return -1;
@@ -70,6 +100,7 @@ int exec_clean(const char* path, char* const argv[], char* const envp[]) {
   posix_spawn_file_actions_destroy(&actions);
   posix_spawnattr_destroy(&attr);
   return err ? -1 : 0;
+#endif
 }
 
 }  // namespace preflash
