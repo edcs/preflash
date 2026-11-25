@@ -19,12 +19,16 @@ type opusEncoder interface {
 	// Encode takes exactly one 20 ms frame, interleaved, and returns a packet
 	// the caller may keep.
 	Encode(pcm []int16) ([]byte, error)
+	// Close frees the encoder. It is safe to call more than once, and Encode
+	// fails after it.
+	Close() error
 }
 
 type kazzmirEncoder struct {
 	enc      *opus.Encoder
 	channels int
 	buf      []byte
+	cleanup  runtime.Cleanup
 }
 
 // newOpusEncoder returns an encoder for mono (64 kbps) or stereo (96 kbps)
@@ -48,8 +52,9 @@ func newOpusEncoder(channels int) (opusEncoder, error) {
 		return nil, err
 	}
 	e := &kazzmirEncoder{enc: enc, channels: channels, buf: make([]byte, opusMaxPacket)}
-	// The encoder holds memory outside the Go heap; free it with the wrapper.
-	runtime.AddCleanup(e, func(enc *opus.Encoder) { enc.Close() }, enc)
+	// The encoder holds memory outside the Go heap. Close frees it; this
+	// frees it anyway if the wrapper is dropped without a Close.
+	e.cleanup = runtime.AddCleanup(e, func(enc *opus.Encoder) { enc.Close() }, enc)
 	return e, nil
 }
 
@@ -63,4 +68,9 @@ func (e *kazzmirEncoder) Encode(pcm []int16) ([]byte, error) {
 		return nil, err
 	}
 	return append([]byte(nil), e.buf[:n]...), nil
+}
+
+func (e *kazzmirEncoder) Close() error {
+	e.cleanup.Stop()
+	return e.enc.Close() // a no-op after the first call
 }

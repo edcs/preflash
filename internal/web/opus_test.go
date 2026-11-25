@@ -31,6 +31,7 @@ func roundTrip(t testing.TB, channels int, in []int16) []int16 {
 	t.Helper()
 	enc, err := newOpusEncoder(channels)
 	require.NoError(t, err)
+	defer enc.Close()
 	dec, err := decodeForTest(channels)
 	require.NoError(t, err)
 	step := opusFrame * channels
@@ -186,12 +187,45 @@ func TestOpusRoundTripsMusic(t *testing.T) {
 	}
 }
 
+func TestOpusPacketsMatchTheBitrate(t *testing.T) {
+	// At 20 ms a frame, bytes per packet = bitrate / 8 / 50.
+	for channels, want := range map[int]float64{1: 64000 / 8 / 50, 2: 96000 / 8 / 50} {
+		t.Run(fmt.Sprintf("%d channels", channels), func(t *testing.T) {
+			enc, err := newOpusEncoder(channels)
+			require.NoError(t, err)
+			defer enc.Close()
+			in := testMusic(channels, 200) // 4 s
+			step := opusFrame * channels
+			total := 0
+			for i := 0; i < len(in); i += step {
+				packet, err := enc.Encode(in[i : i+step])
+				require.NoError(t, err)
+				total += len(packet)
+			}
+			mean := float64(total) / float64(len(in)/step)
+			// The clip is fixed, so the mean lands within about 1%. 10% still
+			// catches libopus's automatic mono rate, about 20% lower.
+			require.InEpsilon(t, want, mean, 0.10, "mean packet size in bytes")
+		})
+	}
+}
+
+func TestOpusEncoderCloses(t *testing.T) {
+	enc, err := newOpusEncoder(2)
+	require.NoError(t, err)
+	require.NoError(t, enc.Close())
+	require.NoError(t, enc.Close())
+	_, err = enc.Encode(make([]int16, opusFrame*2))
+	require.Error(t, err)
+}
+
 func TestOpusEncoderRejectsBadInput(t *testing.T) {
 	_, err := newOpusEncoder(3)
 	require.Error(t, err)
 
 	enc, err := newOpusEncoder(2)
 	require.NoError(t, err)
+	defer enc.Close()
 	_, err = enc.Encode(make([]int16, opusFrame)) // a mono frame on a stereo encoder
 	require.Error(t, err)
 }
@@ -200,6 +234,7 @@ func BenchmarkOpusStereo(b *testing.B) {
 	music := testMusic(2, 50)
 	enc, err := newOpusEncoder(2)
 	require.NoError(b, err)
+	defer enc.Close()
 	step := opusFrame * 2
 	frames := len(music) / step
 	for i := 0; b.Loop(); i++ {
