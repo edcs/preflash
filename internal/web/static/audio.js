@@ -9,6 +9,9 @@
   const OpusDecoder = window['opus-decoder'].OpusDecoder;
   const frameSamples = 960; // 20 ms at 48 kHz
   const maxConceal = 50; // a gap longer than 1 s isn't filled
+  // An AudioWorklet needs a secure page: https, or localhost. Served plainly under a name given
+  // to --allow-host, the page has none, and the button says why it can't play.
+  const supported = window.isSecureContext && typeof AudioWorkletNode === 'function';
 
   let wanted = store.get('preflash.sound') === 'on';
   let ctx = null; // the AudioContext, made on the first tap and kept
@@ -34,16 +37,19 @@
     starting: 'Sound is on, starting.',
     idle: 'Sound is on. The device is quiet.',
     playing: 'Sound is on. Tap to turn it off.',
+    unsupported: 'Sound needs https or localhost',
   };
 
   function show() {
     let s = 'off';
-    if (!wanted) s = 'off';
+    if (!supported) s = 'unsupported';
+    else if (!wanted) s = 'off';
     else if (!ctx || (ctx.state !== 'running' && !resuming)) s = 'resume';
     else if (!node || ctx.state !== 'running') s = 'starting';
     else s = playing ? 'playing' : 'idle';
     speaker.dataset.state = s;
-    speaker.setAttribute('aria-pressed', String(wanted && s !== 'resume'));
+    speaker.disabled = s === 'unsupported';
+    speaker.setAttribute('aria-pressed', String(wanted && s !== 'resume' && s !== 'unsupported'));
     speaker.title = titles[s];
   }
 
@@ -52,6 +58,7 @@
   speaker.addEventListener('pointerdown', (e) => e.preventDefault());
   speaker.addEventListener('mousedown', (e) => e.preventDefault());
   speaker.addEventListener('click', () => {
+    if (!supported) return;
     const on = speaker.dataset.state === 'off' || speaker.dataset.state === 'resume';
     if (on) start(); else stop();
   });

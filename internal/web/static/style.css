@@ -376,6 +376,8 @@ button {
   color: var(--accent);
 }
 
+.speaker:disabled { opacity: 0.4; cursor: not-allowed; }
+
 /* −, the size and + read as one control. */
 .zoom-steps {
   display: flex;
