@@ -317,6 +317,7 @@ The tests cover the server and the page's protocol, but not Safari on a touch sc
 - Drag on the panel, and see the drag land where your finger is.
 - Hold a button, then lift your finger, and see the button let go.
 - Use the key row, including a sideways swipe on a narrow screen that sends no key.
+- Tap `^B`, `^D` and `^H` in the terminal app's footer, and see the board picker, the debug views and the hardware panel open. The on-screen keyboard has no Control key, so these taps are the only way to reach them, and they work only if xterm.js passes them to the app as mouse reports.
 - Turn the iPad upright, and see the panel and terminal stack to fit.
 - Let the iPad sleep, wake it, and see the terminal redraw with its colours, with nothing left held down.
 
