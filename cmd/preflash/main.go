@@ -42,6 +42,8 @@ const usage = `usage: preflash [command] [--project dir]
   bench [--board file]              time a build and a run on a copy of the project
   check <capture.jsonl> --board name
                                     compare a capture from a real board with the chip models
+  web [--board file] [--port n] [--allow-host name]
+                                    serve the terminal app and the device to a browser
   quit                              stop the running app
   version                           print Preflash's version
 `
@@ -52,6 +54,7 @@ var version = "dev"
 func main() {
 	commands := map[string]func([]string) error{
 		"tui":    terminalApp,
+		"web":    webCommand,
 		"run":    run,
 		"send":   send,
 		"status": status,

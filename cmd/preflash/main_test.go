@@ -29,3 +29,8 @@ func TestChooseCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestVersionLine(t *testing.T) {
+	assert.Equal(t, "preflash v0.3.0", versionLine("0.3.0"))
+	assert.Equal(t, "preflash dev", versionLine("dev"))
+}
