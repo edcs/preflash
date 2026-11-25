@@ -65,10 +65,20 @@
 
   // ---- On and off ----------------------------------------------------------------------------
 
+  // While sound is on, the page plays in the playback audio session, as a music app does: the
+  // person asked for the sound, so it plays with the iPad's silent switch on and pauses other
+  // apps' audio. Off hands the choice back to the browser.
+  function session(type) {
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = type;
+    } catch {}
+  }
+
   // start runs inside the tap: the context has to be made, or resumed, there.
   function start() {
     wanted = true;
     store.set('preflash.sound', 'on');
+    session('playback');
     if (!ctx) {
       try {
         ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
@@ -86,6 +96,7 @@
         console.warn('audio: the player did not load:', err);
         ctx = null;
         wanted = false;
+        session('auto');
         show();
       });
     }
@@ -122,6 +133,7 @@
   function stop() {
     wanted = false;
     store.set('preflash.sound', null);
+    session('auto');
     hangUp();
     if (ctx) ctx.suspend().catch(() => {});
     show();
