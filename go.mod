@@ -12,6 +12,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
 	github.com/stretchr/testify v1.12.1
+	github.com/tphakala/go-opus v1.4.0
 	golang.org/x/term v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -29,6 +30,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.30 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/tphakala/simd v1.14.0 // indirect
 	github.com/xo/terminfo v1.0.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/sync v0.22.0 // indirect

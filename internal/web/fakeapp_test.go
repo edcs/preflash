@@ -2,11 +2,15 @@ package web
 
 import (
 	"bufio"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -56,6 +60,10 @@ type fakeApp struct {
 	gate     chan struct{}
 	maxWrite time.Duration
 	stubborn bool // quit is answered but the app never goes
+
+	audioSubs  []*fakeConn // connections subscribed to audio and still open
+	audioAsked int         // how many subscribes have named audio
+	codec      *[2]int     // the open codec's rate and channels, nil while it's closed
 }
 
 func startFakeApp(t *testing.T, path string, width, height int) *fakeApp {
@@ -83,6 +91,7 @@ func startFakeApp(t *testing.T, path string, width, height int) *fakeApp {
 
 func (a *fakeApp) serve(c *fakeConn) {
 	defer c.Close()
+	defer a.dropAudioSub(c)
 	scanner := bufio.NewScanner(c)
 	for scanner.Scan() {
 		var req map[string]any
@@ -99,10 +108,30 @@ func (a *fakeApp) serve(c *fakeConn) {
 		case "hello":
 			c.line(fmt.Sprintf(`{"id":%d,"ok":true,"protocol":1,"project":"demo","board":"B","pid":7}`, id))
 		case "subscribe":
+			var streams []string
+			if list, ok := req["streams"].([]any); ok {
+				for _, s := range list {
+					name, _ := s.(string)
+					streams = append(streams, name)
+				}
+			}
+			audio := slices.Contains(streams, "audio")
 			a.mu.Lock()
-			a.subs = append(a.subs, c)
-			a.mu.Unlock()
+			if !audio || len(streams) > 1 {
+				a.subs = append(a.subs, c)
+			}
+			// Hold the lock over the reply, so no audio event can come before it.
+			if audio {
+				a.audioSubs = append(a.audioSubs, c)
+				a.audioAsked++
+			}
+			codec := a.codec
 			c.line(fmt.Sprintf(`{"id":%d,"ok":true}`, id))
+			// As the app does, a subscriber that arrives while the codec is open is told its format.
+			if audio && codec != nil {
+				c.line(fmt.Sprintf(`{"event":"audio_format","rate":%d,"channels":%d}`, codec[0], codec[1]))
+			}
+			a.mu.Unlock()
 		case "frame":
 			a.mu.Lock()
 			number, gate := a.frame, a.gate
@@ -253,6 +282,86 @@ func (a *fakeApp) requests(op string) []map[string]any {
 	for _, r := range a.reqs {
 		if r["op"] == op {
 			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func (a *fakeApp) dropAudioSub(c *fakeConn) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.audioSubs = slices.DeleteFunc(a.audioSubs, func(s *fakeConn) bool { return s == c })
+}
+
+// audioListeners says how many open connections are subscribed to audio, and audioSubscribes
+// how many subscribes have ever named it.
+func (a *fakeApp) audioListeners() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.audioSubs)
+}
+
+func (a *fakeApp) audioSubscribes() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.audioAsked
+}
+
+// waitAudioSubscribed returns once a connection is subscribed to audio.
+func waitAudioSubscribed(t *testing.T, a *fakeApp) {
+	t.Helper()
+	require.Eventually(t, func() bool { return a.audioListeners() > 0 }, 3*time.Second, 5*time.Millisecond,
+		"nobody subscribed to audio")
+}
+
+// pushAudioLine sends line to every audio subscriber. The lock keeps lines in order.
+func (a *fakeApp) pushAudioLine(line string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, c := range a.audioSubs {
+		c.line(line)
+	}
+}
+
+// setCodec opens the codec without telling anyone, as an app that opened it before a
+// subscriber arrived has.
+func (a *fakeApp) setCodec(rate, channels int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.codec = &[2]int{rate, channels}
+}
+
+// pushAudioFormat opens the codec and tells the audio subscribers.
+func (a *fakeApp) pushAudioFormat(rate, channels int) {
+	a.setCodec(rate, channels)
+	a.pushAudioLine(fmt.Sprintf(`{"event":"audio_format","rate":%d,"channels":%d}`, rate, channels))
+}
+
+// pushAudio sends one write's samples, interleaved.
+func (a *fakeApp) pushAudio(samples []int16) {
+	data := make([]byte, 2*len(samples))
+	for i, v := range samples {
+		binary.LittleEndian.PutUint16(data[2*i:], uint16(v))
+	}
+	a.pushAudioLine(`{"event":"audio","data":"` + base64.StdEncoding.EncodeToString(data) + `"}`)
+}
+
+// pushAudioStop closes the codec and tells the audio subscribers.
+func (a *fakeApp) pushAudioStop() {
+	a.mu.Lock()
+	a.codec = nil
+	a.mu.Unlock()
+	a.pushAudioLine(`{"event":"audio_stop"}`)
+}
+
+// beep is ms of a 440 Hz tone at rate, the same in every channel.
+func beep(rate, channels, ms int) []int16 {
+	frames := rate * ms / 1000
+	out := make([]int16, frames*channels)
+	for f := 0; f < frames; f++ {
+		v := int16(8000 * math.Sin(2*math.Pi*440*float64(f)/float64(rate)))
+		for c := 0; c < channels; c++ {
+			out[f*channels+c] = v
 		}
 	}
 	return out
