@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"os"
 	"reflect"
 	"sync"
 	"time"
@@ -13,6 +14,9 @@ import (
 // How often the state is fetched when no frame has asked for it, which is how soon a button
 // pressed on the board shows up.
 const statusEvery = 200 * time.Millisecond
+
+// How long a request for input may take before the app counts as wedged.
+const callTimeout = 5 * time.Second
 
 // How long to wait before looking for the app again.
 const redialEvery = 500 * time.Millisecond
@@ -61,12 +65,13 @@ type device struct {
 	// fetchMu keeps two status fetches from publishing out of order.
 	fetchMu sync.Mutex
 
-	inputMu sync.Mutex
-	input   *client.Client
+	inputMu     sync.Mutex
+	input       *client.Client
+	callTimeout time.Duration
 }
 
 func newDevice(socket string) *device {
-	return &device{socket: socket, watchers: map[*watcher]struct{}{}}
+	return &device{socket: socket, watchers: map[*watcher]struct{}{}, callTimeout: callTimeout}
 }
 
 // replace puts v in ch, dropping an unread value to make room. Only one goroutine sends at a
@@ -164,9 +169,6 @@ func (d *device) run(ctx context.Context) {
 	defer d.closeInput()
 	for ctx.Err() == nil {
 		if c, err := client.Dial(d.socket); err == nil {
-			d.mu.Lock()
-			d.app++
-			d.mu.Unlock()
 			d.follow(ctx, c)
 		}
 		d.publishState(DeviceState{})
@@ -185,6 +187,10 @@ func (d *device) follow(ctx context.Context, c *client.Client) {
 		c.Close()
 		return
 	}
+	// Both dials worked, so this is an app to count.
+	d.mu.Lock()
+	d.app++
+	d.mu.Unlock()
 	ctx, cancel := context.WithCancel(ctx)
 	// Closing the connections is what gets a blocked read to return.
 	go func() {
@@ -257,9 +263,18 @@ func (d *device) call(work func(*client.Client) error) error {
 			}
 			d.input = c
 		}
+		// A wedged app mustn't hold the lock for good.
+		d.input.SetDeadline(time.Now().Add(d.callTimeout))
 		err := work(d.input)
 		if err == nil {
+			d.input.SetDeadline(time.Time{})
 			return nil
+		}
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			// The connection is no use after a timeout, and a second try would wait as long.
+			d.input.Close()
+			d.input = nil
+			return err
 		}
 		// An error reply means nothing ran, but a dead connection says nothing, so only
 		// the latter is worth a second try.

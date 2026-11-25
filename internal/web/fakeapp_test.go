@@ -51,6 +51,7 @@ type fakeApp struct {
 	frame    uint64
 	buttons  []client.ButtonState
 	ops      []string
+	gate     chan struct{}
 	maxWrite time.Duration
 }
 
@@ -100,8 +101,11 @@ func (a *fakeApp) serve(c *fakeConn) {
 			c.line(fmt.Sprintf(`{"id":%d,"ok":true}`, id))
 		case "frame":
 			a.mu.Lock()
-			number := a.frame
+			number, gate := a.frame, a.gate
 			a.mu.Unlock()
+			if gate != nil {
+				<-gate
+			}
 			// A picture whose pixels are all one colour is enough to check the size.
 			data, _ := json.Marshal(make([]byte, a.width*a.height*2))
 			c.line(fmt.Sprintf(`{"id":%d,"ok":true,"width":%d,"height":%d,"format":"rgb565le","data":%s,"frame":%d}`,
@@ -113,6 +117,10 @@ func (a *fakeApp) serve(c *fakeConn) {
 			a.mu.Unlock()
 			body, _ := json.Marshal(status)
 			c.line(fmt.Sprintf(`{"id":%d,"ok":true,%s`, id, body[1:]))
+		case "fail":
+			c.line(fmt.Sprintf(`{"id":%d,"ok":false,"error":"nope"}`, id))
+		case "hang":
+			// No reply, as a wedged app gives.
 		default:
 			c.line(fmt.Sprintf(`{"id":%d,"ok":true}`, id))
 		}
@@ -154,5 +162,63 @@ func (a *fakeApp) hangUp() {
 	defer a.mu.Unlock()
 	for _, c := range a.conns {
 		c.Close()
+	}
+}
+
+// dropConns hangs up on every client but keeps listening, as an app that restarts does.
+func (a *fakeApp) dropConns() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, c := range a.conns {
+		c.Close()
+	}
+	a.conns = nil
+}
+
+// count says how many times op has been asked for.
+func (a *fakeApp) count(op string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	n := 0
+	for _, o := range a.ops {
+		if o == op {
+			n++
+		}
+	}
+	return n
+}
+
+// waitSubscribed returns once a client has subscribed, because a frame pushed before that
+// reaches nobody.
+func waitSubscribed(t *testing.T, a *fakeApp) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		a.mu.Lock()
+		subscribed := len(a.subs) > 0
+		a.mu.Unlock()
+		if subscribed {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	require.FailNow(t, "nobody subscribed")
+}
+
+// holdFrames makes frame requests wait, after noting which frame they were asked at, until
+// the returned release is called. Events pushed meanwhile queue up behind them.
+func (a *fakeApp) holdFrames() (release func()) {
+	gate := make(chan struct{})
+	a.mu.Lock()
+	a.gate = gate
+	a.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			a.mu.Lock()
+			a.gate = nil
+			a.mu.Unlock()
+			close(gate)
+		})
 	}
 }

@@ -3,7 +3,10 @@ package web
 import (
 	"bytes"
 	"context"
+	"errors"
+	"github.com/edcs/preflash/internal/client"
 	"image/png"
+	"os"
 	"testing"
 	"time"
 
@@ -61,15 +64,18 @@ func pictureWhere(t *testing.T, pictures <-chan Picture, within time.Duration, o
 func TestFramesArriveNewestFirst(t *testing.T) {
 	path := shortPath(t)
 	app := startFakeApp(t, path, 8, 6)
+	// The first fetch waits, so all 50 events queue up behind it.
+	release := app.holdFrames()
+	defer release()
 	d := startDevice(t, path)
 	_, pictures, stop := d.watch()
 	defer stop()
 
-	go func() {
-		for n := uint64(1); n <= 50; n++ {
-			app.push(n)
-		}
-	}()
+	waitSubscribed(t, app)
+	for n := uint64(1); n <= 50; n++ {
+		app.push(n)
+	}
+	release()
 
 	var last uint64
 	seen := false
@@ -85,6 +91,8 @@ func TestFramesArriveNewestFirst(t *testing.T) {
 		assert.Equal(t, 6, img.Bounds().Dy())
 		time.Sleep(5 * time.Millisecond) // a slow reader
 	}
+	// Fifty events came in while one fetch waited: one more fetch covers them all.
+	assert.LessOrEqual(t, app.count("frame"), 3)
 }
 
 func TestAStalledWatcherHoldsUpNoOne(t *testing.T) {
@@ -96,10 +104,13 @@ func TestAStalledWatcherHoldsUpNoOne(t *testing.T) {
 	_, pictures, stop := d.watch()
 	defer stop()
 
-	for n := uint64(1); n <= 50; n++ {
+	waitSubscribed(t, app)
+	// Enough events that the socket's buffer fills if the follower is ever held up.
+	const frames = 20000
+	for n := uint64(1); n <= frames; n++ {
 		app.push(n)
 	}
-	pictureWhere(t, pictures, time.Second, func(p Picture) bool { return p.Number == 50 })
+	pictureWhere(t, pictures, time.Second, func(p Picture) bool { return p.Number == frames })
 	assert.Less(t, app.slowestWrite(), 100*time.Millisecond)
 }
 
@@ -133,16 +144,8 @@ func TestANewAppStartsTheFramesAgain(t *testing.T) {
 	next := startFakeApp(t, path, 172, 640)
 	go func() {
 		// Frame 1 only reaches a subscriber, so wait for the follower to be back.
-		for i := 0; i < 100; i++ {
-			next.mu.Lock()
-			subscribed := len(next.subs) > 0
-			next.mu.Unlock()
-			if subscribed {
-				next.push(1)
-				return
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
+		waitSubscribed(t, next)
+		next.push(1)
 	}()
 	p := pictureWhere(t, pictures, 3*time.Second, func(p Picture) bool { return p.App > first.App && p.Number == 1 })
 	assert.Equal(t, first.App+1, p.App)
@@ -163,4 +166,44 @@ func TestStateFollowsButtonsWithoutFrames(t *testing.T) {
 	stateWhere(t, states, 500*time.Millisecond, func(s DeviceState) bool {
 		return len(s.Buttons) > 0 && s.Buttons[0].Down
 	})
+}
+
+func TestCallRedialsOnceAfterAHangUp(t *testing.T) {
+	path := shortPath(t)
+	app := startFakeApp(t, path, 8, 6)
+	d := newDevice(path)
+	defer d.closeInput()
+	ping := func(c *client.Client) error { return c.Call("ping", nil, nil) }
+
+	require.NoError(t, d.call(ping))
+	app.dropConns()
+	require.NoError(t, d.call(ping))
+	assert.Equal(t, 2, app.count("ping"))
+}
+
+func TestCallDoesNotRetryAnErrorReply(t *testing.T) {
+	path := shortPath(t)
+	app := startFakeApp(t, path, 8, 6)
+	d := newDevice(path)
+	defer d.closeInput()
+
+	err := d.call(func(c *client.Client) error { return c.Call("fail", nil, nil) })
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nope")
+	assert.Equal(t, 1, app.count("fail"))
+}
+
+func TestCallGivesUpOnAWedgedApp(t *testing.T) {
+	path := shortPath(t)
+	app := startFakeApp(t, path, 8, 6)
+	d := newDevice(path)
+	d.callTimeout = 100 * time.Millisecond
+	defer d.closeInput()
+
+	err := d.call(func(c *client.Client) error { return c.Call("hang", nil, nil) })
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, os.ErrDeadlineExceeded))
+	assert.Equal(t, 1, app.count("hang"), "a timeout isn't asked again")
+	// The next call gets a fresh connection.
+	require.NoError(t, d.call(func(c *client.Client) error { return c.Call("ping", nil, nil) }))
 }
