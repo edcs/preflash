@@ -273,6 +273,7 @@ let devWS = null;
 let pictureURL = null;
 let shownKey = '';
 let lastBoard = '';
+let lastProject = '';
 
 function applyState(s) {
   state = s;
@@ -293,6 +294,11 @@ function applyState(s) {
 function describe() {
   const s = state;
   if (s.board) lastBoard = s.board;
+  // The tab names the project, and keeps naming it while the app restarts.
+  if (s.project && s.project !== lastProject) {
+    lastProject = s.project;
+    document.title = `${s.project} · Preflash`;
+  }
   const item = (cls, text) => {
     const span = document.createElement('span');
     span.className = cls;
