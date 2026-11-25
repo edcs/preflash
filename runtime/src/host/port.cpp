@@ -384,6 +384,13 @@ void remove_links() {
 
 void hang_up() {
   g_holding = true;
+  // On Linux a thread waiting in poll keeps the terminal open through a close, and the
+  // reader would never stop waiting. A byte from this end wakes it to see the hold and go.
+  if (g_slave >= 0) {
+    fcntl(g_slave, F_SETFL, fcntl(g_slave, F_GETFL) | O_NONBLOCK);
+    const ssize_t ignored = ::write(g_slave, "", 1);
+    (void)ignored;
+  }
   // Forgotten as well as closed, so a restart can't pass on whatever takes their numbers next.
   for (int* fd : {&g_master, &g_slave}) {
     if (*fd >= 0) close(*fd);
