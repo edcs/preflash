@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/edcs/preflash/compare/v0.1.0...v0.2.0) (2026-11-25)
+
+
+### Features
+
+* add a toolbar, status bar and rotation to the device window ([#37](https://github.com/edcs/preflash/issues/37)) ([8539891](https://github.com/edcs/preflash/commit/85398911e129d0869583ded16da5c28ac6207b9e))
+* add board buttons ([#38](https://github.com/edcs/preflash/issues/38)) ([8e1c189](https://github.com/edcs/preflash/commit/8e1c18984e7466b4b1bae4525ffe575747141955))
+* add pointer input and a frames stream to the control socket ([#36](https://github.com/edcs/preflash/issues/36)) ([73c9084](https://github.com/edcs/preflash/commit/73c9084dd3e3f1802dddff8a39a7553cc0194021))
+* model reset, power and download mode ([#39](https://github.com/edcs/preflash/issues/39)) ([9580260](https://github.com/edcs/preflash/commit/958026039b11817c671ce76b497ace82a93a09bc))
+* run the device window in its own process ([#35](https://github.com/edcs/preflash/issues/35)) ([11b7c52](https://github.com/edcs/preflash/commit/11b7c52aa4bc9dc6fde3715a9a17368abd051984))
+
+
+### Bug Fixes
+
+* name a silent socket holder and forget hung-up port descriptors ([#44](https://github.com/edcs/preflash/issues/44)) ([b633ef5](https://github.com/edcs/preflash/commit/b633ef5286df321285d01a310fdacd78251f0151))
+* send a subscribe reply only once its streams are live ([#45](https://github.com/edcs/preflash/issues/45)) ([92f096d](https://github.com/edcs/preflash/commit/92f096d10ffcc880eb5deb0be052544be599c033))
+
 ## 0.1.0 (2026-11-04)
 
 
