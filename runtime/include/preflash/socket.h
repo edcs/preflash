@@ -18,6 +18,10 @@ bool serve();
 // restart and to reconnect. New connections are turned away from here on.
 void announce_restart();
 
+// Waits, for a while at most, until each request being handled has queued its reply. Call
+// after announce_restart, so that a request that started the restart, such as a button
+// release, answers before the process goes.
+void wait_for_replies();
 // Marks the process as on its way out, so that a restart from here on stops instead:
 // quit lets queued lines run, and one of them may be a restart.
 void note_quitting();

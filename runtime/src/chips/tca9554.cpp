@@ -1,3 +1,5 @@
+#include <cstdlib>
+
 #include "preflash/bus.h"
 #include "preflash/chips.h"
 
@@ -10,10 +12,18 @@ constexpr uint8_t kOutput = 0x01;
 constexpr uint8_t kPolarity = 0x02;
 constexpr uint8_t kConfig = 0x03;  // 1: input
 constexpr uint32_t kPins = 0xff;
+// power::env_for sets it.
+constexpr const char* kCarryEnv = "PREFLASH_EXPANDER";
 
 }  // namespace
 
-Tca9554::Tca9554() : RegisterChip("tca9554") { expander_power_on(); }
+// A reset that left the chip powered hands on its registers, which it keeps, as the chip
+// does when only the ESP32 resets. Anything else is a power-on.
+Tca9554::Tca9554() : RegisterChip("tca9554") {
+  const char* carried = std::getenv(kCarryEnv);
+  if (!carried || !expander_restore(carried)) expander_power_on();
+  unsetenv(kCarryEnv);
+}
 
 uint8_t Tca9554::load(uint8_t reg) {
   const ExpanderPins pins = expander_pins();

@@ -36,6 +36,7 @@
 #include "preflash/net.h"
 #include "preflash/panel.h"
 #include "preflash/port.h"
+#include "preflash/power.h"
 #include "preflash/serial.h"
 #include "preflash/storage.h"
 #include "preflash/tasks.h"
@@ -63,6 +64,10 @@ constexpr size_t kLongestHolderAnswer = 64 * 1024;
 char g_path[sizeof(sockaddr_un::sun_path)] = "";
 int g_listener = -1;
 std::atomic<bool> g_quitting{false};
+// Requests being handled, whose replies aren't queued yet.
+std::atomic<int> g_handling{0};
+// How long a restart waits for them: a tap on another client can take seconds.
+constexpr auto kReplyPatience = std::chrono::milliseconds(500);
 
 struct Connection {
   explicit Connection(int socket_fd) : fd(socket_fd), out(kSerialQueueBytes) {}
@@ -134,6 +139,7 @@ void op_status(Connection& c, const json&, const json& id) {
             {"width", board().width},
             {"height", board().height},
             {"pid", getpid()},
+            {"power", power::name(power::mode())},
             {"uptime_ms", esp_timer_get_time() / 1000},
             {"backlight", panel::brightness()},
             {"rotation", panel::rotation()},
@@ -301,12 +307,11 @@ void op_button(Connection& c, const json& request, const json& id) {
     reply_error(c, id, "a button's ms is 0 or more");
     return;
   }
-  // A script's hold, so a tap lets go of its own press and leaves the window's alone.
-  std::string error = buttons::set(*name, *action != "release", buttons::Owner::Script);
-  if (error.empty() && *action == "tap") {
-    std::this_thread::sleep_for(std::chrono::milliseconds(*ms));
-    error = buttons::set(*name, false, buttons::Owner::Script);
-  }
+  // A script's hold, so a tap lets go only of the press it made and leaves the window's alone. A tap
+  // whose press restarts the app lets go in the new run, when it would have here.
+  const std::string error =
+      *action == "tap" ? buttons::tap(*name, *ms, buttons::Owner::Script)
+                       : buttons::set(*name, *action == "press", buttons::Owner::Script);
   if (!error.empty()) {
     reply_error(c, id, error);
     return;
@@ -416,7 +421,9 @@ void read_requests(std::shared_ptr<Connection> c) {
     buffer.append(chunk.data(), static_cast<size_t>(got));
     size_t start = 0;
     for (size_t end; (end = buffer.find('\n', start)) != std::string::npos; start = end + 1) {
+      ++g_handling;
       handle_line(*c, buffer.substr(start, end - start));
+      --g_handling;
       if (c->out.message_bytes() > kLongestReplyQueue) {
         cut_off = true;
         break;
@@ -639,6 +646,13 @@ void announce_restart() {
   std::lock_guard<std::mutex> lock(clients().mutex);
   clients().restarting = true;
   for (const auto& c : clients().connections) c->out.push_urgent(encode({{"event", "restarting"}}));
+}
+
+void wait_for_replies() {
+  const auto deadline = std::chrono::steady_clock::now() + kReplyPatience;
+  while (g_handling > 0 && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
 }
 
 void leave(int code) {

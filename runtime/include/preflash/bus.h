@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <span>
+#include <string>
 
 namespace preflash {
 
@@ -54,6 +55,10 @@ ExpanderPins expander_pins();
 // Change only the bits in mask.
 void expander_set_outputs(uint32_t mask, uint32_t outputs);
 void expander_set_levels(uint32_t mask, uint32_t levels);
+// The chip's registers as text, for a reset that leaves the chip powered to carry across an
+// exec, and back. expander_restore returns false, changing nothing, for text it can't read.
+std::string expander_carry();
+bool expander_restore(const std::string& carried);
 // As the chip's power-on: every pin an input, every level high. What's outside the chip, such
 // as a button held down, stays as it is.
 void expander_power_on();

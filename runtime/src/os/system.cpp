@@ -1,6 +1,4 @@
-#include <crt_externs.h>
 #include <fcntl.h>
-#include <mach-o/dyld.h>
 #include <signal.h>
 #include <spawn.h>
 #include <unistd.h>
@@ -18,34 +16,22 @@
 #include "esp_random.h"
 #include "esp_system.h"
 #include "esp_timer.h"
-#include "preflash/buttons.h"
-#include "preflash/chips.h"
 #include "preflash/crash.h"
-#include "preflash/fail.h"
 #include "preflash/port.h"
-#include "preflash/serial.h"
-#include "preflash/socket.h"
-#include "preflash/trace.h"
+#include "preflash/power.h"
 
 namespace {
 
-// Set across a restart so the next run can report a software reset.
-constexpr const char* kRestartedEnv = "PREFLASH_RESTARTED";
-
 constexpr size_t kReportedFreeBytes = 256 * 1024;
 
-// Replaces this process with a fresh run of the executable. Plain execv would
-// pass on every open descriptor, the calling thread's blocked signals and any
-// ignored ones, so this closes every descriptor but the standard three and the
-// virtual serial port, and resets the signals in the same step, whichever thread
-// opened what. Buttons held now are held when the next run starts. Returns only on failure.
-int exec_clean(const char* path, char* const argv[]) {
-  const std::string held = preflash::buttons::held_env();
-  if (held.empty()) {
-    unsetenv("PREFLASH_HELD");
-  } else {
-    setenv("PREFLASH_HELD", held.c_str(), 1);
-  }
+}  // namespace
+
+namespace preflash {
+
+// Plain execve would pass on every open descriptor, the calling thread's blocked signals and
+// any ignored ones, so this closes every descriptor but the standard three and the virtual
+// serial port, and resets the signals in the same step, whichever thread opened what.
+int exec_clean(const char* path, char* const argv[], char* const envp[]) {
   posix_spawnattr_t attr;
   posix_spawn_file_actions_t actions;
   if (posix_spawnattr_init(&attr) != 0) return -1;
@@ -80,13 +66,13 @@ int exec_clean(const char* path, char* const argv[]) {
       err = posix_spawn_file_actions_addinherit_np(&actions, fd);
     }
   }
-  if (!err) err = posix_spawn(nullptr, path, &actions, &attr, argv, *_NSGetEnviron());
+  if (!err) err = posix_spawn(nullptr, path, &actions, &attr, argv, envp);
   posix_spawn_file_actions_destroy(&actions);
   posix_spawnattr_destroy(&attr);
   return err ? -1 : 0;
 }
 
-}  // namespace
+}  // namespace preflash
 
 extern "C" {
 
@@ -136,36 +122,12 @@ const esp_app_desc_t* esp_app_get_description(void) {
 }
 
 esp_reset_reason_t esp_reset_reason(void) {
-  return std::getenv(kRestartedEnv) ? ESP_RST_SW : ESP_RST_POWERON;
+  const char* reason = std::getenv("PREFLASH_RESET");
+  return reason && std::strcmp(reason, "sw") == 0 ? ESP_RST_SW : ESP_RST_POWERON;
 }
 
 void esp_restart(void) {
-  if (preflash::socket::quitting()) preflash::socket::quit();
-  preflash::port::hold_input();
-  // Not fflush(nullptr): that also waits on stdin, which the console task keeps
-  // locked for as long as it sits in a read.
-  std::fflush(stdout);
-  std::fflush(stderr);
-  char path[4096];
-  uint32_t size = sizeof path;
-  if (_NSGetExecutablePath(path, &size) != 0) {
-    preflash_unsupported("esp_restart", "the executable's path is too long to re-run");
-  }
-  setenv(kRestartedEnv, "1", 1);
-  preflash::carry_chips_across_restart();
-  if (preflash::trace::on()) {
-    setenv("PREFLASH_TRACE", "1", 1);
-  } else {
-    unsetenv("PREFLASH_TRACE");
-  }
-  // The stream's pipe ends with this process, and the next run needs the real fds.
-  preflash::serial::hand_back();
-  preflash::socket::announce_restart();
-  preflash::serial::wait_sent();
-  // Those waits take a while, and a quit that arrived meanwhile has been told yes.
-  if (preflash::socket::quitting()) preflash::socket::quit();
-  exec_clean(path, *_NSGetArgv());
-  preflash_unsupported("esp_restart", "re-running the executable failed");
+  preflash::power::enter(preflash::power::Mode::On, preflash::power::Reset::Software);
 }
 
 void esp_system_abort(const char* details) {

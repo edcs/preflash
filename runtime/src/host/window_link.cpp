@@ -29,6 +29,7 @@
 #include "preflash/crash.h"
 #include "preflash/hardware.h"
 #include "preflash/panel.h"
+#include "preflash/power.h"
 #include "preflash/socket.h"
 #include "preflash/touch.h"
 #include "../winlink/protocol.h"
@@ -207,12 +208,15 @@ std::string project_name() { return from_env("PREFLASH_PROJECT", board().name); 
 void send_board() { send(board_message(board(), project_name(), g_frame_path)); }
 
 // The rotation is the board's, which the window turns by, and not LVGL's. Held buttons are
-// all of them, so the strip shows a script's presses too.
+// all of them, so the strip shows a script's presses too. A board that runs no firmware has a
+// dark panel.
 void send_state(bool always) {
-  const Shown now{panel::brightness(), hardware::rotation(), buttons::held()};
+  const power::Mode mode = power::mode();
+  const int backlight = mode == power::Mode::On ? panel::brightness() : 0;
+  const Shown now{backlight, hardware::rotation(), buttons::held()};
   if (!always && now == g_shown) return;
   if (send({{"op", "state"},
-            {"power", "on"},
+            {"power", power::name(mode)},
             {"backlight", now.backlight},
             {"rotation", now.rotation},
             {"held", now.held}})) {

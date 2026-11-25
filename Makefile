@@ -15,6 +15,7 @@ test: bash
 	tests/integration/display.sh
 	tests/integration/window.sh
 	tests/integration/control.sh
+	tests/integration/buttons.sh
 	tests/integration/port.sh
 	tests/integration/lcd.sh
 	tests/integration/debug.sh

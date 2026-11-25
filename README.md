@@ -179,7 +179,17 @@ The window is a process of its own, `preflash-window`, built beside the app. It 
 
 The title bar shows the project's name. Under it, a strip holds the board's buttons on the left and the rotate button on the right, and a status bar under the panel shows the board's full name and how far it's turned. A narrow panel, such as the 3.49 V2's, sits centred on black in a window at least 250 points wide. Hovering a button shows what it's wired to in the status bar.
 
-A board button goes down when you press the mouse on it and comes up when you let go, or when the pointer leaves it. A held button shows filled, whether you hold it or a script does. BOOT, and PWR on a board without a power chip, move the pin the real button moves, so firmware reads them as it would on the device and Preflash adds nothing. Firmware that reads a key by interrupt sees the press too: `gpio_install_isr_service`, `gpio_isr_handler_add`, `gpio_intr_enable` and `gpio_set_intr_type` work with every edge and level type, and the handler runs on a thread that stands in for the ISR. A level type fires once as the pin enters its level, not for as long as it stays there, and also once when it's armed (`gpio_intr_enable` or `gpio_isr_handler_add`) while the pin is already at its level, so a key held through a restart still reaches the new boot. `gpio_isr_register` stops the firmware as unsupported. A button held while the firmware restarts is still held when it boots again, so holding BOOT through a restart reaches the new boot. The mouse and scripts hold buttons separately: a button stays down until everyone holding it lets go, so a script's `tap` doesn't release a button you're holding. A rebuild in the terminal app starts a new app, which lets go of what scripts held and keeps what the mouse holds. PWR on the AXP2101 and RST show as held but do nothing more yet.
+A board button goes down when you press the mouse on it and comes up when you let go, or when the pointer leaves it. ⌥-click a button to latch it: it stays down, through the pointer leaving and the window losing focus, until you click it again, and its hover text says "latched". A held button shows filled, whether you hold it or a script does. BOOT, and PWR on a board without a power chip, move the pin the real button moves, so firmware reads them as it would on the device and Preflash adds nothing. Firmware that reads a key by interrupt sees the press too: `gpio_install_isr_service`, `gpio_isr_handler_add`, `gpio_intr_enable` and `gpio_set_intr_type` work with every edge and level type, and the handler runs on a thread that stands in for the ISR. A level type fires once as the pin enters its level, not for as long as it stays there, and also once when it's armed (`gpio_intr_enable` or `gpio_isr_handler_add`) while the pin is already at its level, so a key held through a restart still reaches the new boot. `gpio_isr_register` stops the firmware as unsupported. A button held while the firmware restarts is still held when it boots again, so holding BOOT through a restart reaches the new boot. The mouse and scripts hold buttons separately: a button stays down until everyone holding it lets go, so a script's `tap` doesn't release a button you're holding. A rebuild in the terminal app starts a new app, which lets go of what scripts held and keeps what the mouse holds. A script's `tap` that restarts the app, such as `tap PWR 1000` while the board is off, answers as done once the restart is under way, and the new boot lets go when the tap would have ended.
+
+Letting go of RST resets the chip as its EN pin does. The firmware boots again with NVS and the rest of the board's state kept, and `esp_reset_reason` answers `ESP_RST_POWERON`, as an EN reset reads on an ESP32-S3. The window, the socket and the serial port see the reset as they see `esp_restart`. Holding BOOT while you let go of RST enters download mode, as on the chip. In the window, ⌥-click BOOT to latch it, click RST, then click BOOT to let it go. In download mode no firmware runs, the panel goes dark, the serial stream prints the ROM's `waiting for download` line, and the status bar says "download mode". The serial port hangs up in download mode, as it would if you unplugged the board, and comes back when the firmware boots. The next RST with BOOT up boots normally. `preflash status` shows `power` as `on`, `off`, or `download` in download mode.
+
+The board can be off with the window open. Off, no firmware runs, the panel is dark, the status bar says "off", and the serial port hangs up as it does in download mode, while the window, the socket and the terminal app stay up. A press of PWR while off boots the firmware from cold, with NVS kept and `esp_reset_reason` answering `ESP_RST_POWERON`, and, on a power-key board, the key still down for the new boot to read until you let go. An AXP2101 starts with no press recorded, so the new boot's chip reports nothing of the press that woke it. The board goes off when:
+
+- firmware sets the AXP2101's soft power-off bit,
+- PWR on the AXP2101 is held past its OFFLEVEL, 6 seconds unless firmware sets register 0x27 otherwise. Past IRQLEVEL, 1.5 seconds, the chip raises its long-press interrupt first, and a shorter press raises the short-press one when it ends, as register 0x49 shows. A PWRON interrupt is raised only if firmware enabled it in register 0x41,
+- or a board with a power key, such as the 3.49 V2, loses power: on battery, its circuit keeps it on only while PWR is down or the firmware drives the key's hold output high.
+
+On USB, a power key board stays on whatever its hold does, as the real board does. On battery it follows its circuit. Launching Preflash on battery starts it off, waiting for PWR, and plugging USB back in turns it on. If the firmware hasn't driven the hold high by the time PWR comes up, the board goes off again, which is how a late latch shows. The hold reads as low until firmware makes it an output and drives it high, including at boot. The TCA9554 keeps its pins through RST and `esp_restart`, as the chip keeps its own power, so a hold on the expander survives a reset on battery. A hold on a GPIO doesn't. USB is plugged in by default, so a normal run starts on. The RTC keeps time while the board is off, as it runs from its own cell. `preflash hardware usb unplugged` with the hold low and PWR up switches a power key board off.
 
 The rotate button and ⌘→ turn the board a quarter clockwise, and ⌘← turns it back. The window turns with it: it swaps between portrait and landscape and draws the panel's picture turned the same way, so firmware that ignores the motion sensor shows sideways. A click lands on the panel pixel under the pointer however it's turned, and the strip and status bar stay upright. This is the `rotation` [hardware setting](#break-the-hardware), so it lasts through restarts, and boards with no motion sensor can turn too. `shot`, `touch` and the frames stream keep the panel's own orientation and coordinates.
 
@@ -270,7 +280,7 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 | Command | What it does |
 | --- | --- |
 | `preflash send <line...>` | Sends a line to the firmware's console and returns without waiting for it to run. Put `--project` before the line |
-| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, rotation (LVGL's), board rotation (the way the board is turned), the board's buttons and which are down, frames, fps, Wi-Fi state and serial port |
+| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, rotation (LVGL's), board rotation (the way the board is turned), frames, fps, Wi-Fi state, power (`on`, `off` or `download`), the board's buttons and which are down, and serial port |
 | `preflash serial` | Prints the serial stream, starting with what this boot has kept (up to 256 KiB), and follows it through restarts until the app stops |
 | `preflash port` | Prints the virtual serial port's path |
 | `preflash shot <file.png\|file.bmp>` | Saves what the panel shows |
@@ -278,7 +288,7 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 | `preflash trace [--stream x] [--json]` | Prints what firmware does to the hardware, starting with what the app has kept, and follows it through restarts. `x` is `i2c`, `gpio`, `task`, `nvs`, `net` or `button` |
 | `preflash trace --save file` | Saves what the app has kept as JSON lines |
 | `preflash hardware [name value] [--json]` | Shows the board's physical state and forced failures, or changes one |
-| `preflash hardware button <name> press\|release\|tap [ms]` | Presses one of the board's buttons, such as `BOOT`, lets go of it, or taps it: presses, waits `ms` (100 unless given) and lets go, so `tap 3000` is a three-second hold. `press` holds it until a `release`. The trace's `button` stream shows each press beside what the firmware did |
+| `preflash hardware button <name> press\|release\|tap [ms]` | Presses one of the board's buttons, such as `BOOT`, lets go of it, or taps it: presses, waits `ms` (100 unless given) and lets go, so `tap 3000` is a three-second hold. `press` holds it until a `release`, and a `tap` of a button scripts already hold waits its time and leaves the button down. The trace's `button` stream shows each press beside what the firmware did |
 | `preflash quit` | Stops the app and returns once it has gone |
 | `preflash crash [--json]` | Prints the last crash report |
 | `preflash bench [--board file]` | Times a clean build, a rebuild, the boot, the frame rate, the socket and the serial stream on a copy of the project |
@@ -345,19 +355,19 @@ NVS rows show keys and sizes and leave the values out, because a value can be a 
 | Name | Choices | Applies |
 | --- | --- | --- |
 | `rotation` | `0`, `90`, `180`, `270` on every board: the window turns, and a QMI8658 reports gravity | Now |
-| `usb` | `plugged`, `unplugged`, through the AXP2101 | Now |
-| `battery` | `none`, `100`, `50`, `15`, `0`, through the AXP2101 | Now |
+| `usb` | `plugged`, `unplugged`, on a board with PWR or an AXP2101, and firmware reads it through the AXP2101 | Now |
+| `battery` | `none`, `100`, `50`, `15`, `0`, likewise | Now |
 | `internet` | `real`, `offline` | Now |
 | `i2c` | `healthy`, `all`, or a chip on the board | Now |
 | `wifi_join` | `succeeds`, `fails` | Now |
 | `rtc` | `healthy`, `flat`, which sets the PCF85063's OS bit and loses the time | Next boot |
 | `motion` | `healthy`, `gone` | Next boot |
 
-The list also has a `wifi` row, which says that the simulated Wi-Fi uses your Mac's connection, and has no other choice. A board shows only the rows its chips can act on, so the 3.49 V2 has no `usb` or `battery`. Preflash refuses to leave the board with no USB and no battery.
+The list also has a `wifi` row, which says that the simulated Wi-Fi uses your Mac's connection, and has no other choice. A board shows only the rows its chips can act on. The 3.49 V2 has `usb` and `battery` because its PWR runs from a battery, but with no ADC or VBUS pin modelled, they only decide whether its power stays on: its firmware can't read them. Preflash refuses to leave the board with no USB and no battery, so set `battery` before you unplug USB.
 
 Everything you set stays in `faults.json` in the state folder, across restarts, rebuilds and new runs, until you set it back. A boot with anything forced prints what it forced. A flat cell comes back on every boot, including after `esp_restart`, which a real cell wouldn't do.
 
-Firmware that writes the AXP2101's soft power-off bit stops the app, and the next run has USB plugged back in. Forced NACKs happen on the I2C bus, so `esp_io_expander` calls still reach the expander.
+Firmware that writes the AXP2101's soft power-off bit switches the board off, and PWR turns it back on. Forced NACKs happen on the I2C bus, so `esp_io_expander` calls still reach the expander.
 
 ### When firmware crashes
 
@@ -396,7 +406,7 @@ A sanitizer build always uses `malloc` and libc's string calls for LVGL, whateve
 
 If your firmware installs the USB serial driver, it owns the wire. Everything your app writes to the port reaches `usb_serial_jtag_read_bytes` byte for byte, `@sim ` lines and line endings included. Lines from stdin and `preflash send` reach it too, each with a `\n`, except `@sim ` lines, which stay with Preflash. Until the driver is in, these lines wait in the queue. Firmware reads serial input through that call, because stdin stays with Preflash.
 
-The port starts raw at 115200 with no echo. Your app keeps its connection through `esp_restart`, and sees the port hang up on quit, on a crash and on a rebuild, as it would when you unplug a board. Open the path again to reconnect.
+The port starts raw at 115200 with no echo. Your app keeps its connection through `esp_restart` and RST, and sees the port hang up on quit, on a crash, on a rebuild and in download mode, as it would when you unplug a board. Open the path again to reconnect.
 
 To put a link where your app's developer setting looks, add one to `.preflashrc`. Preflash removes both links when the app stops, and refuses to replace a file that isn't a link. Only `kill -9` leaves them behind, and the next run replaces them.
 

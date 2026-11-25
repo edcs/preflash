@@ -1,4 +1,6 @@
+#include <cstdio>
 #include <mutex>
+#include <string>
 
 #include "bsp/audio.h"
 #include "esp_io_expander.h"
@@ -44,6 +46,25 @@ void expander_drive(int bit, bool level) {
 }
 
 bool expander_level(int bit) { return expander_pins().seen() >> bit & 1; }
+
+// "outputs,levels" in hex. What's outside the chip isn't the chip's to carry.
+std::string expander_carry() {
+  const ExpanderPins pins = expander_pins();
+  char text[24];
+  std::snprintf(text, sizeof text, "%x,%x", pins.outputs, pins.levels);
+  return text;
+}
+
+bool expander_restore(const std::string& carried) {
+  unsigned outputs = 0;
+  unsigned levels = 0;
+  char extra = 0;
+  if (std::sscanf(carried.c_str(), "%x,%x%c", &outputs, &levels, &extra) != 2) return false;
+  std::lock_guard<std::mutex> lock(g_mutex);
+  g_pins.outputs = outputs;
+  g_pins.levels = levels;
+  return true;
+}
 
 }  // namespace preflash
 

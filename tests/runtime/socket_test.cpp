@@ -861,6 +861,31 @@ TEST_F(SocketServe, ARespawnedWindowsEmptyHelloLeavesAScriptsHold) {
   preflash::buttons::load(preflash::Board{});
 }
 
+// A restart waits for a request under way to queue its reply, as a release of RST needs, and
+// waits for nothing when nothing is under way.
+TEST_F(SocketServe, ARestartWaitsForRepliesUnderWay) {
+  using Clock = std::chrono::steady_clock;
+  preflash::buttons::load(board_with_buttons());
+  Client client(path());
+  ASSERT_EQ(client.call({{"op", "status"}})["ok"], true);
+  auto start = Clock::now();
+  preflash::socket::wait_for_replies();
+  EXPECT_LT(Clock::now() - start, std::chrono::milliseconds(100));
+
+  client.send_raw(json({{"id", 7}, {"op", "button"}, {"name", "BOOT"}, {"action", "tap"},
+                        {"ms", 200}}).dump() +
+                  "\n");
+  while (preflash::buttons::held().empty()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  start = Clock::now();
+  preflash::socket::wait_for_replies();
+  EXPECT_GE(Clock::now() - start, std::chrono::milliseconds(100));
+  EXPECT_FALSE(preflash::buttons::down("BOOT"));
+  const json reply = client.read_line();
+  EXPECT_EQ(reply["id"], 7);
+  EXPECT_EQ(reply["ok"], true);
+  preflash::buttons::load(preflash::Board{});
+}
+
 // A script's tap lets go of its own press only, so the window's hold stays.
 TEST_F(SocketServe, ATapLeavesAnotherOwnersHold) {
   preflash::buttons::load(board_with_buttons());
