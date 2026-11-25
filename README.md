@@ -308,6 +308,8 @@ ssh -L 7480:localhost:7480 <mac>
 
 Then open `http://localhost:7480` on the machine you're sitting at. A page is refused unless its address is `localhost`, `127.0.0.1` or `[::1]`, on any port, so a forward onto another port works. For a name of your own, pass `--allow-host name`, once for each name. A refused request gets a page that names the host and the flag.
 
+The toolbar has a speaker button, off in every tab. One tap turns sound on, and the device's sound plays in that tab. A tab streams nothing until you tap, and turning sound off stops the data. Safari wants that tap again after a reload. The sound travels as Opus, at about 12 KB/s for stereo, so a cellular link copes. The Mac stays silent during `web`, because the sound goes to the browser and not to the Mac's speakers.
+
 The key row under the terminal sends the keys a touch screen lacks: Esc, Tab, `^C`, `^R`, the arrows and `/`. `^C` typed in the page ends only the terminal app, and the page offers to start it again. `^C` to `preflash web` itself stops the terminal app and the firmware, and leaves nothing running.
 
 ### Check it on an iPad
@@ -318,6 +320,10 @@ The tests cover the server and the page's protocol, but not Safari on a touch sc
 - Hold a button, then lift your finger, and see the button let go.
 - Use the key row, including a sideways swipe on a narrow screen that sends no key.
 - Tap `^B`, `^D` and `^H` in the terminal app's footer, and see the board picker, the debug views and the hardware panel open. The on-screen keyboard has no Control key, so these taps are the only way to reach them, and they work only if xterm.js passes them to the app as mouse reports.
+- Tap the speaker button, press `2` for Beep in the terminal app, and hear the beep arrive promptly, on cellular as well as on Wi-Fi.
+- Play a project that streams music for several minutes, and hear no gaps.
+- Let the iPad sleep, wake it, and hear the sound come back once the page reconnects and you tap the speaker again if Safari asks.
+- Turn sound off, and see the data stop in the bandwidth.
 - Turn the iPad upright, and see the panel and terminal stack to fit.
 - Let the iPad sleep, wake it, and see the terminal redraw with its colours, with nothing left held down.
 
