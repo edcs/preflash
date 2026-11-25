@@ -46,13 +46,7 @@ func sampleCrash() *crash.Report {
 		Frames: []string{"0x100001000", "0x100002000", "0x100003000"},
 	}
 	r.Resolve("/p", func(string, ...string) ([]byte, error) {
-		return []byte(`show_lost_time_card(int) (in app) (/p/components/ui/cards.cpp:412)
-
-clock_screen_update() (in app) (/p/components/ui/clock_screen.cpp:731)
-
-lv_timer_handler (in app) (/p/managed_components/lvgl__lvgl/src/misc/lv_timer.c:90)
-
-`), nil
+		return []byte(sampleNames), nil
 	})
 	return r
 }

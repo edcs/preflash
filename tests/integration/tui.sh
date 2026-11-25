@@ -54,7 +54,7 @@ RC
 go build -C "$root" -o "$scratch/preflash" ./cmd/preflash
 
 # Stand-ins, so that the crash screen's keys attach to nothing, edit nothing and leave the
-# Mac's clipboard alone.
+# clipboard alone.
 tools="$scratch/tools"
 mkdir "$tools"
 for tool in lldb editor; do

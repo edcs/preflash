@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/edcs/preflash/internal/app"
+	"github.com/edcs/preflash/internal/crash"
 )
 
 // Tools are what the crash screen hands the terminal to.
@@ -65,7 +66,7 @@ func (m *Model) openDebugger() tea.Cmd {
 		m.say("The app has gone, so there's nothing to attach to.", lineWarn)
 		return nil
 	}
-	return runTool("lldb", m.opts.Tools.Debugger(m.crashPID))
+	return runTool(crash.DebuggerName(), m.opts.Tools.Debugger(m.crashPID))
 }
 
 func (m *Model) openEditor() tea.Cmd {
