@@ -20,9 +20,9 @@ nlohmann::json board_message(const Board& board, const std::string& project,
                              const std::string& frame_path);
 
 // What the app does with one message from the window: a touch goes to touch::pointer, a
-// button to buttons::set, a hello's held buttons replace what's held, a rotate steps
-// hardware's rotation a quarter, and a quit ends the app. The link's reader thread calls it
-// for each message, and tests can too.
+// button to buttons::set, a hello's held buttons replace the buttons the window holds and leave
+// a script's holds alone, a rotate steps hardware's rotation a quarter, and a quit ends the
+// app. The link's reader thread calls it for each message, and tests can too.
 void handle(const nlohmann::json& message);
 
 // Call on the main thread. Shares the panel's frames and connects to the window at

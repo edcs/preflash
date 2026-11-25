@@ -2,6 +2,7 @@
 // and keeps going when any part of the hardware or network fails. See ../README.md.
 #include "audio.h"
 #include "board.h"
+#include "buttons.h"
 #include "console.h"
 #include "esp_log.h"
 #include "monitor.h"
@@ -28,6 +29,7 @@ extern "C" void app_main(void) {
   if (board::has_power_chip()) power::start(board::sensor_bus());
   timekeeper::start();
   monitor::start();
+  buttons::start(board::has_power_chip());
 
   audio::start();
   update::start();

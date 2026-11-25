@@ -498,6 +498,11 @@ func convertPins(doc map[string]any) error {
 
 var expanderRefPattern = regexp.MustCompile(`^tca9554\.([0-7])$`)
 
+// buttonNamePattern keeps a name to what the runtime can carry and the window can show: no
+// "," or "@", which PREFLASH_HELD uses between entries, and no more than fits a 52 px button
+// at 8 px a glyph with room either side.
+var buttonNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,5}$`)
+
 // takeButtons removes the buttons list from the map and reads it.
 func takeButtons(doc map[string]any) ([]Button, error) {
 	raw, present := doc["buttons"]
@@ -528,6 +533,9 @@ func readButton(i int, entry map[string]any) (Button, error) {
 	name, _ := entry["name"].(string)
 	if name == "" {
 		return Button{}, fmt.Errorf("buttons[%d].name: is missing", i)
+	}
+	if !buttonNamePattern.MatchString(name) {
+		return Button{}, fmt.Errorf("buttons: %q must be 1-5 letters, digits, - or _", name)
 	}
 	btn := Button{Name: name}
 	kinds := 0
@@ -600,8 +608,11 @@ func readPowerKey(name string, raw any) (*PowerKey, error) {
 	}
 	p := &PowerKey{Key: key, ActiveLow: low}
 	hold, _ := m["hold"].(string)
-	if g := pinPattern.FindStringSubmatch(hold); g != nil {
-		pin, _ := strconv.Atoi(g[1])
+	if pinPattern.MatchString(hold) {
+		pin, err := parsePin(name, "power.hold", hold)
+		if err != nil {
+			return nil, err
+		}
 		p.HoldGPIO = &pin
 	} else if e := expanderRefPattern.FindStringSubmatch(hold); e != nil {
 		bit, _ := strconv.Atoi(e[1])

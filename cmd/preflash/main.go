@@ -206,26 +206,30 @@ func status(args []string) error {
 			return json.NewEncoder(os.Stdout).Encode(s)
 		}
 		uptime := time.Duration(s.UptimeMs) * time.Millisecond
-		fmt.Printf("project    %s\n", s.Project)
-		fmt.Printf("board      %s (%dx%d)\n", s.Board, s.Width, s.Height)
-		fmt.Printf("pid        %d\n", s.PID)
-		fmt.Printf("uptime     %s\n", uptime.Round(time.Second/10))
-		fmt.Printf("backlight  %d%%\n", s.Backlight)
-		fmt.Printf("rotation   %d°\n", s.Rotation)
-		fmt.Printf("board rotation %d°\n", s.BoardRotation)
-		fmt.Printf("frames     %d (%d fps)\n", s.Frames, s.FPS)
-		fmt.Printf("wifi       %s\n", s.WiFi)
+		// Labels padded to the longest, so the values line up.
+		line := func(label, format string, a ...any) {
+			fmt.Printf("%-15s"+format+"\n", append([]any{label}, a...)...)
+		}
+		line("project", "%s", s.Project)
+		line("board", "%s (%dx%d)", s.Board, s.Width, s.Height)
+		line("pid", "%d", s.PID)
+		line("uptime", "%s", uptime.Round(time.Second/10))
+		line("backlight", "%d%%", s.Backlight)
+		line("rotation", "%d°", s.Rotation)
+		line("board rotation", "%d°", s.BoardRotation)
+		line("frames", "%d (%d fps)", s.Frames, s.FPS)
+		line("wifi", "%s", s.WiFi)
 		if s.Power != "" {
-			fmt.Printf("power      %s\n", s.Power)
+			line("power", "%s", s.Power)
 		}
 		if len(s.Buttons) > 0 {
-			fmt.Printf("buttons    %s\n", buttonsLine(s.Buttons))
+			line("buttons", "%s", buttonsLine(s.Buttons))
 		}
 		if s.SerialPort != "" {
-			fmt.Printf("port       %s\n", s.SerialPort)
+			line("port", "%s", s.SerialPort)
 		}
 		if s.Crashed {
-			fmt.Println("crashed    yes: preflash crash shows the report")
+			line("crashed", "yes: preflash crash shows the report")
 		}
 		return nil
 	})

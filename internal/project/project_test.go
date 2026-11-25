@@ -317,6 +317,27 @@ func TestRunRefusesASocketPathThatCannotFit(t *testing.T) {
 	assert.ErrorContains(t, Project{Dir: "/x/demo"}.checkSocketPath(), "too long")
 }
 
+// A HOME whose cache folder fits the control socket but not the window's, which is two bytes
+// longer, falls back to the temporary folder, and fails there the same way.
+func TestSocketPathLeavesRoomForTheWindowsSocket(t *testing.T) {
+	// "/Library/Caches/preflash/" + 12 hex digits + ".sock" is 42 bytes, so a HOME of 60 leaves
+	// the control socket 102 bytes, which fits, and the window's 104, which doesn't.
+	home := "/Users/" + strings.Repeat("x", 53)
+	require.Len(t, home, 60)
+	t.Setenv("HOME", home)
+	t.Setenv("TMPDIR", "/tmp/short")
+	p := Project{Dir: "/x/demo"}
+	require.Less(t, len(filepath.Join(home, "Library", "Caches", "preflash", "0123456789ab.sock")), socketPathLimit)
+
+	assert.True(t, strings.HasPrefix(p.SocketPath(), "/tmp/short/"), p.SocketPath())
+	assert.Less(t, len(p.WindowSocketPath()), socketPathLimit)
+	assert.NoError(t, p.checkSocketPath())
+
+	t.Setenv("TMPDIR", "/tmp/"+strings.Repeat("y", 79))
+	require.Less(t, len(p.SocketPath()), socketPathLimit)
+	assert.ErrorContains(t, p.checkSocketPath(), "too long")
+}
+
 func TestRunRefusesAnAppItCannotTalkTo(t *testing.T) {
 	home, err := os.MkdirTemp("/tmp", "pf")
 	require.NoError(t, err)

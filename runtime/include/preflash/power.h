@@ -70,9 +70,13 @@ void switch_soon(Mode next, Reset reason);
 // back.
 void set_enter_for_test(std::function<void(Mode, Reset)> stand_in);
 
-// Watches the board's power, for this run's mode. Off, a press of PWR boots the board, as
-// does USB coming back to a board with a power key. On, the AXP2101 hears its PWRON, and a
-// board with a power key goes off when decide says so. Call once, after buttons::load.
+// Hears the board's power buttons, for this run's mode. Off, a press of PWR boots the board.
+// On, the AXP2101 hears its PWRON. Call once, after buttons::load and before anything can
+// press a button, such as the window's hello, so that no press goes unheard.
+void listen_power(const Board& board);
+
+// Watches a power key's circuit, for this run's mode. Off, USB coming back boots the board.
+// On, the board goes off when decide says so. Call once, after buttons::load.
 void watch_power(const Board& board);
 
 }  // namespace preflash::power

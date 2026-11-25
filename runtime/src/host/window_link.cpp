@@ -367,8 +367,10 @@ void open() {
   g_exe = from_env("PREFLASH_WINDOW_EXE", dir + "/preflash-window");
   g_frame_path = from_env("PREFLASH_FRAME_PATH", dir + "/panel.frame");
   try {
-    // Before the window hears of it, so that the file it opens is this app's.
-    panel::share_frames(g_frame_path);
+    // Before the window hears of it, so that the file it opens is this app's. Off or in
+    // download mode no firmware draws, so the file goes black: the next run, which reuses it,
+    // would otherwise light the picture from before until its firmware draws.
+    panel::share_frames(g_frame_path, power::mode() != power::Mode::On);
   } catch (const std::exception& e) {
     std::fprintf(stderr, "preflash: couldn't share frames with the window: %s\n", e.what());
     socket::leave(1);

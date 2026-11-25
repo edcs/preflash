@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs the LVGL fixture with its window, which is a process of its own, and checks that the
-# window outlives the app's restarts, comes back when it's killed, and goes when the app quits.
+# window outlives the app's restarts, download mode and a double reset, comes back when it's
+# killed, and goes when the app quits.
 # SDL's dummy driver runs the window's code with nothing on the screen, as CI has none. LVGL
 # comes from the test suite's download, so build that first.
 set -euo pipefail
@@ -115,6 +116,47 @@ case "$windowed" in
   *) fail "the windowed shot isn't a lit 480x480 panel: $windowed" ;;
 esac
 [ "$windowed" = "$headless" ] || fail "the windowed shot differs from the headless one" "$windowed / $headless"
+
+# ---- download mode blacks out the window's frame, so the next boot starts from black
+frame_file="$HOME/.preflash/build/window_fixture-$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-8)/panel.frame"
+[ -f "$frame_file" ] || fail "no frame file at $frame_file"
+# "lit" or "black", from the pixels after the frame file's 24-byte header.
+frame_shows() {
+  python3 -I - "$frame_file" <<'PY'
+import struct, sys
+data = open(sys.argv[1], "rb").read()
+width, height = struct.unpack("<II", data[4:12])
+print("lit" if any(data[24:24 + width * height * 2]) else "black")
+PY
+}
+[ "$(frame_shows)" = lit ] || fail "the frame file isn't lit before download mode"
+pf hardware --project "$project" button BOOT press > /dev/null
+pf hardware --project "$project" button RST tap > /dev/null
+wait_for_output "waiting for download"
+blacked=""
+for tenths in $(seq 1 20); do
+  [ "$(frame_shows)" = black ] && { blacked=1; break; }
+  sleep 0.1
+done
+[ -n "$blacked" ] || fail "download mode left the last frame in the frame file"
+[ "$(the_window)" = "$first" ] || fail "download mode replaced the window"
+pf hardware --project "$project" button BOOT release > /dev/null
+pf hardware --project "$project" button RST tap > /dev/null
+wait_for_output "ready, reset reason 1" 2
+
+# ---- two resets 50 ms apart leave one window and one app, which answers
+pf hardware --project "$project" button RST tap 10 > /dev/null &
+first_tap=$!
+sleep 0.05
+pf hardware --project "$project" button RST tap 10 > /dev/null || fail "the second reset failed"
+wait "$first_tap" || fail "the first reset failed"
+wait_for_output "ready, reset reason 1" 3
+sleep 1
+[ "$(the_window)" = "$first" ] || fail "a double reset replaced the window"
+kill -0 "$app_pid" 2>/dev/null || fail "the app ended in a double reset" "$(cat "$app_log")"
+pid="$(pf status --project "$project" --json | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["pid"])')" ||
+  fail "the app stopped answering after a double reset"
+[ "$pid" = "$app_pid" ] || fail "a double reset changed the app's pid: $pid, not $app_pid"
 
 # ---- window killed
 kill -9 "$first"

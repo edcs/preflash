@@ -79,7 +79,7 @@ std::optional<std::string> expander_for(Mode next, Reset reason) {
 
 // A power key's circuit, every kPowerPollMs, on a thread of its own that holds no lock. On,
 // the board goes off when decide says so. Off, USB coming back powers it, as at a launch.
-// Presses reach watch_power through on_change instead, so a tap shorter than the poll counts.
+// Presses reach listen_power through on_change instead, so a tap shorter than the poll counts.
 void watch_circuit(const Board& board, const std::string& key) {
   const Mode now = mode();
   for (;;) {
@@ -248,7 +248,7 @@ void set_enter_for_test(std::function<void(Mode, Reset)> stand_in) {
   g_stand_in = std::move(stand_in);
 }
 
-void watch_power(const Board& board) {
+void listen_power(const Board& board) {
   const Mode now = mode();
   if (now == Mode::Download) return;
   buttons::on_change([board, now](const std::string& name, bool down) {
@@ -264,6 +264,10 @@ void watch_power(const Board& board) {
     }
     if (axp2101) axp2101_pwron(down);
   });
+}
+
+void watch_power(const Board& board) {
+  if (mode() == Mode::Download) return;
   const Button* key = power_key(board);
   if (!key) return;
   try {

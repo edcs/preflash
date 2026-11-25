@@ -19,7 +19,8 @@ lvgl="$root/build/tests/_deps/lvgl-src"
 
 scratch="$(mktemp -d)"
 app_pid=""
-trap '[ -z "$app_pid" ] || kill -9 "$app_pid" 2>/dev/null || true; rm -rf "$scratch"' EXIT
+stand_in=""
+trap '[ -z "$app_pid" ] || kill -9 "$app_pid" 2>/dev/null || true; [ -z "$stand_in" ] || kill "$stand_in" 2>/dev/null || true; rm -rf "$scratch"' EXIT
 
 fail() {
   echo "FAIL: $1" >&2
@@ -153,7 +154,7 @@ pf hardware --project "$project" battery 50 > /dev/null
 pf hardware --project "$project" usb unplugged > /dev/null
 power_becomes off
 [ "$(field serial_port)" = '""' ] || fail "off kept the serial port" "$(status_json)"
-expect_in "power      off" "$(pf status --project "$project")"
+expect_in "power          off" "$(pf status --project "$project")"
 quit
 
 # Battery launch: the board starts off, waiting for PWR, with no firmware and no serial port.
@@ -198,6 +199,43 @@ saw "power: released"
 power_stays on
 [ "$(field pid)" = "$pid" ] || fail "power changed the app's pid"
 quit
+
+# A press that reaches an app off in the window's hello, as one made in the gap while the app
+# re-runs does, boots the board. A stand-in window on the window's socket holds PWR down as
+# each app connects, and the app, launched on battery, hears it before anything else.
+start_app "$scratch/preflash" run --project "$project" --headless "${power_flags[@]}"
+power_becomes on
+pf hardware --project "$project" usb unplugged > /dev/null
+power_becomes off
+quit
+window_socket="$HOME/Library/Caches/preflash/$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-12).window"
+rm -f "$window_socket"
+python3 -I - "$window_socket" > "$scratch/stand-in.log" 2>&1 <<'PY' &
+import socket, sys, threading
+server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+server.bind(sys.argv[1])
+server.listen(4)
+def serve(conn):
+    conn.sendall(b'{"op":"hello","held":["PWR"]}\n')
+    while conn.recv(4096):
+        pass
+while True:
+    conn, _ = server.accept()
+    threading.Thread(target=serve, args=(conn,), daemon=True).start()
+PY
+stand_in=$!
+for tenths in $(seq 1 50); do [ -S "$window_socket" ] && break; sleep 0.1; done
+[ -S "$window_socket" ] || fail "the stand-in window never listened" "$(cat "$scratch/stand-in.log")"
+start_app "$scratch/preflash" run --project "$project" "${power_flags[@]}"
+mark
+saw "power: up, reset reason 1"
+power_becomes on
+[ "$(is_down PWR)" = true ] || fail "the window's PWR isn't down after the boot" "$(status_json)"
+quit
+kill "$stand_in" 2>/dev/null || true
+wait "$stand_in" 2>/dev/null || true
+stand_in=""
+rm -f "$window_socket"
 rm -rf "$state"
 
 # ---- The demo
@@ -231,7 +269,7 @@ button RST tap
 saw "waiting for download"
 [ "$(field power)" = '"download"' ] || fail "status doesn't say download mode" "$(status_json)"
 [ "$(field serial_port)" = '""' ] || fail "download mode kept the serial port" "$(status_json)"
-expect_in "power      download" "$(pf status --project "$project")"
+expect_in "power          download" "$(pf status --project "$project")"
 button BOOT release
 sleep 1
 if tail -n "+$((marked + 1))" "$app_log" | grep -qF "ready on"; then
@@ -256,9 +294,10 @@ wait "$first" || fail "the first reset failed"
 saw "ready on"
 firmware_answers
 [ "$(field pid)" = "$pid" ] || fail "a double reset changed the app's pid"
-app="$(ps -o command= -p "$pid")"
-running="$(pgrep -fx -- "$app" | wc -l | tr -d ' ')"
-[ "$running" = 1 ] || fail "a double reset left $running apps running" "$(pgrep -fl -- "$app")"
+# Every process running the app's build is this one: neither reset left an app behind.
+exe="$(ps -o comm= -p "$pid")"
+running="$(pgrep -f -- "$exe" | tr '\n' ' ')"
+[ "$running" = "$pid " ] || fail "a double reset left other apps running" "$(pgrep -fl -- "$exe")"
 [ "$(field power)" = '"on"' ] || fail "the double reset didn't end on" "$(status_json)"
 # Each reset took its own press of RST, so none is left holding it in the new boot.
 [ "$(is_down RST)" = false ] || fail "a double reset left RST down" "$(status_json)"

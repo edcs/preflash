@@ -25,6 +25,11 @@ constexpr uint8_t kCurrentDischarging = 0x02;
 constexpr uint8_t kChargerStateMask = 0x07;
 constexpr uint8_t kChargerDone = 0x04;
 constexpr uint8_t kSoftOff = 0x01;
+// The power key's interrupts, the same bits in the enable and status registers.
+constexpr uint8_t kIrqEnable1 = 0x41;
+constexpr uint8_t kIrqStatus1 = 0x49;
+constexpr uint8_t kKeyShort = 0x08;
+constexpr uint8_t kKeyLong = 0x04;
 
 I2cChip g_chip;
 
@@ -60,6 +65,24 @@ void turn_off() {
   esp_err_t err = g_chip.read(kCommon, &common, 1);
   if (err == ESP_OK) err = g_chip.write(kCommon, common | kSoftOff);
   if (err != ESP_OK) ESP_LOGW(kTag, "couldn't turn off: %s", esp_err_to_name(err));
+}
+
+void watch_key() {
+  uint8_t enabled = 0;
+  esp_err_t err = g_chip.read(kIrqEnable1, &enabled, 1);
+  if (err == ESP_OK) err = g_chip.write(kIrqEnable1, enabled | kKeyShort | kKeyLong);
+  if (err != ESP_OK) ESP_LOGW(kTag, "couldn't watch the key: %s", esp_err_to_name(err));
+}
+
+Key take_key() {
+  uint8_t status = 0;
+  if (g_chip.read(kIrqStatus1, &status, 1) != ESP_OK) return Key::none;
+  const uint8_t seen = status & (kKeyShort | kKeyLong);
+  if (!seen) return Key::none;
+  // A bit clears when 1 is written to it. Until the clear lands the bit stays up, so the key
+  // is reported once that write succeeds, and the next poll tries again if it doesn't.
+  if (g_chip.write(kIrqStatus1, seen) != ESP_OK) return Key::none;
+  return (seen & kKeyLong) ? Key::hold : Key::tap;
 }
 
 }  // namespace power

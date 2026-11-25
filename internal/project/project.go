@@ -24,6 +24,15 @@ const defaultBoard = "ESP32-S3-Touch-LCD-4B"
 // socketPathLimit is the size of a Unix socket's path on macOS, with its final NUL.
 const socketPathLimit = 104
 
+// longestSocketSuffix ends the longest of the sockets named after SocketPath: the window's,
+// which WindowSocketPath gives, is two bytes longer than ".sock".
+const longestSocketSuffix = ".window"
+
+// socketsFit says whether every socket named after the control socket at path fits.
+func socketsFit(path string) bool {
+	return len(strings.TrimSuffix(path, ".sock"))+len(longestSocketSuffix) < socketPathLimit
+}
+
 // Project is one checkout of an ESP-IDF project.
 type Project struct {
 	Dir string
@@ -206,7 +215,7 @@ func (p Project) SocketPath() string {
 	sum := sha256.Sum256([]byte(p.Dir))
 	name := hex.EncodeToString(sum[:6]) + ".sock"
 	path := filepath.Join(home, "Library", "Caches", "preflash", name)
-	if len(path) < socketPathLimit {
+	if socketsFit(path) {
 		return path
 	}
 	return filepath.Join(os.TempDir(), name)
@@ -224,10 +233,11 @@ func (p Project) WindowSocketPath() string {
 	return strings.TrimSuffix(p.SocketPath(), ".sock") + ".window"
 }
 
-// checkSocketPath fails if neither of SocketPath's folders leaves room for the socket.
+// checkSocketPath fails if neither of SocketPath's folders leaves room for the sockets: the
+// control socket and the window's beside it.
 func (p Project) checkSocketPath() error {
-	if path := p.SocketPath(); len(path) >= socketPathLimit {
-		return fmt.Errorf("the socket's path is too long for macOS: %s: use a shorter HOME or TMPDIR", path)
+	if path := p.SocketPath(); !socketsFit(path) {
+		return fmt.Errorf("the socket's path is too long for macOS: %s: use a shorter HOME or TMPDIR", p.WindowSocketPath())
 	}
 	return nil
 }

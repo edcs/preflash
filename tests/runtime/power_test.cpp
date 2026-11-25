@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -293,4 +296,31 @@ TEST_F(Power, TheRtcKeepsTimeWhileOff) {
   setenv("PREFLASH_POWER", "off", 1);
   setenv("PREFLASH_RTC_CARRY", "1762300000:0", 1);
   EXPECT_TRUE(has(power::env_for(Mode::On, Reset::PowerOn), "PREFLASH_RTC_CARRY=1762300000:0"));
+}
+
+// Off, a press of PWR boots the board as soon as the listener is in, with no circuit thread
+// needed: main puts it in before the window's hello can press anything. The button has a
+// name no other test presses, as listeners stay for the rest of the run.
+TEST_F(Power, OffAPressBootsTheBoardOnceTheListenerIsIn) {
+  const preflash::Board board = preflash::parse_board(R"({
+    "name": "T", "display": {"width": 16, "height": 8}, "i2c": [],
+    "backlight": {"pin": 4, "active_low": true}, "audio_codec": "none",
+    "buttons": [{"name": "P9", "kind": "axp2101"}]})");
+  buttons::load(board);
+  setenv("PREFLASH_POWER", "off", 1);
+  std::atomic<int> switched{0};
+  std::atomic<Mode> to{Mode::Off};
+  power::set_enter_for_test([&](Mode next, Reset) {
+    to = next;
+    ++switched;
+  });
+  power::listen_power(board);
+  ASSERT_EQ(buttons::set("P9", true, buttons::Owner::Window), "");
+  for (int ms = 0; ms < 2000 && switched == 0; ++ms) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  buttons::set("P9", false, buttons::Owner::Window);
+  power::set_enter_for_test(nullptr);
+  EXPECT_EQ(switched, 1);
+  EXPECT_EQ(to, Mode::On);
 }
