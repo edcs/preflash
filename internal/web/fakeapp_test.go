@@ -51,6 +51,8 @@ type fakeApp struct {
 	frame    uint64
 	buttons  []client.ButtonState
 	ops      []string
+	reqs     []map[string]any
+	rotation int
 	gate     chan struct{}
 	maxWrite time.Duration
 }
@@ -90,6 +92,7 @@ func (a *fakeApp) serve(c *fakeConn) {
 		op, _ := req["op"].(string)
 		a.mu.Lock()
 		a.ops = append(a.ops, op)
+		a.reqs = append(a.reqs, req)
 		a.mu.Unlock()
 		switch op {
 		case "hello":
@@ -113,7 +116,7 @@ func (a *fakeApp) serve(c *fakeConn) {
 		case "status":
 			a.mu.Lock()
 			status := client.Status{Project: "demo", Board: "B", Width: a.width, Height: a.height,
-				Frames: a.frame, Power: "on", Buttons: append([]client.ButtonState(nil), a.buttons...)}
+				BoardRotation: a.rotation, Frames: a.frame, Power: "on", Buttons: append([]client.ButtonState(nil), a.buttons...)}
 			a.mu.Unlock()
 			body, _ := json.Marshal(status)
 			c.line(fmt.Sprintf(`{"id":%d,"ok":true,%s`, id, body[1:]))
@@ -221,4 +224,24 @@ func (a *fakeApp) holdFrames() (release func()) {
 			close(gate)
 		})
 	}
+}
+
+// setRotation changes the board_rotation the status reports.
+func (a *fakeApp) setRotation(r int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.rotation = r
+}
+
+// requests returns the fields of every request for op, in order.
+func (a *fakeApp) requests(op string) []map[string]any {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var out []map[string]any
+	for _, r := range a.reqs {
+		if r["op"] == op {
+			out = append(out, r)
+		}
+	}
+	return out
 }

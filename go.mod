@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/ultraviolet v0.0.0-20261023060817-a45b7c86333f
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/charmbracelet/x/vt v0.1.0
+	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/term v0.47.0

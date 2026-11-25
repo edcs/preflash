@@ -25,6 +25,7 @@ type Options struct {
 type Server struct {
 	opts Options
 	mux  *http.ServeMux
+	dev  *device // nil without a socket
 }
 
 func New(o Options) *Server {
@@ -34,6 +35,10 @@ func New(o Options) *Server {
 		panic(err) // the directory is embedded at build time
 	}
 	s.handle("/", http.FileServerFS(static))
+	if o.Socket != "" {
+		s.dev = newDevice(o.Socket)
+		s.handle("/device", http.HandlerFunc(s.serveDevice))
+	}
 	return s
 }
 
@@ -44,6 +49,18 @@ func (s *Server) handle(pattern string, h http.Handler) {
 
 // Serve answers on ln until ctx ends, and then returns nil.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	if s.dev != nil {
+		devCtx, stopDevice := context.WithCancel(ctx)
+		deviceDone := make(chan struct{})
+		go func() {
+			defer close(deviceDone)
+			s.dev.run(devCtx)
+		}()
+		defer func() {
+			stopDevice()
+			<-deviceDone
+		}()
+	}
 	srv := &http.Server{Handler: s.mux, ReadHeaderTimeout: 10 * time.Second}
 	done := make(chan struct{})
 	stopped := make(chan struct{}) // closed when Serve fails, so the goroutine doesn't wait on ctx
