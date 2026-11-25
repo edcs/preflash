@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -25,6 +26,7 @@
 #include "nvs_flash.h"
 #include "host/window.h"
 #include "preflash/audio.h"
+#include "preflash/platform.h"
 #include "preflash/board.h"
 #include "preflash/buttons.h"
 #include "preflash/bus.h"
@@ -76,10 +78,7 @@ class Client {
     EXPECT_GE(fd_, 0);
     timeval wait = {5, 0};
     setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &wait, sizeof wait);
-#ifdef SO_NOSIGPIPE
-    const int on = 1;
-    setsockopt(fd_, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
-#endif
+    preflash::platform::ignore_hang_ups(fd_);
   }
   ~Client() {
     if (fd_ >= 0) close(fd_);
@@ -89,7 +88,8 @@ class Client {
   void send_raw(const std::string& text) {
     size_t sent = 0;
     while (sent < text.size()) {
-      const ssize_t wrote = write(fd_, text.data() + sent, text.size() - sent);
+      const ssize_t wrote =
+          preflash::platform::send_some(fd_, text.data() + sent, text.size() - sent);
       if (wrote <= 0) return;
       sent += static_cast<size_t>(wrote);
     }
@@ -254,12 +254,9 @@ TEST(SocketClaim, GivesATricklingHolderOneDeadlineInAll) {
     const int client = accept(server, nullptr, nullptr);
     // claim hangs up at its deadline, before done is set, and a write after that would raise
     // SIGPIPE at the process.
-#ifdef SO_NOSIGPIPE
-    const int on = 1;
-    setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
-#endif
+    preflash::platform::ignore_hang_ups(client);
     while (!done) {
-      if (write(client, "x", 1) != 1) break;
+      if (preflash::platform::send_some(client, "x", 1) != 1) break;
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     close(client);
@@ -318,6 +315,9 @@ class SocketServe : public testing::Test {
  protected:
   static void SetUpTestSuite() {
     path_ = new std::string(socket_path("serve"));
+    // No process-wide ignore: the server has to keep a hung-up client from ending the app
+    // itself, as it must before serial::start has run.
+    ASSERT_NE(signal(SIGPIPE, SIG_DFL), SIG_ERR);
     setenv("PREFLASH_SOCKET", path_->c_str(), 1);
     setenv("PREFLASH_PROJECT", "demo", 1);
     std::string error;
@@ -449,7 +449,8 @@ TEST_F(SocketServe, AClientPilingUpRepliesIsCutOffAtOnce) {
 }
 
 // macOS raises SIGPIPE for a socket at the process, so masking it on the writer's thread
-// isn't enough, and this would end the whole app.
+// isn't enough, and this would end the whole app. Linux does so for a write without
+// MSG_NOSIGNAL when the thread doesn't mask it.
 TEST_F(SocketServe, AClientThatHangsUpMidReplyLeavesTheAppRunning) {
   const std::string long_request =
       json({{"id", std::string(900 * 1000, 'x')}, {"op", "hello"}}).dump() + "\n";

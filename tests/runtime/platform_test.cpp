@@ -2,9 +2,11 @@
 
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <sstream>
@@ -33,8 +35,8 @@ int in_child(bool (*check)()) {
   return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
-// What /proc says of a fresh run of sh that exec_clean started from a child with SIGHUP and
-// SIGUSR1 ignored and SIGUSR2 blocked, as the SigBlk and SigIgn masks.
+// What /proc says of a fresh run of sh that exec_clean started from a child with SIGHUP, SIGTERM
+// and SIGUSR1 ignored and SIGUSR2 blocked, as the SigBlk and SigIgn masks.
 struct Masks {
   uint64_t blocked = ~0ull;
   uint64_t ignored = 0;
@@ -48,6 +50,8 @@ Masks masks_after_exec_clean() {
     dup2(out[1], STDOUT_FILENO);
     signal(SIGHUP, SIG_IGN);
     signal(SIGUSR1, SIG_IGN);
+    signal(SIGTERM, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
     sigset_t usr2;
     sigemptyset(&usr2);
     sigaddset(&usr2, SIGUSR2);
@@ -96,6 +100,32 @@ TEST(Platform, ArgumentsMatchArgv) {
   int count = 0;
   while (count < 1000 && arguments[count]) ++count;
   EXPECT_LT(count, 1000) << "no nullptr ends the arguments";
+}
+
+TEST(Platform, PeerNamesThisProcess) {
+  int pair[2];
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, pair), 0);
+  // The kernel keeps 15 characters of a process's name, so the end of it can be cut off.
+  EXPECT_EQ(platform::peer(pair[0]).rfind("pid " + std::to_string(getpid()) + ", runtime_test", 0),
+            0u)
+      << platform::peer(pair[0]);
+  close(pair[0]);
+  close(pair[1]);
+}
+
+TEST(Platform, SendSomeToAClosedPeerFailsWithEpipe) {
+  int pair[2];
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, pair), 0);
+  // SIGPIPE is at its default here, so a send that raised it would end the test run. The
+  // option goes on while the socket is still connected, as it does for a client, since
+  // macOS refuses it after the peer has gone.
+  ASSERT_NE(signal(SIGPIPE, SIG_DFL), SIG_ERR);
+  platform::ignore_hang_ups(pair[0]);
+  close(pair[1]);
+  errno = 0;
+  EXPECT_EQ(platform::send_some(pair[0], "x", 1), -1);
+  EXPECT_EQ(errno, EPIPE);
+  close(pair[0]);
 }
 
 TEST(Platform, CloseOnExecExceptKeepsOnlyThoseNamed) {
@@ -149,7 +179,9 @@ TEST(Exec, KeepsNohupAcrossRestart) {
 #else
   const Masks masks = masks_after_exec_clean();
   EXPECT_NE(masks.ignored & bit(SIGHUP), 0u);
+  EXPECT_NE(masks.ignored & bit(SIGTERM), 0u);
   EXPECT_EQ(masks.ignored & bit(SIGUSR1), 0u);
+  EXPECT_EQ(masks.ignored & bit(SIGPIPE), 0u);
 #endif
 }
 
