@@ -227,20 +227,14 @@ func waitBoot(ctx context.Context, preflash, project string, down bool, problems
 	return fmt.Errorf("BOOT never went down=%v in status:\n%s", down, last)
 }
 
-// audio listens on /audio before the beep goes out, so that the relay is subscribed, then
-// expects a format message and at least five packets with valid headers within 5 s.
+// audio listens on /audio, waits for the format message (which means the relay is subscribed),
+// sends the beep, then expects a format message and at least five packets with valid headers within 5 s.
 func audio(ctx context.Context, addr, preflash, project string) error {
 	conn, err := dial(ctx, addr, "/audio")
 	if err != nil {
 		return err
 	}
 	defer conn.CloseNow()
-
-	// Give the server a moment to subscribe to the app's sound before the beep.
-	time.Sleep(500 * time.Millisecond)
-	if out, err := exec.CommandContext(ctx, preflash, "send", "--project", project, "beep").CombinedOutput(); err != nil {
-		return fmt.Errorf("sending the beep: %w\n%s", err, out)
-	}
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -264,15 +258,29 @@ func audio(ctx context.Context, addr, preflash, project string) error {
 				if m.Rate != 48000 || (m.Channels != 1 && m.Channels != 2) {
 					return fmt.Errorf("an odd format: %s", data)
 				}
-				gotFormat = true
+				// The runtime replays the format on subscribe, so the relay is now
+				// subscribed and the beep can't be missed.
+				if !gotFormat {
+					gotFormat = true
+					out, err := exec.CommandContext(ctx, preflash, "send", "--project", project, "beep").CombinedOutput()
+					if err != nil {
+						return fmt.Errorf("sending the beep: %w\n%s", err, out)
+					}
+				}
+			}
+			if m.Type == "stop" {
+				return fmt.Errorf("the sound stopped after %d packets", packets)
 			}
 			continue
 		}
 		if !gotFormat {
 			return errors.New("a packet came before the format message")
 		}
-		if len(data) <= 5 || data[4]&^1 != 0 {
-			return fmt.Errorf("a packet has a bad header: %d bytes, flags %#x", len(data), data[min(4, len(data)-1)])
+		if len(data) <= 5 {
+			return fmt.Errorf("a packet is too short: %x", data)
+		}
+		if data[4]&^1 != 0 {
+			return fmt.Errorf("a packet has a bad header: %d bytes, flags %#x", len(data), data[4])
 		}
 		seq := binary.BigEndian.Uint32(data)
 		burst := data[4]&1 != 0

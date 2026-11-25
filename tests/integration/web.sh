@@ -70,7 +70,7 @@ pf status --project "$project" > /dev/null 2>&1 || fail "the app never answered 
 "$scratch/webprobe" device "$addr" "$scratch/preflash" "$project" || fail "the device stream check failed" "$(cat "$app_log")"
 
 # The demo's beep reaches /audio as a format message and Opus packets, the first of them a burst
-# start. The probe listens before the beep goes out.
+# start. The probe hears the format, which means the relay is subscribed, before the beep goes out.
 "$scratch/webprobe" audio "$addr" "$scratch/preflash" "$project" || fail "the sound check failed" "$(cat "$app_log")"
 
 # A page from another origin is refused.
