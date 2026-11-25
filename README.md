@@ -146,6 +146,7 @@ cd preflash
 - The terminal app's `g` key and your own debugging use `gdb -p <pid>`. Set `PREFLASH_LLDB` to run another debugger, on either system.
 - Copying from the terminal app uses `wl-copy` on Wayland, or `xclip` or `xsel` on X11.
 - The sanitizer builds need `libasan` and `libtsan`. Ubuntu ships them with `g++`. On Fedora, install the `libasan` and `libtsan` packages.
+- If a thread sanitizer build stops with "unexpected memory mapping", run `sudo sysctl -w vm.mmap_rnd_bits=28`. GCC's thread sanitizer can't run with the 32 bits of mmap randomisation some kernels set.
 
 ### Build from source
 

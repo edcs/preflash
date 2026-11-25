@@ -37,6 +37,9 @@ jobs:
           go-version-file: go.mod
       # The sanitizer runtimes (libasan, libtsan) ship with g++ on Ubuntu, so crash.sh finds them.
       - run: sudo apt-get update && sudo apt-get install -y cmake g++ libsdl2-dev libcurl4-openssl-dev pkg-config
+      # GCC's thread sanitizer stops with "unexpected memory mapping" under the runner's 32 bits
+      # of mmap randomisation.
+      - run: sudo sysctl -w vm.mmap_rnd_bits=28
       - run: make test
         env:
           PREFLASH_TEST_WAIT: "300"
