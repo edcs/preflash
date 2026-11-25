@@ -149,7 +149,13 @@ function sendKeys(text) {
 term.onData(sendKeys);
 // Some mouse reports come as raw bytes rather than text.
 term.onBinary((data) => sendBytes(Uint8Array.from(data, (ch) => ch.charCodeAt(0) & 0xff)));
-term.onResize(sendSize);
+// While the divider is dragged the terminal refits each frame, but the app hears the new size
+// only on release, so it doesn't redraw for every step.
+let holdResize = false;
+let resizeHeld = false;
+term.onResize(() => {
+  if (holdResize) resizeHeld = true; else sendSize();
+});
 
 function refit() {
   if (termEl.clientWidth > 0 && termEl.clientHeight > 0) fit.fit();
@@ -335,6 +341,7 @@ const zoomOut = $('zoom-out');
 const zoomIn = $('zoom-in');
 const zoomFit = $('zoom-fit');
 const zoomLabel = $('zoom-label');
+const divider = $('divider');
 
 // Storage is a convenience: a private window, or a browser that refuses it, still gets a page.
 const store = {
@@ -361,18 +368,31 @@ let shownScale = 1; // what the panel is drawn at now
   else if (zoomSteps.includes(Number(saved))) zoom = Number(saved);
 }
 
+// The split: the device side's share of the page along it, beside the terminal (wide) or above
+// it (tall). null sizes the device side to the panel at the chosen zoom.
+const split = { wide: null, tall: null };
+for (const key of Object.keys(split)) {
+  const saved = Number(store.get(`preflash.split.${key}`));
+  if (saved > 0 && saved < 1) split[key] = saved;
+}
+
 const bezel = 20; // the stage's padding on both sides
 const colGap = 10; // between the head, the stage and the strip
 const minDevice = 200; // the device side is never squeezed below this
 const minTermCols = 40;
-const minTermRows = 10;
+const minTermRows = 16; // the TUI's own minimum height
 
 // The terminal's cell, measured from its font, so the split can leave it enough columns.
 const cell = (() => {
   const ctx = document.createElement('canvas').getContext('2d');
   ctx.font = `${term.options.fontSize}px ${term.options.fontFamily}`;
-  return { w: ctx.measureText('M').width || 8, h: Math.ceil(term.options.fontSize * 1.3) };
+  return { w: ctx.measureText('M').width || 8 };
 })();
+
+// A row's height as xterm draws it, read back after a fit, with an estimate before the first.
+function rowHeight() {
+  return term.rows > 0 && termEl.clientHeight > 0 ? termEl.clientHeight / term.rows : term.options.fontSize * 1.4;
+}
 
 function contentBox() {
   const cs = getComputedStyle(main);
@@ -394,9 +414,12 @@ function panelShape() {
 // The most the device side may take along the split, leaving the terminal its minimum. The
 // scrollbar and the column's insets are allowed for.
 function maxDevice(content, wide) {
-  const gaps = 2 * parseFloat(getComputedStyle(main).columnGap || 12);
-  if (wide) return content.w - gaps - Math.ceil(minTermCols * cell.w) - 32;
-  return content.h - gaps - keysRow.offsetHeight - minTermRows * cell.h - 12;
+  if (wide) return content.w - divider.offsetWidth - Math.ceil(minTermCols * cell.w) - 32;
+  return content.h - divider.offsetHeight - keysRow.offsetHeight - Math.ceil(minTermRows * rowHeight()) - 12;
+}
+
+function clampDevice(size, content, wide) {
+  return Math.max(Math.min(size, maxDevice(content, wide)), minDevice);
 }
 
 // What the device side needs, along the split, to show the panel at the chosen zoom.
@@ -406,11 +429,13 @@ function deviceNeed(shape, wide) {
   return shape.shownH * z + bezel + deviceHead.offsetHeight + strip.offsetHeight + 2 * colGap;
 }
 
-// deviceSize is the device side's size along the split: what the panel needs, within limits.
+// deviceSize is the device side's size along the split: the dragged share, or else what the
+// panel needs, within limits.
 function deviceSize(content, wide, shape) {
   const axis = wide ? content.w : content.h;
-  const size = Math.min(deviceNeed(shape, wide), axis * 0.6);
-  return Math.max(Math.min(size, maxDevice(content, wide)), minDevice);
+  const share = split[wide ? 'wide' : 'tall'];
+  const size = share !== null ? share * axis : Math.min(deviceNeed(shape, wide), axis * 0.6);
+  return clampDevice(size, content, wide);
 }
 
 // layout sizes the device side, then draws the panel at the chosen zoom or smaller, to fit.
@@ -421,6 +446,9 @@ function layout() {
   const size = Math.round(deviceSize(content, wide, shape));
   deviceCol.style.width = wide ? `${size}px` : '';
   deviceCol.style.height = wide ? '' : `${size}px`;
+  const axis = wide ? content.w : content.h;
+  divider.setAttribute('aria-orientation', wide ? 'vertical' : 'horizontal');
+  divider.setAttribute('aria-valuenow', String(Math.round((100 * size) / axis)));
 
   const roomW = (wide ? size : content.w) - bezel;
   const roomH = (wide ? content.h : size) - deviceHead.offsetHeight - strip.offsetHeight - 2 * colGap - bezel;
@@ -495,6 +523,104 @@ document.addEventListener('visibilitychange', () => {
     reconnectTerminal();
     reconnectDevice();
   }
+});
+
+// ---- Divider -------------------------------------------------------------------------------
+
+let drag = null; // { id, wide, x, y, start, moved }
+let lastTap = 0;
+let dragFrame = false;
+
+function setSplit(size, wide) {
+  const content = contentBox();
+  const axis = wide ? content.w : content.h;
+  split[wide ? 'wide' : 'tall'] = clampDevice(size, content, wide) / axis;
+}
+
+function saveSplit() {
+  for (const key of Object.keys(split)) store.set(`preflash.split.${key}`, split[key]);
+}
+
+function resetSplit() {
+  split[wideQuery.matches ? 'wide' : 'tall'] = null;
+  saveSplit();
+  layout();
+}
+
+function sizeNow() {
+  const r = deviceCol.getBoundingClientRect();
+  return wideQuery.matches ? r.width : r.height;
+}
+
+divider.addEventListener('pointerdown', (e) => {
+  // Cancelled, so a tap doesn't take the focus, and the iPad's keyboard, from the terminal.
+  e.preventDefault();
+  if (drag) return;
+  divider.setPointerCapture(e.pointerId);
+  drag = { id: e.pointerId, wide: wideQuery.matches, x: e.clientX, y: e.clientY, start: sizeNow(), moved: false };
+  holdResize = true;
+  divider.classList.add('dragging');
+});
+
+divider.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  // The device is right of the divider when wide, and above it when stacked.
+  const d = drag.wide ? drag.x - e.clientX : e.clientY - drag.y;
+  if (Math.abs(d) > 3) drag.moved = true;
+  if (!drag.moved) return;
+  setSplit(drag.start + d, drag.wide);
+  if (dragFrame) return;
+  dragFrame = true;
+  requestAnimationFrame(() => {
+    dragFrame = false;
+    layout();
+  });
+});
+
+function endDrag(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const moved = drag.moved;
+  drag = null;
+  divider.classList.remove('dragging');
+  layout();
+  refit();
+  holdResize = false;
+  if (resizeHeld) {
+    resizeHeld = false;
+    sendSize();
+  }
+  if (moved) {
+    saveSplit();
+    lastTap = 0;
+    return;
+  }
+  // Two taps, or a double-click, put the split back.
+  const now = performance.now();
+  if (e.type === 'pointerup' && now - lastTap < 350) {
+    lastTap = 0;
+    resetSplit();
+  } else {
+    lastTap = now;
+  }
+}
+for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  divider.addEventListener(type, endDrag);
+}
+
+// From the keyboard: the arrows move the split, Home puts it back.
+divider.addEventListener('keydown', (e) => {
+  const wide = wideQuery.matches;
+  const step = { ArrowLeft: 24, ArrowRight: -24, ArrowUp: -24, ArrowDown: 24 }[e.key];
+  if (e.key === 'Home') {
+    resetSplit();
+  } else if (step !== undefined && (wide === (e.key === 'ArrowLeft' || e.key === 'ArrowRight'))) {
+    setSplit(sizeNow() + step, wide);
+    saveSplit();
+    layout();
+  } else {
+    return;
+  }
+  e.preventDefault();
 });
 
 // ---- Touch on the panel --------------------------------------------------------------------

@@ -66,7 +66,6 @@ body {
 main {
   display: flex;
   flex-direction: column-reverse;
-  gap: var(--gap);
   height: 100%;
   padding:
     max(var(--gap), env(safe-area-inset-top))
@@ -180,6 +179,49 @@ button {
   color: var(--term-bg);
 }
 
+/* The divider between the terminal and the device. It fills the gap between them, and its
+   hit area reaches 6px past each side, so a finger has 24px to land on. */
+
+.divider {
+  position: relative;
+  flex: none;
+  height: var(--gap);
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+}
+
+.divider::before {
+  content: "";
+  position: absolute;
+  inset: -6px 0;
+}
+
+.divider::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  transform: translate(-50%, -50%);
+  transition: background-color 0.15s;
+}
+
+@media (min-width: 900px) {
+  .divider { width: var(--gap); height: auto; cursor: col-resize; }
+  .divider::before { inset: 0 -6px; }
+  .divider::after { width: 4px; height: 48px; }
+}
+
+.divider:hover::after,
+.divider.dragging::after,
+.divider:focus-visible::after { background: var(--accent); }
+
 /* The device column. */
 
 .device-col {
@@ -229,7 +271,7 @@ button {
 }
 
 .zoom button {
-  min-width: 32px;
+  min-width: 30px;
   height: 32px;
   padding: 0 8px;
   border: 1px solid var(--line);
@@ -251,7 +293,7 @@ button {
 }
 
 .zoom output {
-  min-width: 6.5em;
+  min-width: 5.6em;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   text-align: center;
