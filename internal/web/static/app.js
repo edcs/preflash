@@ -22,25 +22,40 @@ function showBanner() {
   banner.hidden = !everDown || (socketUp.terminal && socketUp.device);
 }
 
+// A socket that has said nothing for this long is taken as dead. The server pings every 15 s,
+// and a page that slept, or lost its forward, may sit on a socket that looks open but isn't.
+const silenceLimit = 40000;
+
 // reconnecting opens path and opens it again whenever it closes, waiting 0.5 s and then twice
-// as long each time, up to 5 s. It returns a function that skips the wait.
+// as long each time, up to 5 s. It returns a function that checks the socket at once and skips
+// the wait.
 function reconnecting(path, name, setup) {
   let delay = 500;
   let timer = null;
   let ws = null;
+  let heard = 0; // when ws last said anything
   function open() {
     timer = null;
     const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${scheme}//${location.host}${path}`);
-    setup(ws);
-    ws.addEventListener('open', () => {
+    const sock = new WebSocket(`${scheme}//${location.host}${path}`);
+    ws = sock;
+    heard = performance.now();
+    setup(sock);
+    sock.addEventListener('open', () => {
+      heard = performance.now();
       socketUp[name] = true;
       showBanner();
     });
+    sock.addEventListener('message', () => { heard = performance.now(); });
     // The wait starts again only once the server has said something, so one that takes the
     // connection and drops it at once isn't asked twice a second forever.
-    ws.addEventListener('message', () => { delay = 500; }, { once: true });
-    ws.addEventListener('close', (e) => {
+    sock.addEventListener('message', () => { delay = 500; }, { once: true });
+    let ended = false;
+    sock.addEventListener('close', (e) => {
+      // A silent socket is ended here before the browser gets round to it, and its own close
+      // may follow much later.
+      if (ended) return;
+      ended = true;
       if (e.reason) console.info(`${path} closed: ${e.reason}`);
       socketUp[name] = false;
       everDown = true;
@@ -49,8 +64,18 @@ function reconnecting(path, name, setup) {
       delay = Math.min(delay * 2, 5000);
     });
   }
+  // check ends a socket that has been silent too long. Closing a dead one can take the browser
+  // minutes, so everything listening hears the close now.
+  function check() {
+    if (!ws || ws.readyState === WebSocket.CLOSED || performance.now() - heard <= silenceLimit) return;
+    const dead = ws;
+    dead.close();
+    dead.dispatchEvent(new CloseEvent('close', { code: 4000, reason: 'silent too long' }));
+  }
   open();
+  setInterval(check, 5000);
   return function now() {
+    check();
     if (timer !== null) {
       clearTimeout(timer);
       open();
@@ -349,7 +374,8 @@ new ResizeObserver(() => requestAnimationFrame(refit)).observe(termEl);
 wideQuery.addEventListener('change', layout);
 layout();
 
-// A tab that wakes doesn't wait out its backoff.
+// A tab that wakes drops a socket that went silent while it slept, and doesn't wait out its
+// backoff.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     reconnectTerminal();
