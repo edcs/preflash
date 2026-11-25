@@ -59,6 +59,10 @@ class FakeTap : public preflash::audio::Tap {
   std::string events;
 };
 
+// A write with nowhere to send its sound returns this much before that sound would
+// finish playing, as a write to I2S returns once its DMA has the samples.
+constexpr auto kPlayAhead = std::chrono::milliseconds(20);
+
 esp_codec_dev_sample_info_t mono(uint32_t rate) {
   esp_codec_dev_sample_info_t fs = {};
   fs.sample_rate = rate;
@@ -217,7 +221,7 @@ TEST_F(Codec, DeviceThatArrivesAfterOpenPlaysFromThenOn) {
   const auto start = std::chrono::steady_clock::now();
   ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
             ESP_CODEC_DEV_OK);
-  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100));
+  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100) - kPlayAhead);
   EXPECT_EQ(sink.queues, 0);
 
   preflash::audio::set_sink(&sink);
@@ -254,7 +258,28 @@ TEST_F(Codec, DroppedSoundTakesAsLongAsItWouldToPlay) {
   const auto start = std::chrono::steady_clock::now();
   ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
             ESP_CODEC_DEV_OK);
-  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100));
+  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100) - kPlayAhead);
+}
+
+// Firmware does work between writes, as a real decoder does. On hardware the I2S DMA
+// plays the last write meanwhile, so that work costs no time on the sound's clock;
+// headless, the writes keep pace with a deadline rather than each sleeping its own
+// length, so the work and the sleeps' overshoot don't add up to less than real time.
+TEST_F(Codec, HeadlessWritesKeepRealTimeDespiteWorkBetween) {
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(320);  // 20 ms
+  constexpr int kWrites = 100;    // 2 s of sound
+  const auto start = std::chrono::steady_clock::now();
+  for (int i = 0; i < kWrites; ++i) {
+    ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+              ESP_CODEC_DEV_OK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(3));  // the firmware's work
+  }
+  const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start);
+  EXPECT_GE(took, std::chrono::milliseconds(2000 - 20 - 20)) << "faster than real time";
+  EXPECT_LE(took, std::chrono::milliseconds(2000 + 60)) << "slower than real time";
 }
 
 TEST_F(Codec, SinkFailingMidWriteOnlyPacesWhatItDropped) {
@@ -268,7 +293,7 @@ TEST_F(Codec, SinkFailingMidWriteOnlyPacesWhatItDropped) {
   ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
             ESP_CODEC_DEV_OK);
   const auto took = std::chrono::steady_clock::now() - start;
-  EXPECT_GE(took, std::chrono::milliseconds(100));
+  EXPECT_GE(took, std::chrono::milliseconds(100) - kPlayAhead);
   EXPECT_LT(took, std::chrono::milliseconds(500));
 }
 
@@ -328,24 +353,27 @@ TEST_F(Codec, TapAddedWhileOpenGetsTheFormat) {
 
 TEST_F(Codec, TapDoesNotChangePacing) {
   auto fs = mono(16000);
-  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
   std::vector<int16_t> pcm(1600);  // 100 ms
+  // Each run opens the codec afresh, so neither starts behind the other's deadline.
   auto timed = [&] {
+    EXPECT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
     const auto start = std::chrono::steady_clock::now();
     EXPECT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
               ESP_CODEC_DEV_OK);
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
+    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start);
+    EXPECT_EQ(esp_codec_dev_close(speaker_), ESP_CODEC_DEV_OK);
+    return took;
   };
   const auto without = timed();
   FakeTap tap;
   const int id = preflash::audio::add_tap(&tap);
   const auto with = timed();
   preflash::audio::remove_tap(id);
-  EXPECT_GE(without, std::chrono::milliseconds(100));
-  EXPECT_LE(without, std::chrono::milliseconds(120));
-  EXPECT_GE(with, std::chrono::milliseconds(100));
-  EXPECT_LE(with, std::chrono::milliseconds(120));
+  EXPECT_GE(without, std::chrono::milliseconds(100) - kPlayAhead);
+  EXPECT_LE(without, std::chrono::milliseconds(100));
+  EXPECT_GE(with, std::chrono::milliseconds(100) - kPlayAhead);
+  EXPECT_LE(with, std::chrono::milliseconds(100));
   EXPECT_EQ(tap.writes.size(), 1u);
 }
 

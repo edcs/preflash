@@ -20,6 +20,10 @@ constexpr int kMaxQueuedMs = 100;
 // is given up on, and writes are counted like a headless run's.
 constexpr auto kStallLimit = std::chrono::seconds(2);
 constexpr auto kPoll = std::chrono::milliseconds(5);
+// Sound with nowhere to go is paced against a deadline, as I2S DMA would play it: a
+// write returns this far ahead of the end of its sound, so the firmware's work before
+// the next write overlaps the sound instead of adding to it.
+constexpr auto kPlayAhead = std::chrono::milliseconds(20);
 
 struct Speaker {
   std::mutex lock;
@@ -28,6 +32,8 @@ struct Speaker {
   int rate = 0;
   int volume = 100;
   bool sink_gone = false;
+  // When the sound written so far, with nowhere to go, would finish playing.
+  std::chrono::steady_clock::time_point play_until{};
   // Closers waiting for the lock. A write in the middle of pacing sees it and lets go.
   std::atomic<int> closers{0};
 };
@@ -133,6 +139,7 @@ int esp_codec_dev_open(esp_codec_dev_handle_t codec, esp_codec_dev_sample_info_t
     std::lock_guard<std::mutex> hold(s.lock);
     s.open = true;
     s.sink_gone = false;  // each open gets a fresh chance at the device
+    s.play_until = {};
     s.channels = fs->channel;
     s.rate = static_cast<int>(fs->sample_rate);
     if (preflash::g_sink) preflash::g_sink->start(s.rate, s.channels);
@@ -162,6 +169,7 @@ int esp_codec_dev_close(esp_codec_dev_handle_t codec) {
   if (s.open)
     for (auto& t : preflash::g_taps) t.second->stop();
   s.open = false;
+  s.play_until = {};
   return ESP_CODEC_DEV_OK;
 }
 
@@ -227,10 +235,14 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
   preflash::g_frames += frames;
   if (dropped > 0) {
     // I2S takes sound at its sample rate. Firmware can time itself by the writes, so
-    // sound with nowhere to go still takes as long as it would to play.
+    // sound with nowhere to go still takes as long as it would to play, counted from
+    // when the sound before it ends, as the DMA would play it.
     const auto playing = std::chrono::microseconds(dropped * 1000000 / static_cast<size_t>(s.rate));
+    const auto now = std::chrono::steady_clock::now();
+    s.play_until = std::max(now, s.play_until) + playing;
+    const auto wake = s.play_until - preflash::kPlayAhead;
     hold.unlock();
-    std::this_thread::sleep_for(playing);
+    std::this_thread::sleep_until(wake);
   }
   return ESP_CODEC_DEV_OK;
 }
