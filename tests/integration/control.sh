@@ -39,8 +39,8 @@ go build -C "$root" -o "$scratch/preflash" ./cmd/preflash
 pf() { "$scratch/preflash" "$@"; }
 
 real_project="$(cd "$project" && pwd -P)"
-sum="$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-12)"
-socket="$HOME/Library/Caches/preflash/$sum.sock"
+sum="$(printf '%s' "$real_project" | sha256 | cut -c1-12)"
+socket="$(cache_dir)/$sum.sock"
 
 start_run() { start_app "$scratch/preflash" run --project "$project" --headless; }
 
@@ -97,7 +97,7 @@ expect_failure "no app is running" pf shot "$scratch/none.png" --project "$proje
 
 start_run
 wait_for_output "ready, reset reason 1"
-[ "$(stat -f %Lp "$socket")" = 600 ] || fail "the socket's mode is $(stat -f %Lp "$socket")"
+[ "$(file_mode "$socket")" = 600 ] || fail "the socket's mode is $(file_mode "$socket")"
 
 # Status, read by a person and by a script.
 output="$(pf status --project "$project")"

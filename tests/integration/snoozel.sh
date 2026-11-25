@@ -48,8 +48,8 @@ go build -C "$root" -o "$scratch/preflash" ./cmd/preflash
 # hashed too.
 snapshot() {
   git -C "$copy" status --porcelain --ignored
-  shasum -a 256 "$copy/sdkconfig"
-  [ ! -d "$copy/managed_components" ] || (cd "$copy/managed_components" && find . -type f -exec shasum -a 256 {} + | sort -k2)
+  sha256 "$copy/sdkconfig"
+  [ ! -d "$copy/managed_components" ] || (cd "$copy/managed_components" && find . -type f -exec "${sha256_command[@]}" {} + | sort -k2)
 }
 
 before="$(snapshot)"
@@ -61,7 +61,7 @@ before="$(snapshot)"
 # The first run below starts from no saved state, in the folder preflash uses for this
 # copy. The runs after it keep what the one before saved, unless a comment says otherwise.
 real_copy="$(cd "$copy" && pwd -P)"
-state="$HOME/.preflash/state/snoozel-$(printf '%s' "$real_copy" | shasum -a 256 | cut -c1-8)"
+state="$HOME/.preflash/state/snoozel-$(printf '%s' "$real_copy" | sha256 | cut -c1-8)"
 [ -d "$state" ] || fail "no saved state in $state"
 rm -rf "$state"
 

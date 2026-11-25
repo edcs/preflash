@@ -35,7 +35,7 @@ go build -C "$root" -o "$scratch/preflash" ./cmd/preflash
 pf() { "$scratch/preflash" "$@"; }
 board="ESP32-S3-Touch-LCD-3.49-V2"
 
-snapshot() { (cd "$copy" && find . -path ./.git -prune -o -type f -exec shasum -a 256 {} + | sort -k2); }
+snapshot() { (cd "$copy" && find . -path ./.git -prune -o -type f -exec "${sha256_command[@]}" {} + | sort -k2); }
 before="$(snapshot)"
 
 # The first build can take longer than a test's wait for output.
@@ -43,8 +43,8 @@ pf run --project "$copy" --board "$board" --headless <<< "@sim quit" \
   || fail "the project didn't build and run"
 
 real_copy="$(cd "$copy" && pwd -P)"
-sum="$(printf '%s' "$real_copy" | shasum -a 256 | cut -c1-12)"
-port="$HOME/Library/Caches/preflash/$sum.tty"
+sum="$(printf '%s' "$real_copy" | sha256 | cut -c1-12)"
+port="$(cache_dir)/$sum.tty"
 
 # Prints how many colours a shot of the 172 by 640 panel has, and its hash.
 shot_summary() {

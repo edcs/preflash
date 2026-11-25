@@ -51,14 +51,14 @@ use_project() {
   mkdir -p "$project"
   rsync -a --delete "$demo/" "$project/"
   real_project="$(cd "$project" && pwd -P)"
-  sum="$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-8)"
+  sum="$(printf '%s' "$real_project" | sha256 | cut -c1-8)"
   rm -rf "$HOME/.preflash/state/demo-$sum"
   rm -f "$HOME/.preflash/build/demo-$sum/crash.json"
   golden="$root/tests/integration/golden/demo/$1"
   mkdir -p "$golden"
 }
 
-snapshot() { (cd "$project" && find . -type f -exec shasum -a 256 {} + | sort -k2); }
+snapshot() { (cd "$project" && find . -type f -exec "${sha256_command[@]}" {} + | sort -k2); }
 
 # Serial output is checked from a mark onwards, so that an old line can't pass for a new one.
 mark() { marked="$(wc -l < "$app_log")"; }

@@ -40,8 +40,8 @@ go build -C "$root" -o "$scratch/preflash" ./cmd/preflash
 pf() { "$scratch/preflash" "$@"; }
 
 real_project="$(cd "$project" && pwd -P)"
-sum="$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-12)"
-window_socket="$HOME/Library/Caches/preflash/$sum.window"
+sum="$(printf '%s' "$real_project" | sha256 | cut -c1-12)"
+window_socket="$(cache_dir)/$sum.window"
 
 # This project's window processes, one pid a line.
 windows() { pgrep -f "preflash-window $window_socket" || true; }
@@ -118,7 +118,7 @@ esac
 [ "$windowed" = "$headless" ] || fail "the windowed shot differs from the headless one" "$windowed / $headless"
 
 # ---- download mode blacks out the window's frame, so the next boot starts from black
-frame_file="$HOME/.preflash/build/window_fixture-$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-8)/panel.frame"
+frame_file="$HOME/.preflash/build/window_fixture-$(printf '%s' "$real_project" | sha256 | cut -c1-8)/panel.frame"
 [ -f "$frame_file" ] || fail "no frame file at $frame_file"
 # "lit" or "black", from the pixels after the frame file's 24-byte header.
 frame_shows() {

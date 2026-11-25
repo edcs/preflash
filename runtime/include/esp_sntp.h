@@ -30,7 +30,7 @@ void esp_sntp_setoperatingmode(esp_sntp_operatingmode_t operating_mode);
 void esp_sntp_setservername(uint8_t idx, const char* server);
 const char* esp_sntp_getservername(uint8_t idx);
 
-// The Mac's clock is already right, so a sync reports shortly after init and the
+// The computer's clock is already right, so a sync reports shortly after init and the
 // system clock is left alone. Only the callback and the status show it.
 void esp_sntp_init(void);
 void esp_sntp_stop(void);

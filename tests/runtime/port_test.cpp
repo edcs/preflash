@@ -14,6 +14,13 @@ namespace port = preflash::port;
 
 namespace {
 
+// Where the system makes its pseudo-terminals.
+#ifdef __APPLE__
+constexpr const char* kPtyPrefix = "/dev/ttys";
+#else
+constexpr const char* kPtyPrefix = "/dev/pts/";
+#endif
+
 std::vector<std::string> split(port::LineSplitter& lines, const std::string& input,
                                size_t* dropped = nullptr) {
   std::vector<std::string> out;
@@ -103,7 +110,7 @@ TEST(Port, IsARawPrivateTerminalBehindALink) {
   const std::string output = run_helper("settings", with_port(folder), &status);
   EXPECT_EQ(status, 0) << output;
   EXPECT_NE(output.find("path=" + folder.path + "/port.tty"), std::string::npos) << output;
-  EXPECT_NE(output.find("device=/dev/ttys"), std::string::npos) << output;
+  EXPECT_NE(output.find(std::string("device=") + kPtyPrefix), std::string::npos) << output;
   EXPECT_NE(output.find("echo=no canonical=no output=raw speed=115200"), std::string::npos) << output;
   EXPECT_NE(output.find("mode=600"), std::string::npos) << output;
   EXPECT_NE(output.find("fds above stderr, closed on exec"), std::string::npos) << output;
@@ -175,7 +182,7 @@ TEST(Port, IgnoresDescriptorsItDidNotInherit) {
   const std::string output =
       run_helper("settings", with_port(folder) + " PREFLASH_PORT_FDS=0:1", &status);
   EXPECT_EQ(status, 0) << output;
-  EXPECT_NE(output.find("device=/dev/ttys"), std::string::npos) << output;
+  EXPECT_NE(output.find(std::string("device=") + kPtyPrefix), std::string::npos) << output;
 }
 
 TEST(Port, MakesTheExtraLinkAndLeavesOthersFilesAlone) {
@@ -246,7 +253,7 @@ TEST(Port, FallsBackToTheDeviceWhenTheLinkFails) {
       run_helper("settings", "PREFLASH_PORT=" + quoted(folder.path + "/none/port.tty"), &status);
   EXPECT_EQ(status, 0) << output;
   EXPECT_NE(output.find("couldn't link"), std::string::npos) << output;
-  EXPECT_NE(output.find("path=/dev/ttys"), std::string::npos) << output;
+  EXPECT_NE(output.find(std::string("path=") + kPtyPrefix), std::string::npos) << output;
 }
 
 TEST(PortLines, WhatIsLeftInPartCanBeTaken) {
