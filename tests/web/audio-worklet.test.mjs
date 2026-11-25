@@ -132,3 +132,22 @@ test('clear, for hang-up and sound off, empties the buffer', () => {
   assert.equal(a.p.level, 0);
   assert.equal(a.p.playing, false);
 });
+
+test('a buffer 300 ms past its target skips to the target with a short crossfade', () => {
+  const a = load();
+  a.push(160, { burst: true, value: 1 });
+  a.run(1);
+  assert.equal(a.p.playing, true);
+  a.push(140, { value: 1 }); // 297 ms held: not yet 300 past the target
+  assert.equal(Math.round(a.levelMs()), 297);
+  a.push(160, { value: 0 }); // past 450: the oldest goes, leaving the target, all zeros
+  assert.equal(a.levelMs(), 150);
+  const out = a.run(20);
+  assert.ok(out[0] > 0.95, `starts from where it was playing, not a jump (${out[0]})`);
+  let steepest = 0;
+  for (let i = 1; i < out.length; i++) steepest = Math.max(steepest, Math.abs(out[i] - out[i - 1]));
+  assert.ok(steepest < 1 / 200, `no click: the steepest step is ${steepest}`);
+  const faded = out.findIndex((x) => x === 0);
+  assert.ok(faded >= 5 * 48 && faded <= 10 * 48 + 1, `fades over 5 to 10 ms (${faded / 48} ms)`);
+  assert.ok(out.slice(faded).every((x) => x === 0), 'then plays the new sound');
+});

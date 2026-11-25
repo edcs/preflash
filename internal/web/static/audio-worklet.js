@@ -5,7 +5,8 @@
 // underrun: the target goes up 50 ms, to 1 s at most, and the buffer fills to it again. After 5 s
 // with no underrun the target comes down 10 ms, to 150 ms at least. Running dry before a burst
 // start isn't an underrun, as the device simply went quiet. A buffer well past its target, as
-// after the tab was in the background, drops its oldest sound to get back to the target.
+// after the tab was in the background, drops its oldest sound to get back to the target, fading
+// from the sound it was playing into the sound it skips to so the jump doesn't click.
 //
 // A new format keeps what is buffered, which plays out, as both channels are always stored; its
 // first packet counts as a burst start. Only a clear, at hang-up and sound off, empties the buffer.
@@ -24,6 +25,7 @@ const statsEvery = 0.5; // seconds
 // burst was shorter than the target, or it ended.
 const primeWait = 0.1; // seconds
 const capacity = 2 * rate; // more than the most the buffer keeps, maxTarget + skipPast
+const fadeMs = 8; // the crossfade when playback skips ahead
 
 class PreflashAudio extends AudioWorkletProcessor {
   constructor() {
@@ -44,6 +46,14 @@ class PreflashAudio extends AudioWorkletProcessor {
     this.lastChange = 0; // when the target last moved
     this.lastStats = 0;
     this.sounding = false; // what the page was last told
+    // A skip ahead fades out of a copy of the sound that was playing, the tail, while the sound
+    // it skipped to fades in.
+    this.fadeLen = Math.max(1, Math.round((fadeMs / 1000) * sampleRate)); // in frames played
+    const tailLen = Math.ceil(this.fadeLen * this.step * 1.01) + 2;
+    this.tail = [new Float32Array(tailLen), new Float32Array(tailLen)];
+    this.tailHeld = 0;
+    this.tailAt = 0;
+    this.fading = 0; // frames of the fade left to play
     this.port.onmessage = (e) => this.receive(e.data);
   }
 
@@ -73,6 +83,7 @@ class PreflashAudio extends AudioWorkletProcessor {
     this.dry = false;
     this.ended = false;
     this.fresh = false;
+    this.fading = 0;
   }
 
   push(m) {
@@ -102,7 +113,27 @@ class PreflashAudio extends AudioWorkletProcessor {
     this.level += n;
     if (this.level > capacity) this.drop(this.level - capacity);
     const keep = this.target * perMs;
-    if (this.level > keep + skipPast * perMs) this.drop(this.level - keep);
+    if (this.level > keep + skipPast * perMs) this.skip(this.level - keep);
+  }
+
+  // skip drops the oldest n samples. While playing, what was about to play is kept as the tail
+  // to fade out of. A skip during a fade, which takes another 300 ms arriving within it, only drops.
+  skip(n) {
+    if (this.playing && this.fading === 0) {
+      const held = Math.min(this.tail[0].length, this.level);
+      for (let c = 0; c < 2; c++) {
+        const buf = this.bufs[c];
+        const tail = this.tail[c];
+        for (let i = 0, at = this.start; i < held; i++) {
+          tail[i] = buf[at];
+          if (++at === capacity) at = 0;
+        }
+      }
+      this.tailHeld = held;
+      this.tailAt = 0;
+      this.fading = this.fadeLen;
+    }
+    this.drop(n);
   }
 
   drop(n) {
@@ -130,6 +161,7 @@ class PreflashAudio extends AudioWorkletProcessor {
           this.drop(this.level);
           this.pos = 0;
           this.playing = false;
+          this.fading = 0;
           if (!this.ended) this.dry = true;
           this.ended = false;
           break;
@@ -138,11 +170,25 @@ class PreflashAudio extends AudioWorkletProcessor {
         const a = this.start;
         const b = (a + 1) % capacity;
         const f = this.pos;
-        out[0][i] = l[a] + (l[b] - l[a]) * f;
-        if (out.length > 1) out[1][i] = r[a] + (r[b] - r[a]) * f;
+        let left = l[a] + (l[b] - l[a]) * f;
+        let right = r[a] + (r[b] - r[a]) * f;
+        if (this.fading > 0) {
+          const g = 1 - this.fading / this.fadeLen; // how far into the new sound
+          const t = this.tailAt;
+          const u = Math.min(t + 1, this.tailHeld - 1);
+          const [tl, tr] = this.tail;
+          const oldL = t < this.tailHeld ? tl[t] + (tl[u] - tl[t]) * f : 0;
+          const oldR = t < this.tailHeld ? tr[t] + (tr[u] - tr[t]) * f : 0;
+          left = oldL + (left - oldL) * g;
+          right = oldR + (right - oldR) * g;
+          this.fading--;
+        }
+        out[0][i] = left;
+        if (out.length > 1) out[1][i] = right;
         this.pos += this.step;
         const whole = Math.floor(this.pos);
         this.pos -= whole;
+        this.tailAt += whole;
         // Below 24 kHz a step can pass the end of what is held.
         this.drop(Math.min(whole, this.level));
       }
