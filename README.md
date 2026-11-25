@@ -298,9 +298,9 @@ sdkconfig:
 preflash web
 ```
 
-It prints a URL, `http://localhost:7480` unless you pass `--port`. The page shows the panel on one side and the terminal app on the other, and the app runs headless, so there is no separate window. Touch or drag on the panel to tap it, and hold a button in the strip below to hold that board button. Both go through the same control socket as [`preflash hardware`](#break-the-hardware). `--board`, `--sanitize` and `--project` work as they do for `preflash tui`.
+It prints a URL, `http://localhost:7480` unless you pass `--port`. The page shows the panel on one side and the terminal app on the other, and the app runs headless, so there is no separate window. Touch or drag on the panel to tap it, and hold a button in the strip below to hold that board button. Both go through the app's control socket, as [`preflash hardware`](#break-the-hardware) does. `--board`, `--sanitize` and `--project` work as they do for `preflash tui`.
 
-The server listens on `127.0.0.1` only. To reach it from another machine, forward the port. Nearhost can do that for you. The plain way is an SSH tunnel:
+The server listens on `127.0.0.1` only. To reach it from another machine, forward the port. [Nearhost](https://nearhost.dev) can do that for you. The plain way is an SSH tunnel:
 
 ```sh
 ssh -L 7480:localhost:7480 <mac>
