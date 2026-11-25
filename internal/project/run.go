@@ -190,7 +190,7 @@ func (p Project) Run(b board.Board, headless bool) error {
 		env = append(env, "PREFLASH_CRASH_HOLD=1")
 	}
 	fmt.Fprintf(os.Stderr, "preflash: building %s for %s\n", filepath.Base(p.Dir), b.Name)
-	ctx, cancel := signal.NotifyContext(context.Background(), StopSignals()...)
+	ctx, cancel := signal.NotifyContext(context.Background(), stopSignals()...)
 	defer cancel()
 	if err := p.buildQuietly(ctx, env, os.Stderr); err != nil {
 		return err
@@ -207,9 +207,9 @@ func (p Project) Run(b board.Board, headless bool) error {
 	return nil
 }
 
-// StopSignals are what end a build or preflash web, leaving out any already ignored, as under nohup. Go's
+// stopSignals are what end a build, leaving out any already ignored, as under nohup. Go's
 // signal package would otherwise replace that ignore with a handler.
-func StopSignals() []os.Signal {
+func stopSignals() []os.Signal {
 	var stops []os.Signal
 	for _, stop := range []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP} {
 		if !signal.Ignored(stop) {

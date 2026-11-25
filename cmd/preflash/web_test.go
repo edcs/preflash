@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/edcs/preflash/internal/project"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -81,7 +80,7 @@ func TestAHangUpSaysWebIsStopping(t *testing.T) {
 	if signal.Ignored(syscall.SIGHUP) {
 		t.Skip("hang-ups are ignored here, as under nohup")
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), project.StopSignals()...)
+	ctx, stop := signal.NotifyContext(context.Background(), webStopSignals()...)
 	defer stop()
 	require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGHUP))
 	select {
@@ -95,6 +94,14 @@ func TestAHangUpSaysWebIsStopping(t *testing.T) {
 	announceStop(ctx, func() { stopped = true; stop() }, &out)
 	assert.True(t, stopped, "a second signal would still be caught")
 	assert.Equal(t, "preflash: stopping…\n", out.String())
+}
+
+func TestAnIgnoredCtrlCStillStopsWeb(t *testing.T) {
+	// A script's background job starts with ^C ignored.
+	signal.Ignore(os.Interrupt)
+	defer signal.Reset(os.Interrupt)
+	assert.Contains(t, webStopSignals(), os.Interrupt)
+	assert.Contains(t, webStopSignals(), os.Signal(syscall.SIGTERM))
 }
 
 func TestReturningSaysNothing(t *testing.T) {

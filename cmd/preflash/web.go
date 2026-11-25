@@ -31,10 +31,21 @@ func versionLine(v string) string {
 }
 
 func webCommand(args []string) error {
-	ctx, stop := signal.NotifyContext(context.Background(), project.StopSignals()...)
+	ctx, stop := signal.NotifyContext(context.Background(), webStopSignals()...)
 	defer stop()
 	go announceStop(ctx, stop, os.Stderr)
 	return serveWeb(ctx, os.Stdout, args)
+}
+
+// webStopSignals are what stop preflash web: ^C and SIGTERM always, and a hang-up unless it is
+// ignored, as under nohup. Unlike a build's, ^C and SIGTERM count even when ignored, as they
+// are for a job a script starts in the background: either of them must always stop web.
+func webStopSignals() []os.Signal {
+	stops := []os.Signal{os.Interrupt, syscall.SIGTERM}
+	if !signal.Ignored(syscall.SIGHUP) {
+		stops = append(stops, syscall.SIGHUP)
+	}
+	return stops
 }
 
 // announceStop says so when a signal starts the shutdown, and hands the signals back to their

@@ -560,13 +560,13 @@ func TestLogPathIsInTheBuildFolder(t *testing.T) {
 }
 
 func TestStopSignalsLeaveAnInheritedIgnoreAlone(t *testing.T) {
-	assert.Contains(t, StopSignals(), os.Signal(syscall.SIGHUP))
+	assert.Contains(t, stopSignals(), os.Signal(syscall.SIGHUP))
 
 	signal.Ignore(syscall.SIGHUP)
 	defer signal.Reset(syscall.SIGHUP)
 
-	assert.NotContains(t, StopSignals(), os.Signal(syscall.SIGHUP))
-	assert.Contains(t, StopSignals(), os.Interrupt)
+	assert.NotContains(t, stopSignals(), os.Signal(syscall.SIGHUP))
+	assert.Contains(t, stopSignals(), os.Interrupt)
 }
 
 func TestABuildStoppedOnPurposeStaysQuiet(t *testing.T) {
@@ -639,7 +639,7 @@ func TestBoardsAreFoundUnderAPathWithGlobCharacters(t *testing.T) {
 func TestStopSignalsLeaveAnIgnoredInterruptAlone(t *testing.T) {
 	signal.Ignore(os.Interrupt)
 	defer signal.Reset(os.Interrupt)
-	assert.NotContains(t, StopSignals(), os.Interrupt)
+	assert.NotContains(t, stopSignals(), os.Interrupt)
 }
 
 func TestASanitizerBuildsInItsOwnFolder(t *testing.T) {
