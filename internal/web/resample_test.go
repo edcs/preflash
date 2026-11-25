@@ -100,3 +100,68 @@ func TestMonoStaysMono(t *testing.T) {
 		t.Fatal("8 kHz mono should stay mono")
 	}
 }
+
+// streamHash folds output into a running FNV-1a hash and counts samples, so
+// long streams compare without being held in memory.
+type streamHash struct {
+	h uint64
+	n int
+}
+
+func (s *streamHash) add(out []int16) {
+	if s.h == 0 {
+		s.h = 14695981039346656037
+	}
+	for _, v := range out {
+		s.h = (s.h ^ uint64(uint16(v))) * 1099511628211
+	}
+	s.n += len(out)
+}
+
+func TestResampleLongStreamsDoNotDrift(t *testing.T) {
+	seconds := 600
+	if testing.Short() {
+		seconds = 60
+	}
+	for _, rate := range []int{44100, 22050, 8000} {
+		for _, ch := range []int{1, 2} {
+			whole, single, odd := newResampler(rate, ch), newResampler(rate, ch), newResampler(rate, ch)
+			var hw, hs, ho streamHash
+			oddSizes := []int{7, 13, 101}
+			oi, singles := 0, 0
+			for s := 0; s < seconds; s++ {
+				block := make([]int16, rate*ch)
+				for i := 0; i < rate; i++ {
+					v := int16(10000 * math.Sin(2*math.Pi*1000*float64(i)/float64(rate)))
+					for c := 0; c < ch; c++ {
+						block[i*ch+c] = v
+					}
+				}
+				hw.add(whole.Push(block))
+				for i := 0; i < len(block); i += ch {
+					hs.add(single.Push(block[i : i+ch]))
+					if singles++; singles%5 == 0 {
+						hs.add(single.Push(nil))
+					}
+				}
+				for i := 0; i < len(block); {
+					n := oddSizes[oi%len(oddSizes)]
+					oi++
+					if i+n > len(block) {
+						n = len(block) - i
+					}
+					ho.add(odd.Push(block[i : i+n]))
+					i += n
+				}
+			}
+			if hs != hw || ho != hw {
+				t.Errorf("rate %d ch %d: outputs differ: whole %+v single %+v odd %+v", rate, ch, hw, hs, ho)
+			}
+			want := float64(rate*seconds) * outRate / float64(rate) * float64(ch)
+			slack := (float64(outRate)/float64(rate) + 1) * float64(ch)
+			if d := math.Abs(float64(hw.n) - want); d > slack {
+				t.Errorf("rate %d ch %d: %d samples, want %.0f within %.1f", rate, ch, hw.n, want, slack)
+			}
+		}
+	}
+}
