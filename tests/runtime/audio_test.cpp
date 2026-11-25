@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -36,6 +37,26 @@ class FakeSink : public preflash::audio::Sink {
   bool fail_queue = false, drain_on_queue = false;
   size_t bytes = 0;
   std::vector<int16_t> last;
+};
+
+class FakeTap : public preflash::audio::Tap {
+ public:
+  void format(preflash::audio::TapFormat f) override {
+    formats.push_back(f);
+    events.push_back('f');
+  }
+  void samples(const int16_t* data, size_t frames) override {
+    writes.emplace_back(data, data + frames * (formats.empty() ? 1 : formats.back().channels));
+    events.push_back('s');
+  }
+  void stop() override {
+    ++stops;
+    events.push_back('x');
+  }
+  std::vector<preflash::audio::TapFormat> formats;
+  std::vector<std::vector<int16_t>> writes;
+  int stops = 0;
+  std::string events;
 };
 
 esp_codec_dev_sample_info_t mono(uint32_t rate) {
@@ -255,6 +276,98 @@ TEST_F(Codec, RejectsFormatsItCannotPlay) {
   esp_codec_dev_sample_info_t fs = mono(16000);
   fs.bits_per_sample = 24;
   EXPECT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_INVALID_ARG);
+}
+
+TEST_F(Codec, TapSeesOpenWritesAndClose) {
+  FakeTap tap;
+  const int id = preflash::audio::add_tap(&tap);
+  EXPECT_TRUE(tap.events.empty());  // codec is closed
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  ASSERT_EQ(tap.formats.size(), 1u);
+  EXPECT_EQ(tap.formats[0].rate, 16000);
+  EXPECT_EQ(tap.formats[0].channels, 1);
+  int16_t pcm[4] = {1, -2, 3, -4};
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm, sizeof(pcm)), ESP_CODEC_DEV_OK);
+  ASSERT_EQ(tap.writes.size(), 1u);
+  EXPECT_EQ(tap.writes[0], (std::vector<int16_t>{1, -2, 3, -4}));
+  ASSERT_EQ(esp_codec_dev_close(speaker_), ESP_CODEC_DEV_OK);
+  EXPECT_EQ(tap.stops, 1);
+  EXPECT_EQ(tap.events, "fsx");
+  preflash::audio::remove_tap(id);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  EXPECT_EQ(tap.events, "fsx");  // removed taps hear nothing
+}
+
+TEST_F(Codec, TapCarriesVolume) {
+  FakeTap tap;
+  const int id = preflash::audio::add_tap(&tap);
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  ASSERT_EQ(esp_codec_dev_set_out_vol(speaker_, 50), ESP_CODEC_DEV_OK);
+  int16_t pcm[2] = {1000, -1000};
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm, sizeof(pcm)), ESP_CODEC_DEV_OK);
+  ASSERT_EQ(esp_codec_dev_set_out_vol(speaker_, 100), ESP_CODEC_DEV_OK);
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm, sizeof(pcm)), ESP_CODEC_DEV_OK);
+  ASSERT_EQ(tap.writes.size(), 2u);
+  EXPECT_EQ(tap.writes[0], (std::vector<int16_t>{500, -500}));
+  EXPECT_EQ(tap.writes[1], (std::vector<int16_t>{1000, -1000}));
+  preflash::audio::remove_tap(id);
+}
+
+TEST_F(Codec, TapAddedWhileOpenGetsTheFormat) {
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  FakeTap tap;
+  const int id = preflash::audio::add_tap(&tap);
+  ASSERT_EQ(tap.formats.size(), 1u);
+  EXPECT_EQ(tap.formats[0].rate, 16000);
+  EXPECT_EQ(tap.formats[0].channels, 1);
+  preflash::audio::remove_tap(id);
+}
+
+TEST_F(Codec, TapDoesNotChangePacing) {
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(1600);  // 100 ms
+  auto timed = [&] {
+    const auto start = std::chrono::steady_clock::now();
+    EXPECT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+              ESP_CODEC_DEV_OK);
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start);
+  };
+  const auto without = timed();
+  FakeTap tap;
+  const int id = preflash::audio::add_tap(&tap);
+  const auto with = timed();
+  preflash::audio::remove_tap(id);
+  EXPECT_GE(without, std::chrono::milliseconds(100));
+  EXPECT_LE(without, std::chrono::milliseconds(120));
+  EXPECT_GE(with, std::chrono::milliseconds(100));
+  EXPECT_LE(with, std::chrono::milliseconds(120));
+  EXPECT_EQ(tap.writes.size(), 1u);
+}
+
+TEST_F(Codec, TapWithASinkStillQueues) {
+  FakeSink sink;
+  sink.drain_on_queue = true;
+  preflash::audio::set_sink(&sink);
+  FakeTap tap;
+  const int id = preflash::audio::add_tap(&tap);
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  ASSERT_EQ(esp_codec_dev_set_out_vol(speaker_, 50), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(16000 * 2, 1000);  // two seconds
+  ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  EXPECT_EQ(sink.bytes, pcm.size() * 2);
+  EXPECT_GE(sink.queues, 20);
+  EXPECT_GT(sink.polls, sink.queues);
+  ASSERT_EQ(tap.writes.size(), 1u);  // the tap sees the write once, whole
+  EXPECT_EQ(tap.writes[0].size(), pcm.size());
+  EXPECT_EQ(tap.writes[0][0], 500);
+  preflash::audio::remove_tap(id);
 }
 
 TEST(Expander, SetThenGetLevel) {

@@ -6,6 +6,7 @@
 #include <functional>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "bsp/audio.h"
@@ -37,6 +38,8 @@ Speaker& speaker() {
 }
 
 audio::Sink* g_sink = nullptr;  // under the speaker's lock
+std::vector<std::pair<int, audio::Tap*>> g_taps;  // under the speaker's lock
+int g_next_tap = 1;
 std::mutex g_request_mutex;
 std::function<void()> g_request;
 bool g_requested = false;
@@ -69,6 +72,24 @@ void set_sink(Sink* sink) {
   s.sink_gone = false;
   // Firmware may have opened the codec before the device was ready.
   if (sink && s.open) sink->start(s.rate, s.channels);
+}
+
+int add_tap(Tap* tap) {
+  Speaker& s = speaker();
+  std::lock_guard<std::mutex> hold(s.lock);
+  const int id = g_next_tap++;
+  g_taps.emplace_back(id, tap);
+  if (s.open) tap->format({s.rate, s.channels});
+  return id;
+}
+
+void remove_tap(int id) {
+  Speaker& s = speaker();
+  // Taking the lock waits out any call in progress; taps are called under it.
+  std::lock_guard<std::mutex> hold(s.lock);
+  g_taps.erase(std::remove_if(g_taps.begin(), g_taps.end(),
+                              [id](const auto& t) { return t.first == id; }),
+               g_taps.end());
 }
 
 void set_device_request(std::function<void()> request) {
@@ -109,6 +130,7 @@ int esp_codec_dev_open(esp_codec_dev_handle_t codec, esp_codec_dev_sample_info_t
     s.channels = fs->channel;
     s.rate = static_cast<int>(fs->sample_rate);
     if (preflash::g_sink) preflash::g_sink->start(s.rate, s.channels);
+    for (auto& t : preflash::g_taps) t.second->format({s.rate, s.channels});
   }
   // Outside the lock: the device is only wished for here, and opened elsewhere.
   std::function<void()> ask;
@@ -131,6 +153,8 @@ int esp_codec_dev_close(esp_codec_dev_handle_t codec) {
   ++s.closers;
   std::lock_guard<std::mutex> hold(s.lock);
   --s.closers;
+  if (s.open)
+    for (auto& t : preflash::g_taps) t.second->stop();
   s.open = false;
   return ESP_CODEC_DEV_OK;
 }
@@ -155,11 +179,15 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
 
   const size_t frames = static_cast<size_t>(len) / frame_bytes;
   size_t dropped = frames;
-  if (preflash::g_sink && !s.sink_gone) {
+  const bool sinking = preflash::g_sink && !s.sink_gone;
+  if (sinking || !preflash::g_taps.empty()) {
+    // Volume is applied once, for the taps and the sink alike.
     std::vector<int16_t> scaled(static_cast<size_t>(len) / sizeof(int16_t));
     std::memcpy(scaled.data(), data, static_cast<size_t>(len));
     if (s.volume != 100)
       for (int16_t& v : scaled) v = static_cast<int16_t>(v * s.volume / 100);
+    for (auto& t : preflash::g_taps) t.second->samples(scaled.data(), frames);
+  if (sinking) {
     // The room check only sees what is already queued, so one long write is fed in
     // pieces of about 100 ms; otherwise it would all go in at once and never pace.
     const size_t chunk_frames =
@@ -187,6 +215,7 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
         break;
       }
       dropped -= n / frame_bytes;
+    }
     }
   }
   preflash::g_frames += frames;
