@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/edcs/preflash/compare/v0.2.0...v0.3.0) (2026-11-25)
+
+
+### Features
+
+* add the preflash web page ([#49](https://github.com/edcs/preflash/issues/49)) ([b6f210f](https://github.com/edcs/preflash/commit/b6f210f8d1f5cd819898a814a5d0ba0fea77262c))
+* play the device's sound in the browser ([#55](https://github.com/edcs/preflash/issues/55)) ([d4855f0](https://github.com/edcs/preflash/commit/d4855f0203a6d29822a125243bea936cb5963eee))
+* send the device's sound to the browser as Opus ([#54](https://github.com/edcs/preflash/issues/54)) ([ebb73e5](https://github.com/edcs/preflash/commit/ebb73e5bb77875cb19a5692a31a9e1764af09ccb))
+* serve the device to a browser ([#47](https://github.com/edcs/preflash/issues/47)) ([7d920e2](https://github.com/edcs/preflash/commit/7d920e2c85be1eca066be1d13d473fe55ec6095b))
+* serve the terminal app to a browser ([#48](https://github.com/edcs/preflash/issues/48)) ([beb70ca](https://github.com/edcs/preflash/commit/beb70cae7713f828723514a2d82e3cc7d4009d8f))
+* show the panel at its own size, with zoom, a movable split and a toolbar ([#50](https://github.com/edcs/preflash/issues/50)) ([bd5b357](https://github.com/edcs/preflash/commit/bd5b357db125b26462f8438341e9971e71602911))
+* stream the codec's sound on the control socket ([#53](https://github.com/edcs/preflash/issues/53)) ([3ab70ef](https://github.com/edcs/preflash/commit/3ab70ef161a0b271e025789e5fbca90398293422))
+
+
+### Bug Fixes
+
+* start a build folder's CMake cache afresh when the toolchain changes ([#46](https://github.com/edcs/preflash/issues/46)) ([1efe32a](https://github.com/edcs/preflash/commit/1efe32a4463f91c23d3552acac1915fdff3cfd61))
+
 ## [0.2.0](https://github.com/edcs/preflash/compare/v0.1.0...v0.2.0) (2026-11-25)
 
 
