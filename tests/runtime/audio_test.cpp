@@ -77,7 +77,10 @@ class Codec : public testing::Test {
     preflash::audio::set_sink(nullptr);
     preflash::audio::set_device_request({});
   }
+  // A test that fails an ASSERT returns before its remove_tap, and its tap, which lived
+  // on its stack, must not hear the next test's writes.
   void TearDown() override {
+    preflash::audio::clear_taps();
     esp_codec_dev_close(speaker_);
     preflash::audio::set_sink(nullptr);
     preflash::audio::set_device_request({});

@@ -60,6 +60,8 @@ int add_tap(Tap* tap);
 void remove_tap(int id);
 // How many taps are in, for tests.
 size_t tap_count();
+// Removes every tap, for tests that must not leave one behind when they fail.
+void clear_taps();
 
 }  // namespace preflash::audio
 

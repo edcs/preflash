@@ -348,9 +348,10 @@ void Outbox::push_audio(const int16_t* samples, size_t frames, int channels) {
   ready_.notify_one();
 }
 
-// The events left ahead of the oldest sound described sound that has gone. That sound
-// needs only the newest format among them; the stops and older formats go, or a client
-// that never reads would keep a pair for every beep firmware ever played.
+// Called once sound has been dropped for a client that fell behind. The stops and older
+// formats ahead of the oldest sound left are dropped, keeping only the newest format
+// among them, which describes that sound; otherwise a client that never reads would keep
+// a pair for every beep firmware ever played.
 void Outbox::tidy_audio_events() {
   size_t first_audio = 0;
   while (first_audio < items_.size() && items_[first_audio].kind != Kind::Audio) ++first_audio;

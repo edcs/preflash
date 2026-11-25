@@ -98,6 +98,12 @@ void remove_tap(int id) {
                g_taps.end());
 }
 
+void clear_taps() {
+  Speaker& s = speaker();
+  std::lock_guard<std::mutex> hold(s.lock);
+  g_taps.clear();
+}
+
 size_t tap_count() {
   Speaker& s = speaker();
   std::lock_guard<std::mutex> hold(s.lock);
@@ -201,35 +207,35 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
     if (s.volume != 100)
       for (int16_t& v : scaled) v = static_cast<int16_t>(v * s.volume / 100);
     for (auto& t : preflash::g_taps) t.second->samples(scaled.data(), frames);
-  if (sinking) {
-    // The room check only sees what is already queued, so one long write is fed in
-    // pieces of about 100 ms; otherwise it would all go in at once and never pace.
-    const size_t chunk_frames =
-        std::max<size_t>(1, static_cast<size_t>(s.rate) * preflash::kMaxQueuedMs / 1000);
-    const size_t chunk_bytes = chunk_frames * frame_bytes;
-    const auto* bytes = reinterpret_cast<const uint8_t*>(scaled.data());
-    for (size_t at = 0; at < static_cast<size_t>(len); at += chunk_bytes) {
-      const size_t n = std::min(chunk_bytes, static_cast<size_t>(len) - at);
-      if (s.closers > 0) {
-        dropped = 0;  // closing: nothing is left to pace
-        break;
-      }
-      if (!preflash::wait_for_room(preflash::g_sink, s.closers)) {
+    if (sinking) {
+      // The room check only sees what is already queued, so one long write is fed in
+      // pieces of about 100 ms; otherwise it would all go in at once and never pace.
+      const size_t chunk_frames =
+          std::max<size_t>(1, static_cast<size_t>(s.rate) * preflash::kMaxQueuedMs / 1000);
+      const size_t chunk_bytes = chunk_frames * frame_bytes;
+      const auto* bytes = reinterpret_cast<const uint8_t*>(scaled.data());
+      for (size_t at = 0; at < static_cast<size_t>(len); at += chunk_bytes) {
+        const size_t n = std::min(chunk_bytes, static_cast<size_t>(len) - at);
         if (s.closers > 0) {
           dropped = 0;  // closing: nothing is left to pace
           break;
         }
-        std::fprintf(stderr, "preflash: the audio device stopped playing, so sound is dropped\n");
-        s.sink_gone = true;
-        break;
+        if (!preflash::wait_for_room(preflash::g_sink, s.closers)) {
+          if (s.closers > 0) {
+            dropped = 0;  // closing: nothing is left to pace
+            break;
+          }
+          std::fprintf(stderr, "preflash: the audio device stopped playing, so sound is dropped\n");
+          s.sink_gone = true;
+          break;
+        }
+        if (!preflash::g_sink->queue(bytes + at, n)) {
+          std::fprintf(stderr, "preflash: the audio device refused sound, so it is dropped\n");
+          s.sink_gone = true;
+          break;
+        }
+        dropped -= n / frame_bytes;
       }
-      if (!preflash::g_sink->queue(bytes + at, n)) {
-        std::fprintf(stderr, "preflash: the audio device refused sound, so it is dropped\n");
-        s.sink_gone = true;
-        break;
-      }
-      dropped -= n / frame_bytes;
-    }
     }
   }
   preflash::g_frames += frames;

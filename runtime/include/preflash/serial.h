@@ -59,8 +59,9 @@ class Outbox {
   // the client.
   void push_audio(const int16_t* samples, size_t frames, int channels);
   // An event about the sound, such as its format or its end, kept in order with the
-  // samples. Never dropped while sound follows it; of the events with no sound after
-  // them, only the newest two are kept.
+  // samples. For a client that falls behind, once its oldest sound is dropped, the stops
+  // and older formats ahead of the oldest sound left are dropped too, keeping the newest
+  // format there; of the events with no sound after them, only the newest two are kept.
   enum class AudioEvent { Format, Stop };
   void push_audio_event(std::string line, AudioEvent event);
   // The most sound kept, in bytes. The socket keeps a second of what is open.

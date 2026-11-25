@@ -17,8 +17,8 @@ type resampler struct {
 }
 
 func newResampler(fromRate, fromChannels int) *resampler {
-	// Rates above 48 kHz would alias (no low-pass filter) and are not
-	// expected: firmware opens the codec at 8-48 kHz.
+	// The codec accepts any rate. Rates above 48 kHz alias, as there is no
+	// low-pass filter before the decimation.
 	if fromRate <= 0 {
 		fromRate = outRate
 	}
