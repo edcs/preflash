@@ -191,18 +191,39 @@ TEST(Outbox, AudioPastItsLimitDropsTheOldestAndSaysSo) {
   box.sent();
 }
 
-// One write longer than the limit keeps its newest frames, whole ones.
-TEST(Outbox, AWriteLongerThanTheAudioLimitKeepsItsNewest) {
+// A write longer than the limit is kept whole, since firmware can play a whole clip in one
+// write, while older sound still queued makes way for it.
+TEST(Outbox, ASingleWriteLongerThanTheLimitIsKeptWhole) {
   serial::Outbox box(1024);
   box.set_audio_limit(8);  // two stereo frames
-  const std::vector<int16_t> samples = {1, 2, 3, 4, 5, 6};
-  box.push_audio(samples.data(), 3, 2);
+  const std::vector<int16_t> old = {1, 2}, big = {3, 4, 5, 6, 7, 8};
+  box.push_audio(old.data(), 1, 2);
+  box.push_audio(big.data(), 3, 2);
   std::string line;
   ASSERT_TRUE(box.pop(&line));
   EXPECT_EQ(line, "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":1}\n");
   box.sent();
   ASSERT_TRUE(box.pop(&line));
-  EXPECT_EQ(line, audio_line({3, 4, 5, 6}));
+  EXPECT_EQ(line, audio_line(big));
+  box.sent();
+}
+
+// Past the limit, older writes lose their front frames, and the newest write stays whole.
+TEST(Outbox, AnOlderWriteLosesItsFrontFramesFirst) {
+  serial::Outbox box(1024);
+  box.set_audio_limit(8);  // four mono frames
+  const std::vector<int16_t> a = {1, 2, 3}, b = {4, 5};
+  box.push_audio(a.data(), 3, 1);
+  box.push_audio(b.data(), 2, 1);
+  std::string line;
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":1}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line({2, 3}));
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line(b));
   box.sent();
 }
 

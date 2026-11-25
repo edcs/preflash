@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <iterator>
 #include <map>
 #include <system_error>
 #include <thread>
@@ -317,8 +318,10 @@ void Outbox::push_audio(const int16_t* samples, size_t frames, int channels) {
     ++audio_items_;
     forget(-1);
     // The oldest frames go first, whole writes while they can, then the front of the
-    // oldest write left.
-    for (auto it = items_.begin(); audio_bytes_ > audio_limit_ && it != items_.end();) {
+    // oldest write left. The write just pushed is never cut, however long: firmware can
+    // play a whole clip in one write, and its start is real sound.
+    const auto newest = std::prev(items_.end());
+    for (auto it = items_.begin(); audio_bytes_ > audio_limit_ && it != newest;) {
       if (it->kind != Kind::Audio) {
         ++it;
         continue;

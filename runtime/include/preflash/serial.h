@@ -54,8 +54,9 @@ class Outbox {
   void push_urgent(std::string line);
 
   // Sound, as 16-bit interleaved samples, with a limit of its own in bytes: past it the
-  // oldest frames go, and one dropped event with how many goes out before the next sound.
-  // Never waits on the client.
+  // oldest frames queued by earlier writes go, and one dropped event with how many goes out
+  // before the next sound. This write is kept whole, even past the limit. Never waits on
+  // the client.
   void push_audio(const int16_t* samples, size_t frames, int channels);
   // An event about the sound, such as its format or its end, kept in order with the
   // samples and never dropped.
