@@ -4,9 +4,9 @@
 //	webprobe start ADDR
 //	webprobe device ADDR PREFLASH PROJECT
 //
-// start asks the terminal app to start, as a page does on load. device opens /device, waits for
-// a connected state and a PNG frame, taps the middle of the panel, holds BOOT, checks that
-// preflash status sees it down, and lets go.
+// start opens /terminal as a page does on load, and checks that the app's output arrives.
+// device opens /device, waits for a connected state and a PNG frame, taps the middle of the
+// panel, holds BOOT, checks that preflash status sees it down, and lets go.
 package main
 
 import (
@@ -64,7 +64,7 @@ func send(ctx context.Context, conn *websocket.Conn, v any) error {
 	return conn.Write(ctx, websocket.MessageText, data)
 }
 
-// start sends the page's start message, and waits for the terminal app's first output.
+// start sends the page's start message, a no-op while the app runs, and waits for output.
 func start(ctx context.Context, addr string) error {
 	conn, err := dial(ctx, addr, "/terminal")
 	if err != nil {

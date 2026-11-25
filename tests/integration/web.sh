@@ -8,7 +8,18 @@ source "$root/tests/integration/app.sh"
 
 scratch="$(mktemp -d)"
 app_pid=""
-trap '[ -z "$app_pid" ] || kill -9 "$app_pid" 2>/dev/null || true; rm -rf "$scratch"' EXIT
+real_project=""
+# Stops preflash web with ^C, as a person would, so that it stops its terminal app and the
+# firmware too. Only an app that ignores it is killed.
+stop_all() {
+  if [ -n "$app_pid" ]; then
+    kill -INT "$app_pid" 2>/dev/null || true
+    wait_for_exit 150 || kill -9 "$app_pid" 2>/dev/null || true
+  fi
+  [ -z "$real_project" ] || pkill -f "$real_project" 2>/dev/null || true
+  rm -rf "$scratch"
+}
+trap stop_all EXIT
 
 fail() {
   echo "FAIL: $1" >&2
@@ -43,8 +54,9 @@ code="$(curl -s -o "$scratch/page" -w '%{http_code}' "http://$addr/")"
 [ "$code" = 200 ] || fail "the page answered $code"
 grep -q '<html' "$scratch/page" || fail "the page isn't HTML" "$(head -c 300 "$scratch/page")"
 
-# The terminal app starts when a page asks. The demo's .preflashrc names a board, so its launch
-# screen is skipped and no key is needed.
+# The server starts the terminal app itself, and a page's start message changes nothing while
+# it runs. This checks that /terminal relays the app's output. The demo's .preflashrc names a
+# board, so the launch screen is skipped and no key is needed.
 "$scratch/webprobe" start "$addr" || fail "the terminal app didn't start" "$(cat "$app_log")"
 
 # The first wait covers the build.
