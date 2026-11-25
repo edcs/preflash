@@ -193,13 +193,24 @@ button {
 }
 
 @media (min-width: 900px) {
-  .device-col { justify-content: center; max-width: 45%; }
+  .device-col { justify-content: center; }
+}
+
+/* The status line, with the zoom controls at its right. */
+.device-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  width: 100%;
 }
 
 .status {
+  flex: 1 1 8em;
   margin: 0;
+  min-width: 0;
   min-height: 1.35em;
-  max-width: 100%;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -208,6 +219,44 @@ button {
 }
 
 .status .alert { color: #d0532b; font-weight: 600; }
+
+.zoom {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.zoom button {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--strip-bg);
+  color: var(--strip-fg);
+  font: 600 14px/1 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.zoom button:disabled { opacity: 0.4; cursor: default; }
+
+.zoom button[aria-pressed="true"] {
+  background: var(--strip-down);
+  border-color: var(--strip-down);
+  color: var(--strip-down-fg);
+}
+
+.zoom output {
+  min-width: 6.5em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
 
 .stage {
   display: flex;

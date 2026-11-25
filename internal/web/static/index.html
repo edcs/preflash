@@ -31,7 +31,15 @@
     </div>
   </section>
   <section class="device-col" aria-label="Device">
-    <p id="status" class="status"></p>
+    <div class="device-head">
+      <p id="status" class="status"></p>
+      <div class="zoom" role="group" aria-label="Zoom">
+        <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+        <output id="zoom-label" aria-live="polite">100%</output>
+        <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" id="zoom-fit" aria-pressed="false" title="Fit the panel to the column">Fit</button>
+      </div>
+    </div>
     <div id="stage" class="stage">
       <div id="screen" class="screen">
         <img id="panel" alt="The device's panel">

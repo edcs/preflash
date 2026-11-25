@@ -328,31 +328,145 @@ const reconnectDevice = reconnecting('/device', 'device', (ws) => {
 // ---- Layout --------------------------------------------------------------------------------
 
 const wideQuery = matchMedia('(min-width: 900px)');
+const deviceCol = document.querySelector('.device-col');
+const deviceHead = document.querySelector('.device-head');
+const keysRow = document.querySelector('.keys');
+const zoomOut = $('zoom-out');
+const zoomIn = $('zoom-in');
+const zoomFit = $('zoom-fit');
+const zoomLabel = $('zoom-label');
 
-// layout sizes the panel to fit the device column: under half the width beside the terminal, or half
-// the height above it.
-function layout() {
+// Storage is a convenience: a private window, or a browser that refuses it, still gets a page.
+const store = {
+  get(key) {
+    try { return localStorage.getItem(key); } catch { return null; }
+  },
+  set(key, value) {
+    try {
+      if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, String(value));
+    } catch { /* not kept */ }
+  },
+};
+
+// 100% is one panel pixel to one CSS pixel, as the Mac window draws it. The chosen zoom is a
+// ceiling: a column too small for it shows the panel smaller, and says so.
+const zoomSteps = [0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.5, 2, 3, 4];
+let zoom = 1;
+let fitMode = false; // follow the column instead of a chosen zoom
+let shownScale = 1; // what the panel is drawn at now
+
+{
+  const saved = store.get('preflash.zoom');
+  if (saved === 'fit') fitMode = true;
+  else if (zoomSteps.includes(Number(saved))) zoom = Number(saved);
+}
+
+const bezel = 20; // the stage's padding on both sides
+const colGap = 10; // between the head, the stage and the strip
+const minDevice = 200; // the device side is never squeezed below this
+const minTermCols = 40;
+const minTermRows = 10;
+
+// The terminal's cell, measured from its font, so the split can leave it enough columns.
+const cell = (() => {
+  const ctx = document.createElement('canvas').getContext('2d');
+  ctx.font = `${term.options.fontSize}px ${term.options.fontFamily}`;
+  return { w: ctx.measureText('M').width || 8, h: Math.ceil(term.options.fontSize * 1.3) };
+})();
+
+function contentBox() {
   const cs = getComputedStyle(main);
-  const w = main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-  const h = main.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-  const panelW = state.width || 480;
-  const panelH = state.height || 480;
+  return {
+    w: main.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight),
+    h: main.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom),
+  };
+}
+
+// The panel as shown: its own size, turned by the board's rotation.
+function panelShape() {
+  const w = state.width || 480;
+  const h = state.height || 480;
   const turn = (((state.board_rotation || 0) % 360) + 360) % 360;
   const sideways = turn === 90 || turn === 270;
-  const shownW = sideways ? panelH : panelW;
-  const shownH = sideways ? panelW : panelH;
-  const bezel = 20;
-  const around = statusEl.offsetHeight + strip.offsetHeight + 2 * 10 + bezel;
-  const roomW = (wideQuery.matches ? w * 0.45 : w) - bezel;
-  const roomH = (wideQuery.matches ? h : h * 0.5) - around;
-  let scale = Math.max(Math.min(roomW / shownW, roomH / shownH), 0.05);
-  if (scale >= 2) scale = Math.floor(scale); // whole pixels when there's room
-  screen.style.width = `${Math.round(shownW * scale)}px`;
-  screen.style.height = `${Math.round(shownH * scale)}px`;
-  panel.style.width = `${panelW * scale}px`;
-  panel.style.height = `${panelH * scale}px`;
-  panel.style.transform = `translate(-50%, -50%) rotate(${turn}deg)`;
+  return { w, h, turn, shownW: sideways ? h : w, shownH: sideways ? w : h };
+}
+
+// The most the device side may take along the split, leaving the terminal its minimum. The
+// scrollbar and the column's insets are allowed for.
+function maxDevice(content, wide) {
+  const gaps = 2 * parseFloat(getComputedStyle(main).columnGap || 12);
+  if (wide) return content.w - gaps - Math.ceil(minTermCols * cell.w) - 32;
+  return content.h - gaps - keysRow.offsetHeight - minTermRows * cell.h - 12;
+}
+
+// What the device side needs, along the split, to show the panel at the chosen zoom.
+function deviceNeed(shape, wide) {
+  const z = fitMode ? 1 : zoom;
+  if (wide) return Math.max(shape.shownW * z + bezel, zoomOut.parentElement.offsetWidth);
+  return shape.shownH * z + bezel + deviceHead.offsetHeight + strip.offsetHeight + 2 * colGap;
+}
+
+// deviceSize is the device side's size along the split: what the panel needs, within limits.
+function deviceSize(content, wide, shape) {
+  const axis = wide ? content.w : content.h;
+  const size = Math.min(deviceNeed(shape, wide), axis * 0.6);
+  return Math.max(Math.min(size, maxDevice(content, wide)), minDevice);
+}
+
+// layout sizes the device side, then draws the panel at the chosen zoom or smaller, to fit.
+function layout() {
+  const content = contentBox();
+  const wide = wideQuery.matches;
+  const shape = panelShape();
+  const size = Math.round(deviceSize(content, wide, shape));
+  deviceCol.style.width = wide ? `${size}px` : '';
+  deviceCol.style.height = wide ? '' : `${size}px`;
+
+  const roomW = (wide ? size : content.w) - bezel;
+  const roomH = (wide ? content.h : size) - deviceHead.offsetHeight - strip.offsetHeight - 2 * colGap - bezel;
+  const fitScale = Math.max(Math.min(roomW / shape.shownW, roomH / shape.shownH), 0.05);
+  const scale = fitMode ? fitScale : Math.min(zoom, fitScale);
+  shownScale = scale;
+  screen.style.width = `${Math.round(shape.shownW * scale)}px`;
+  screen.style.height = `${Math.round(shape.shownH * scale)}px`;
+  panel.style.width = `${shape.w * scale}px`;
+  panel.style.height = `${shape.h * scale}px`;
+  panel.style.transform = `translate(-50%, -50%) rotate(${shape.turn}deg)`;
   panel.classList.toggle('pixelated', scale >= 2);
+
+  const fitted = fitMode || scale < zoom - 0.001;
+  zoomLabel.textContent = `${Math.round(scale * 100)}%${fitted ? ' · fit' : ''}`;
+  zoomFit.setAttribute('aria-pressed', String(fitMode));
+  zoomIn.disabled = !fitMode && zoom >= zoomSteps[zoomSteps.length - 1];
+  zoomOut.disabled = scale <= zoomSteps[0] + 0.001;
+}
+
+function setZoom(next, fit) {
+  zoom = next;
+  fitMode = fit;
+  store.set('preflash.zoom', fit ? 'fit' : zoom);
+  layout();
+}
+
+// + goes up from the chosen zoom (or from the fitted size), − down from what is shown, so each
+// press makes a visible step where the column allows.
+function stepZoom(dir) {
+  const eps = 0.001;
+  const next = dir > 0
+    ? zoomSteps.find((z) => z > (fitMode ? shownScale : zoom) + eps)
+    : [...zoomSteps].reverse().find((z) => z < shownScale - eps);
+  if (next !== undefined) setZoom(next, false);
+}
+
+for (const [button, act] of [
+  [zoomOut, () => stepZoom(-1)],
+  [zoomIn, () => stepZoom(1)],
+  [zoomFit, () => setZoom(zoom, !fitMode)],
+]) {
+  // As with the key row, a tap mustn't take the focus, and the iPad's keyboard, from the terminal.
+  button.addEventListener('pointerdown', (e) => e.preventDefault());
+  button.addEventListener('mousedown', (e) => e.preventDefault());
+  button.addEventListener('click', act);
 }
 
 // The body follows the visual viewport, which shrinks when the iPad's keyboard comes up.
