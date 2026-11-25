@@ -47,7 +47,7 @@ func TestThePageAndItsAssetsAreServed(t *testing.T) {
 	static, err := fs.Sub(staticFiles, "static")
 	require.NoError(t, err)
 	remote := regexp.MustCompile(`https?://`)
-	fs.WalkDir(static, ".", func(path string, d fs.DirEntry, err error) error {
+	require.NoError(t, fs.WalkDir(static, ".", func(path string, d fs.DirEntry, err error) error {
 		require.NoError(t, err)
 		if d.IsDir() || strings.Contains(path, "LICENSE") {
 			return nil
@@ -56,7 +56,7 @@ func TestThePageAndItsAssetsAreServed(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, remote.MatchString(withoutComments(string(data))), "%s links off the machine", path)
 		return nil
-	})
+	}))
 }
 
 var comments = regexp.MustCompile(`(?s)/\*.*?\*/|<!--.*?-->|(^|[^:"'\\])//[^\n]*`)

@@ -34,10 +34,12 @@ function reconnecting(path, name, setup) {
     ws = new WebSocket(`${scheme}//${location.host}${path}`);
     setup(ws);
     ws.addEventListener('open', () => {
-      delay = 500;
       socketUp[name] = true;
       showBanner();
     });
+    // The wait starts again only once the server has said something, so one that takes the
+    // connection and drops it at once isn't asked twice a second forever.
+    ws.addEventListener('message', () => { delay = 500; }, { once: true });
     ws.addEventListener('close', (e) => {
       if (e.reason) console.info(`${path} closed: ${e.reason}`);
       socketUp[name] = false;
@@ -194,14 +196,19 @@ for (const button of document.querySelectorAll('.keys button')) {
     sendKeys(keyBytes(button.dataset.key));
     term.focus();
   };
-  // Acting on pointerdown, and cancelling it, keeps the focus, and so the on-screen keyboard,
-  // on the terminal.
+  // Cancelling pointerdown keeps the focus, and so the on-screen keyboard, on the terminal.
+  // The key goes on pointerup, so a sideways swipe that scrolls the row (and so cancels the
+  // pointer) sends nothing.
   button.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     button.classList.add('pressed');
+  });
+  button.addEventListener('pointerup', () => {
+    if (!button.classList.contains('pressed')) return;
+    button.classList.remove('pressed');
     press();
   });
-  for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
+  for (const type of ['pointercancel', 'pointerleave']) {
     button.addEventListener(type, () => button.classList.remove('pressed'));
   }
   button.addEventListener('mousedown', (e) => e.preventDefault());
@@ -217,6 +224,7 @@ let state = { connected: false, buttons: [] };
 let devWS = null;
 let pictureURL = null;
 let shownKey = '';
+let lastBoard = '';
 
 function applyState(s) {
   state = s;
@@ -237,19 +245,22 @@ function applyState(s) {
 function describe() {
   const s = state;
   statusEl.textContent = '';
+  if (s.board) lastBoard = s.board;
+  // Without an app, the overlay on the panel says why, and the line keeps only the board.
   if (!s.connected) {
-    statusEl.textContent = 'No app running';
+    statusEl.textContent = lastBoard;
     return;
   }
-  const power = s.power === 'download' ? 'on' : (s.power || 'on');
-  statusEl.append(`${s.board || 'board'} · ${power} · ${s.fps ?? 0} fps`);
-  for (const [on, text] of [[s.power === 'download', 'download mode'], [s.crashed, 'crashed']]) {
-    if (!on) continue;
-    const alert = document.createElement('span');
-    alert.className = 'alert';
-    alert.textContent = text;
-    statusEl.append(' · ', alert);
-  }
+  const alert = (text) => {
+    const span = document.createElement('span');
+    span.className = 'alert';
+    span.textContent = text;
+    return span;
+  };
+  statusEl.append(`${s.board} · `);
+  statusEl.append(s.power === 'download' ? alert('download mode') : (s.power || 'on'));
+  statusEl.append(` · ${s.fps ?? 0} fps`);
+  if (s.crashed) statusEl.append(' · ', alert('crashed'));
 }
 
 function showPicture(blob, ws) {

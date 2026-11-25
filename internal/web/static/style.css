@@ -114,6 +114,10 @@ button {
 
 #term .xterm-viewport { overscroll-behavior: none; }
 
+/* iOS Safari zooms the page into a focused field under 16px. The field is invisible, so its
+   size changes nothing on screen. */
+.xterm .xterm-helper-textarea { font-size: 16px; }
+
 .term-overlay {
   position: absolute;
   inset: 0;
@@ -165,7 +169,7 @@ button {
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  touch-action: none;
+  touch-action: pan-x; /* the row scrolls sideways on a narrow screen */
 }
 
 .keys button.arrow { font-size: 19px; }
@@ -194,6 +198,7 @@ button {
 
 .status {
   margin: 0;
+  min-height: 1.35em;
   max-width: 100%;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
