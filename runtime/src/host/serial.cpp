@@ -304,6 +304,50 @@ void Outbox::push_trace(std::string line) {
   ready_.notify_one();
 }
 
+void Outbox::push_audio(const int16_t* samples, size_t frames, int channels) {
+  const size_t frame_bytes = sizeof(int16_t) * static_cast<size_t>(channels);
+  if (frames == 0 || frame_bytes == 0) return;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closed_) return;
+    const size_t size = frames * frame_bytes;
+    items_.push_back({std::string(reinterpret_cast<const char*>(samples), size), Kind::Audio,
+                      frame_bytes});
+    audio_bytes_ += size;
+    ++audio_items_;
+    forget(-1);
+    // The oldest frames go first, whole writes while they can, then the front of the
+    // oldest write left.
+    for (auto it = items_.begin(); audio_bytes_ > audio_limit_ && it != items_.end();) {
+      if (it->kind != Kind::Audio) {
+        ++it;
+        continue;
+      }
+      const size_t over = audio_bytes_ - audio_limit_;
+      const size_t cut = (over + it->frame_bytes - 1) / it->frame_bytes * it->frame_bytes;
+      if (cut < it->bytes.size()) {
+        it->bytes.erase(0, cut);
+        audio_bytes_ -= cut;
+        audio_dropped_ += cut / it->frame_bytes;
+        break;
+      }
+      audio_bytes_ -= it->bytes.size();
+      audio_dropped_ += it->bytes.size() / it->frame_bytes;
+      --audio_items_;
+      it = items_.erase(it);
+      forget(1);
+    }
+  }
+  ready_.notify_one();
+}
+
+void Outbox::push_audio_event(std::string line) { push_message(std::move(line)); }
+
+void Outbox::set_audio_limit(size_t bytes) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  audio_limit_ = bytes;
+}
+
 void Outbox::push_frame(uint64_t frame) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -331,11 +375,22 @@ void Outbox::let_go() {
 bool Outbox::pop(std::string* line) {
   std::unique_lock<std::mutex> lock(mutex_);
   ready_.wait(lock, [this] {
-    return closed_ || (!held_ && (!items_.empty() || dropped_ > 0 || frame_waiting_));
+    return closed_ ||
+           (!held_ && (!items_.empty() || dropped_ > 0 || audio_dropped_ > 0 || frame_waiting_));
   });
   if (dropped_ > 0) {
     *line = "{\"event\":\"dropped\",\"bytes\":" + std::to_string(dropped_) + "}\n";
     dropped_ = 0;
+    forget(-1);
+    in_flight_ = 1;
+    return true;
+  }
+  // Told just before the next sound, so a listener knows where the gap is.
+  if (audio_dropped_ > 0 &&
+      (items_.empty() || items_.front().kind == Kind::Audio || audio_items_ == 0)) {
+    *line = "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":" +
+            std::to_string(audio_dropped_) + "}\n";
+    audio_dropped_ = 0;
     forget(-1);
     in_flight_ = 1;
     return true;
@@ -354,6 +409,11 @@ bool Outbox::pop(std::string* line) {
     serial_bytes_ -= item.bytes.size();
     lock.unlock();
     *line = "{\"event\":\"serial\",\"data\":\"" + base64(item.bytes.data(), item.bytes.size()) + "\"}\n";
+  } else if (item.kind == Kind::Audio) {
+    audio_bytes_ -= item.bytes.size();
+    --audio_items_;
+    lock.unlock();
+    *line = "{\"event\":\"audio\",\"data\":\"" + base64(item.bytes.data(), item.bytes.size()) + "\"}\n";
   } else {
     (item.kind == Kind::Trace ? trace_bytes_ : message_bytes_) -= item.bytes.size();
     lock.unlock();
@@ -383,6 +443,9 @@ void Outbox::abandon() {
     closed_ = true;
     items_.clear();
     dropped_ = 0;
+    audio_dropped_ = 0;
+    audio_bytes_ = 0;
+    audio_items_ = 0;
     frame_waiting_ = false;
     serial_bytes_ = 0;
     trace_bytes_ = 0;

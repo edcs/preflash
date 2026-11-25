@@ -16,11 +16,14 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
+#include "bsp/audio.h"
 #include "freertos/task.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "host/window.h"
+#include "preflash/audio.h"
 #include "preflash/board.h"
 #include "preflash/buttons.h"
 #include "preflash/bus.h"
@@ -628,6 +631,123 @@ TEST_F(SocketServe, SubscribeKnowsOnlyItsStreams) {
   EXPECT_EQ(client.call({{"op", "subscribe"}, {"streams", {"serial"}}})["ok"], true);
   // Asking twice doesn't replay twice.
   EXPECT_EQ(client.call({{"op", "subscribe"}, {"streams", {"serial"}}})["ok"], true);
+  EXPECT_EQ(client.call({{"op", "subscribe"}, {"streams", {"audio"}}})["ok"], true);
+  EXPECT_EQ(client.call({{"op", "subscribe"}, {"streams", {"audio"}}})["ok"], true);
+}
+
+namespace {
+
+std::vector<int16_t> decode_samples(const std::string& text) {
+  const std::string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string bytes;
+  unsigned bits = 0;
+  int have = 0;
+  for (const char ch : text) {
+    if (ch == '=') break;
+    bits = (bits << 6) | static_cast<unsigned>(alphabet.find(ch));
+    have += 6;
+    if (have >= 8) {
+      have -= 8;
+      bytes += static_cast<char>((bits >> have) & 0xff);
+    }
+  }
+  std::vector<int16_t> samples(bytes.size() / sizeof(int16_t));
+  std::memcpy(samples.data(), bytes.data(), samples.size() * sizeof(int16_t));
+  return samples;
+}
+
+esp_codec_dev_sample_info_t sound_format(uint32_t rate, uint8_t channels) {
+  esp_codec_dev_sample_info_t fs = {};
+  fs.sample_rate = rate;
+  fs.channel = channels;
+  fs.bits_per_sample = 16;
+  return fs;
+}
+
+}  // namespace
+
+TEST_F(SocketServe, AudioSubscriberHearsFormatSamplesAndStop) {
+  esp_codec_dev_handle_t speaker = bsp_audio_codec_speaker_init();
+  esp_codec_dev_close(speaker);
+  Client client(path());
+  ASSERT_EQ(client.call({{"op", "subscribe"}, {"streams", {"audio"}}})["ok"], true);
+  auto fs = sound_format(16000, 2);
+  ASSERT_EQ(esp_codec_dev_open(speaker, &fs), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(320);  // 10 ms of stereo
+  for (size_t i = 0; i < pcm.size(); ++i) pcm[i] = static_cast<int16_t>(i * 37 - 5000);
+  ASSERT_EQ(esp_codec_dev_write(speaker, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  ASSERT_EQ(esp_codec_dev_close(speaker), ESP_CODEC_DEV_OK);
+
+  const json format = client.read_line();
+  EXPECT_EQ(format, json({{"event", "audio_format"}, {"rate", 16000}, {"channels", 2}}));
+  const json sound = client.read_line();
+  ASSERT_EQ(sound["event"], "audio");
+  EXPECT_EQ(decode_samples(sound["data"]), pcm);
+  EXPECT_EQ(client.read_line(), json({{"event", "audio_stop"}}));
+
+  // Subscribing while the codec is open starts with its format.
+  ASSERT_EQ(esp_codec_dev_open(speaker, &fs), ESP_CODEC_DEV_OK);
+  Client late(path());
+  ASSERT_EQ(late.call({{"op", "subscribe"}, {"streams", {"audio"}}})["ok"], true);
+  EXPECT_EQ(late.read_line(), json({{"event", "audio_format"}, {"rate", 16000}, {"channels", 2}}));
+  ASSERT_EQ(esp_codec_dev_close(speaker), ESP_CODEC_DEV_OK);
+}
+
+// Sound written after a listener hangs up reaches no one, and costs nothing.
+TEST_F(SocketServe, AnAudioSubscriberThatHangsUpIsForgotten) {
+  esp_codec_dev_handle_t speaker = bsp_audio_codec_speaker_init();
+  esp_codec_dev_close(speaker);
+  {
+    Client client(path());
+    ASSERT_EQ(client.call({{"op", "subscribe"}, {"streams", {"audio"}}})["ok"], true);
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  auto fs = sound_format(16000, 1);
+  ASSERT_EQ(esp_codec_dev_open(speaker, &fs), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(160);
+  EXPECT_EQ(esp_codec_dev_write(speaker, pcm.data(), static_cast<int>(pcm.size() * 2)),
+            ESP_CODEC_DEV_OK);
+  EXPECT_EQ(esp_codec_dev_close(speaker), ESP_CODEC_DEV_OK);
+  Client other(path());
+  EXPECT_EQ(other.call({{"op", "status"}})["ok"], true);
+}
+
+// Firmware's sound takes its own time, however far behind a listener falls: the listener
+// loses its oldest sound and hears how much.
+TEST_F(SocketServe, AStalledAudioSubscriberDoesNotSlowTheCodec) {
+  using Clock = std::chrono::steady_clock;
+  esp_codec_dev_handle_t speaker = bsp_audio_codec_speaker_init();
+  esp_codec_dev_close(speaker);
+  Client client(path());
+  // Replies the client doesn't read fill the socket, so the server's writer is stuck.
+  for (int i = 0; i < 400; ++i) client.send_raw("{\"op\":\"frame\",\"id\":-1}\n");
+  client.send_raw("{\"op\":\"subscribe\",\"id\":-2,\"streams\":[\"audio\"]}\n");
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  auto fs = sound_format(48000, 2);
+  ASSERT_EQ(esp_codec_dev_open(speaker, &fs), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(48000);  // 500 ms of stereo
+  for (int i = 0; i < 3; ++i) {
+    const auto start = Clock::now();
+    ASSERT_EQ(esp_codec_dev_write(speaker, pcm.data(), static_cast<int>(pcm.size() * 2)),
+              ESP_CODEC_DEV_OK);
+    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start);
+    EXPECT_GE(took, std::chrono::milliseconds(450));
+    EXPECT_LE(took, std::chrono::milliseconds(550));
+  }
+  ASSERT_EQ(esp_codec_dev_close(speaker), ESP_CODEC_DEV_OK);
+  json line;
+  do {
+    line = client.read_line();
+    ASSERT_TRUE(line.is_object());
+  } while (line.value("event", "") != "dropped");
+  EXPECT_EQ(line, json({{"event", "dropped"}, {"stream", "audio"}, {"frames", 24000}}));
+  int sounds = 0;
+  for (line = client.read_line(); line.value("event", "") == "audio"; line = client.read_line()) {
+    ++sounds;
+  }
+  EXPECT_EQ(sounds, 2);
+  EXPECT_EQ(line, json({{"event", "audio_stop"}}));
 }
 
 TEST_F(SocketServe, ASubscriberToTheTraceHearsItUnderItsOwnEvent) {

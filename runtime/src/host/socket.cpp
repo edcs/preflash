@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "esp_timer.h"
+#include "preflash/audio.h"
 #include "preflash/board.h"
 #include "preflash/buttons.h"
 #include "preflash/control.h"
@@ -71,15 +72,40 @@ std::atomic<int> g_handling{0};
 // How long a restart waits for them: a tap on another client can take seconds.
 constexpr auto kReplyPatience = std::chrono::milliseconds(500);
 
+// Passes the codec's sound to one client. It runs on firmware's thread under the codec's
+// lock, so it only queues: a client that stops reading loses its oldest sound instead.
+class AudioTap : public audio::Tap {
+ public:
+  explicit AudioTap(serial::Outbox& out) : out_(out) {}
+
+  void format(audio::TapFormat format) override {
+    channels_ = format.channels;
+    out_.set_audio_limit(static_cast<size_t>(format.rate) * static_cast<size_t>(format.channels) *
+                         sizeof(int16_t));
+    out_.push_audio_event("{\"event\":\"audio_format\",\"rate\":" + std::to_string(format.rate) +
+                          ",\"channels\":" + std::to_string(format.channels) + "}");
+  }
+  void samples(const int16_t* data, size_t frames) override {
+    out_.push_audio(data, frames, channels_);
+  }
+  void stop() override { out_.push_audio_event("{\"event\":\"audio_stop\"}"); }
+
+ private:
+  serial::Outbox& out_;
+  int channels_ = 1;  // set by format, which always comes first
+};
+
 struct Connection {
-  explicit Connection(int socket_fd) : fd(socket_fd), out(kSerialQueueBytes) {}
+  explicit Connection(int socket_fd) : fd(socket_fd), out(kSerialQueueBytes), audio_tap(out) {}
   ~Connection() { close(fd); }
 
   int fd;
   serial::Outbox out;
+  AudioTap audio_tap;
   std::optional<int> subscription;
   std::optional<int> trace_subscription;
   std::optional<int> frame_subscription;
+  std::optional<int> audio_subscription;
 };
 
 struct Clients {
@@ -189,7 +215,7 @@ void op_subscribe(Connection& c, const json& request, const json& id) {
     return;
   }
   for (const json& stream : *streams) {
-    if (stream != "serial" && stream != "trace" && stream != "frames") {
+    if (stream != "serial" && stream != "trace" && stream != "frames" && stream != "audio") {
       reply_error(c, id, "unknown stream: " + encode(stream));
       return;
     }
@@ -222,6 +248,10 @@ void op_subscribe(Connection& c, const json& request, const json& id) {
     }
   }
   if (asked_for("frames")) subscribe_to_frames(c);
+  // An open codec says its format at once, which lands after the reply.
+  if (asked_for("audio") && !c.audio_subscription) {
+    c.audio_subscription = audio::add_tap(&c.audio_tap);
+  }
 }
 
 // A path of the state folder's for a trace saved with none given.
@@ -448,6 +478,8 @@ void read_requests(std::shared_ptr<Connection> c) {
   if (c->subscription) serial::unsubscribe(*c->subscription);
   if (c->trace_subscription) trace::unsubscribe(*c->trace_subscription);
   if (c->frame_subscription) panel::unsubscribe_frames(*c->frame_subscription);
+  // Can wait out a write that is pacing, which is fine here and nowhere quicker.
+  if (c->audio_subscription) audio::remove_tap(*c->audio_subscription);
   forget(c);
   c->out.close();
   if (cut_off) {

@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "preflash/serial.h"
 
@@ -153,6 +154,105 @@ TEST(Outbox, UrgentMessagesGoAheadOfWhatIsQueued) {
   box.sent();
   ASSERT_TRUE(box.pop(&line));
   EXPECT_EQ(line, "{\"event\":\"serial\",\"data\":\"YWE=\"}\n");
+  box.sent();
+}
+
+namespace {
+
+std::string audio_line(const std::vector<int16_t>& samples) {
+  return "{\"event\":\"audio\",\"data\":\"" +
+         serial::base64(samples.data(), samples.size() * sizeof(int16_t)) + "\"}\n";
+}
+
+}  // namespace
+
+// A listener that stops reading loses its oldest sound, past a second of it, and hears how
+// many frames went just before the next sound it gets. Replies keep their place.
+TEST(Outbox, AudioPastItsLimitDropsTheOldestAndSaysSo) {
+  serial::Outbox box(1024);
+  box.set_audio_limit(8);  // four mono frames
+  const std::vector<int16_t> a = {1, 2}, b = {3, 4}, c = {5, 6};
+  box.push_audio(a.data(), 2, 1);
+  box.push_message("{\"id\":1}");
+  box.push_audio(b.data(), 2, 1);
+  box.push_audio(c.data(), 2, 1);
+  std::string line;
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"id\":1}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":2}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line(b));
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line(c));
+  box.sent();
+}
+
+// One write longer than the limit keeps its newest frames, whole ones.
+TEST(Outbox, AWriteLongerThanTheAudioLimitKeepsItsNewest) {
+  serial::Outbox box(1024);
+  box.set_audio_limit(8);  // two stereo frames
+  const std::vector<int16_t> samples = {1, 2, 3, 4, 5, 6};
+  box.push_audio(samples.data(), 3, 2);
+  std::string line;
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":1}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line({3, 4, 5, 6}));
+  box.sent();
+}
+
+TEST(Outbox, AudioFormatAndStopAreNeverDropped) {
+  const long before = serial::unsent();
+  {
+    serial::Outbox box(1024);
+    box.set_audio_limit(8);
+    const std::vector<int16_t> a = {1, 2}, b = {3, 4, 5, 6};
+    box.push_audio_event("format one");
+    box.push_audio(a.data(), 2, 1);
+    box.push_audio_event("stop");
+    box.push_audio_event("format two");
+    box.push_audio(b.data(), 4, 1);
+    EXPECT_EQ(serial::unsent(), before + 4);
+    const std::vector<std::string> want = {
+        "format one\n", "stop\n", "format two\n",
+        "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":2}\n", audio_line(b)};
+    for (const std::string& expected : want) {
+      std::string line;
+      ASSERT_TRUE(box.pop(&line));
+      EXPECT_EQ(line, expected);
+      box.sent();
+    }
+    EXPECT_EQ(serial::unsent(), before);
+  }
+  EXPECT_EQ(serial::unsent(), before);
+}
+
+// What fell off a full serial queue is still told as bytes, with no stream named.
+TEST(Outbox, SerialAndAudioAreDroppedApart) {
+  serial::Outbox box(2);
+  box.set_audio_limit(2);
+  const std::vector<int16_t> a = {1}, b = {2};
+  box.push_serial("aa", 2);
+  box.push_serial("bb", 2);
+  box.push_audio(a.data(), 1, 1);
+  box.push_audio(b.data(), 1, 1);
+  std::string line;
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"dropped\",\"bytes\":2}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"serial\",\"data\":\"YmI=\"}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, "{\"event\":\"dropped\",\"stream\":\"audio\",\"frames\":1}\n");
+  box.sent();
+  ASSERT_TRUE(box.pop(&line));
+  EXPECT_EQ(line, audio_line(b));
   box.sent();
 }
 

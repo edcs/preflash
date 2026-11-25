@@ -53,6 +53,16 @@ class Outbox {
   // slow client's backlog.
   void push_urgent(std::string line);
 
+  // Sound, as 16-bit interleaved samples, with a limit of its own in bytes: past it the
+  // oldest frames go, and one dropped event with how many goes out before the next sound.
+  // Never waits on the client.
+  void push_audio(const int16_t* samples, size_t frames, int channels);
+  // An event about the sound, such as its format or its end, kept in order with the
+  // samples and never dropped.
+  void push_audio_event(std::string line);
+  // The most sound kept, in bytes. The socket keeps a second of what is open.
+  void set_audio_limit(size_t bytes);
+
   // While held, pop gives nothing, so a request can queue its reply and what follows from it
   // before the client hears either. Closing lets go too.
   void hold();
@@ -72,10 +82,11 @@ class Outbox {
   size_t message_bytes();
 
  private:
-  enum class Kind { Message, Serial, Trace };
+  enum class Kind { Message, Serial, Trace, Audio };
   struct Item {
     std::string bytes;
     Kind kind;
+    size_t frame_bytes = 0;  // for audio
   };
   void forget(long items);
 
@@ -87,6 +98,10 @@ class Outbox {
   size_t trace_bytes_ = 0;
   size_t message_bytes_ = 0;
   size_t dropped_ = 0;
+  size_t audio_limit_ = 48000 * 2 * sizeof(int16_t);
+  size_t audio_bytes_ = 0;
+  size_t audio_items_ = 0;
+  size_t audio_dropped_ = 0;  // frames
   bool frame_waiting_ = false;
   uint64_t frame_ = 0;
   long unsent_ = 0;
