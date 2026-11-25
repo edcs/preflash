@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"log"
 	"slices"
 	"sync"
 	"time"
@@ -20,8 +21,9 @@ const (
 	packetLead = 200 * time.Millisecond
 	// packetTime is the sound in one packet.
 	packetTime = 20 * time.Millisecond
-	// sendQueue is how many messages the relay holds for pacing before it stops reading the
-	// socket, which then drops the oldest sound for it.
+	// sendQueue is how many queued messages stop the relay reading the next event, so the
+	// socket drops the oldest sound for it instead. It gates reading only: one long write is
+	// queued whole, however many packets it makes.
 	sendQueue = 512
 )
 
@@ -193,22 +195,20 @@ type pump struct {
 
 	inBurst    bool
 	burstStart time.Time
-	burstIn    int64 // frames received in this burst, at the codec's rate
-	burstOut   int   // packets made in this burst
+	burstIn    int64     // frames received in this burst, at the codec's rate
+	burstOut   int       // packets made in this burst
+	lastAt     time.Time // when the latest samples arrived
+	encodeErr  bool      // an encode error has been logged
 	queue      []queued
 }
 
-// run handles events and sends queued messages on time, until events closes and the queue
-// has gone out, or ctx ends.
+// run handles events and sends queued messages on time, until events closes or ctx ends.
 func (p *pump) run(ctx context.Context, events <-chan arrival) {
 	defer p.closeCodec()
 	timer := time.NewTimer(time.Hour)
 	defer timer.Stop()
 	for {
 		p.sendDue(time.Now())
-		if events == nil && len(p.queue) == 0 {
-			return
-		}
 		var in <-chan arrival
 		if len(p.queue) < sendQueue {
 			in = events
@@ -230,10 +230,9 @@ func (p *pump) run(ctx context.Context, events <-chan arrival) {
 			return
 		case e, ok := <-in:
 			if !ok {
-				// The app has gone. Send what it left, padded.
-				events = nil
-				p.flush()
-				continue
+				// The app has gone. Its unsent sound goes too, so a restarted app's sound
+				// isn't held up behind it; run tells the tabs to stop.
+				return
 			}
 			p.handle(e)
 		case now := <-tick:
@@ -245,11 +244,17 @@ func (p *pump) run(ctx context.Context, events <-chan arrival) {
 	}
 }
 
-// burstOver is when the current burst counts as over: a gap after its sound would have
-// finished playing. Wall time between writes alone would split one sound written in long
-// writes, each arriving seconds after the last but just as the last runs out.
+// burstOver is when the current burst counts as over: a gap after both the latest samples
+// arrived and the burst's sound would have finished playing. The second keeps one sound
+// written in long writes, each arriving seconds after the last as the last runs out, in one
+// burst. The first keeps an app that runs behind real time, as a headless one sleeping after
+// each write does, from splitting its sound into bursts once it is a gap behind.
 func (p *pump) burstOver() time.Time {
-	return p.burstStart.Add(time.Duration(p.burstIn)*time.Second/time.Duration(p.rate) + burstGap)
+	played := p.burstStart.Add(time.Duration(p.burstIn) * time.Second / time.Duration(p.rate))
+	if p.lastAt.After(played) {
+		played = p.lastAt
+	}
+	return played.Add(burstGap)
 }
 
 // burstEnd is when the current burst counts as over, if a partial packet waits for it.
@@ -269,6 +274,9 @@ func (p *pump) handle(e arrival) {
 		rs := newResampler(f.Rate, f.Channels)
 		enc, err := newOpusEncoder(rs.Channels())
 		if err != nil {
+			// Tabs mustn't keep the old format for sound that can't come.
+			log.Printf("preflash web: no sound: %v", err)
+			p.enqueue(time.Time{}, audioMsg{stop: true})
 			return
 		}
 		p.rs, p.enc, p.rate, p.inCh, p.ch = rs, enc, rs.from, rs.inCh, rs.Channels()
@@ -284,6 +292,7 @@ func (p *pump) handle(e arrival) {
 			p.flush()
 			p.inBurst, p.burstStart, p.burstIn, p.burstOut = true, e.at, 0, 0
 		}
+		p.lastAt = e.at
 		p.burstIn += int64(len(samples) / p.inCh)
 		p.pending = append(p.pending, p.rs.Push(samples)...)
 		frame := opusFrame * p.ch
@@ -320,6 +329,10 @@ func (p *pump) flush() {
 func (p *pump) encode(pcm []int16) {
 	packet, err := p.enc.Encode(pcm)
 	if err != nil {
+		if !p.encodeErr {
+			log.Printf("preflash web: sound lost: %v", err)
+			p.encodeErr = true
+		}
 		return
 	}
 	// Each packet goes no sooner than its place in the burst less the lead; one that is
@@ -416,10 +429,12 @@ func deliver(ch chan audioMsg, m audioMsg) {
 	case oldest >= 0:
 		held = slices.Delete(held, oldest, oldest+1)
 	case m.packet != nil:
-		// Nothing but formats and stops, which can't go, so the new packet does.
+		// Nothing but formats and stops, which can't go, so the new packet does. Unreachable
+		// in practice: a format or stop is at most one per codec open or close.
 		m = audioMsg{}
 	default:
-		held = held[1:] // nothing but formats and stops: the oldest is stale anyway
+		// Nothing but formats and stops, the oldest stale anyway. As unreachable in practice.
+		held = held[1:]
 	}
 	for _, old := range held {
 		ch <- old

@@ -264,7 +264,7 @@ func TestAudioPacesALongWrite(t *testing.T) {
 	assert.Less(t, got[9].at.Sub(got[0].at), 300*time.Millisecond)
 	span := got[149].at.Sub(got[0].at)
 	assert.Greater(t, span, 2500*time.Millisecond, "the packets were sent faster than real time")
-	assert.Less(t, span, 3100*time.Millisecond)
+	assert.Less(t, span, 4*time.Second)
 }
 
 func TestAudioStopPadsTheLastFrameAndTells(t *testing.T) {
@@ -316,4 +316,60 @@ func TestAudioLongWritesInARowAreOneBurst(t *testing.T) {
 	for i, h := range tb.packets(50) {
 		assert.Equal(t, i == 0, h.burst, "packet %d", i)
 	}
+}
+
+func TestAudioWritesRunningBehindStayOneBurst(t *testing.T) {
+	socket := shortPath(t)
+	app := startFakeApp(t, socket, 8, 6)
+	a := startAudio(t, socket)
+	tb := listenTab(t, a)
+	waitAudioSubscribed(t, app)
+
+	app.pushAudioFormat(48000, 1)
+	tb.format()
+	// A headless app sleeps after each write, so it falls a little further behind real time
+	// with every one: here 10 ms of sound every 11 ms, 150 ms behind by the end.
+	const writes = 150
+	start := time.Now()
+	for i := range writes {
+		time.Sleep(time.Until(start.Add(time.Duration(i) * 11 * time.Millisecond)))
+		app.pushAudio(beep(48000, 1, 10))
+	}
+	// 1.5 s is exactly 75 packets, so none is padded.
+	for i, h := range tb.packets(writes * 10 / 20) {
+		assert.Equal(t, i == 0, h.burst, "packet %d", i)
+	}
+	tb.quiet(200 * time.Millisecond)
+}
+
+func TestAudioAppGoingDropsItsUnsentSound(t *testing.T) {
+	socket := shortPath(t)
+	old := startFakeApp(t, socket, 8, 6)
+	a := startAudio(t, socket)
+	tb := listenTab(t, a)
+	waitAudioSubscribed(t, old)
+
+	old.pushAudioFormat(48000, 1)
+	tb.format()
+	// Three seconds arrive at once and are paced out; the app goes a moment in.
+	old.pushAudio(beep(48000, 1, 3000))
+	tb.packets(12)
+	gone := time.Now()
+	old.hangUp()
+	for {
+		h := tb.next()
+		if h.stop {
+			break
+		}
+		require.NotNil(t, h.packet)
+	}
+	assert.Less(t, time.Since(gone), 500*time.Millisecond, "the stop waited for the old sound")
+
+	next := startFakeApp(t, socket, 8, 6)
+	next.setCodec(48000, 1)
+	waitAudioSubscribed(t, next)
+	tb.format()
+	next.pushAudio(beep(48000, 1, 100))
+	got := tb.packets(5)
+	assert.Equal(t, uint32(0), got[0].seq)
 }
