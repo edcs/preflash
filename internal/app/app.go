@@ -836,7 +836,8 @@ func (w *lineWriter) flush() {
 }
 
 // signalName words a signal as macOS does, so the app's death reads the same on either system:
-// Linux calls SIGABRT "aborted" and SIGSEGV "segmentation fault" where macOS says "abort trap".
+// Linux calls SIGABRT "aborted" and SIGTRAP "trace/breakpoint trap" where macOS says "abort
+// trap" and "trace/BPT trap".
 func signalName(signal syscall.Signal) string {
 	switch signal {
 	case syscall.SIGABRT:
