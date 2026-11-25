@@ -233,7 +233,7 @@ func hardwareItems() []client.HardwareItem {
 	return []client.HardwareItem{
 		{Name: "rotation", Title: "Rotation", Applies: "now", Value: "0", Next: "0", Options: option("0", "0°", "90", "90°", "180", "180°", "270", "270°")},
 		{Name: "usb", Title: "USB power", Applies: "now", Value: "plugged", Next: "plugged", Options: option("plugged", "plugged in", "unplugged", "unplugged")},
-		{Name: "wifi", Title: "Wi-Fi", Group: "Network", Applies: "now", Value: "mac", Next: "mac", Options: option("mac", "Mac's connection")},
+		{Name: "wifi", Title: "Wi-Fi", Group: "Network", Applies: "now", Value: "mac", Next: "mac", Options: option("mac", "the computer's connection")},
 		{Name: "internet", Title: "Internet", Group: "Network", Applies: "now", Value: "real", Next: "real", Options: option("real", "real", "offline", "offline")},
 		{Name: "rtc", Title: "RTC", Group: "Break something", Applies: "boot", Value: "healthy", Next: "flat", Options: option("healthy", "healthy", "flat", "flat backup cell")},
 		{Name: "wifi_join", Title: "Wi-Fi join", Group: "Break something", Applies: "now", Value: "succeeds", Next: "succeeds", Options: option("succeeds", "succeeds", "fails", "fails")},
@@ -255,7 +255,7 @@ func TestThePanelShowsTheMockupsCopy(t *testing.T) {
 		t.Errorf("asked for the hardware %d times", f.hardware)
 	}
 	wantScreen(t, m, "Hardware", "Rotation", "0°", "90° 180° 270°", "USB power", "plugged in",
-		"Network", "Wi-Fi", "Mac's connection", "Internet", "real", "Break something", "RTC",
+		"Network", "Wi-Fi", "the computer's connection", "Internet", "real", "Break something", "RTC",
 		"Wi-Fi join", "↑↓ choose", "←→ change", "esc close")
 	fills(t, m, 100, 30)
 	refuseScreen(t, m, "^C quit", "snoozel> ")

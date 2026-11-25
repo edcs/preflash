@@ -117,7 +117,7 @@ void esp_sntp_init(void) {
       preflash::crash::leave_task();
     });
   }
-  ESP_LOGI(kTag, "using the Mac's clock: the system time is left alone");
+  ESP_LOGI(kTag, "using the computer's clock: the system time is left alone");
 }
 
 void esp_sntp_stop(void) {

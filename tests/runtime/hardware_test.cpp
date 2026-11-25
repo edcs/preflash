@@ -99,7 +99,7 @@ TEST_F(Hardware, StartsHealthyWithTheMockupsWords) {
   EXPECT_EQ(item("rotation")["value"], "0");
   EXPECT_EQ(item("usb")["options"][0]["label"], "plugged in");
   EXPECT_EQ(item("battery")["options"][0]["label"], "not fitted");
-  EXPECT_EQ(item("wifi")["options"][0]["label"], "Mac's connection");
+  EXPECT_EQ(item("wifi")["options"][0]["label"], "the computer's connection");
   EXPECT_EQ(item("internet")["options"][0]["label"], "real");
   EXPECT_EQ(item("rtc")["options"][1]["label"], "flat backup cell");
   EXPECT_EQ(item("i2c")["value"], "healthy");

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -21,8 +22,14 @@ import (
 // defaultBoard runs a project that hasn't named one.
 const defaultBoard = "ESP32-S3-Touch-LCD-4B"
 
-// socketPathLimit is the size of a Unix socket's path on macOS, with its final NUL.
-const socketPathLimit = 104
+// socketPathLimit is the size of a Unix socket's path, with its final NUL: 104 bytes on macOS
+// and 108 on Linux.
+var socketPathLimit = func() int {
+	if runtime.GOOS == "darwin" {
+		return 104
+	}
+	return 108
+}()
 
 // longestSocketSuffix ends the longest of the sockets named after SocketPath: the window's,
 // which WindowSocketPath gives, is two bytes longer than ".sock".
@@ -206,15 +213,27 @@ func (p Project) LastCrash() (*crash.Report, error) {
 	return crash.Read(newest)
 }
 
+// CacheDir is the folder for what Preflash can download again and for its sockets: macOS's
+// Library/Caches, or on Linux XDG_CACHE_HOME, which is ~/.cache unless set.
+func CacheDir() string {
+	// Only fails with no HOME, and then a relative folder still works.
+	home, _ := os.UserHomeDir()
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(home, "Library", "Caches", "preflash")
+	}
+	if dir := os.Getenv("XDG_CACHE_HOME"); filepath.IsAbs(dir) {
+		return filepath.Join(dir, "preflash")
+	}
+	return filepath.Join(home, ".cache", "preflash")
+}
+
 // SocketPath is where this checkout's running app listens. It's named by a short hash
 // and sits under the cache folder, or the temporary folder if a long HOME leaves no room
 // there. Nothing checks that it fits: checkSocketPath does that.
 func (p Project) SocketPath() string {
-	// Only fails with no HOME, and then a relative folder still works.
-	home, _ := os.UserHomeDir()
 	sum := sha256.Sum256([]byte(p.Dir))
 	name := hex.EncodeToString(sum[:6]) + ".sock"
-	path := filepath.Join(home, "Library", "Caches", "preflash", name)
+	path := filepath.Join(CacheDir(), name)
 	if socketsFit(path) {
 		return path
 	}
@@ -237,7 +256,7 @@ func (p Project) WindowSocketPath() string {
 // control socket and the window's beside it.
 func (p Project) checkSocketPath() error {
 	if path := p.SocketPath(); !socketsFit(path) {
-		return fmt.Errorf("the socket's path is too long for macOS: %s: use a shorter HOME or TMPDIR", p.WindowSocketPath())
+		return fmt.Errorf("the socket's path is too long: %s: use a shorter HOME or TMPDIR", p.WindowSocketPath())
 	}
 	return nil
 }

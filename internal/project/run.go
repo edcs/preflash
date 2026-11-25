@@ -322,7 +322,11 @@ func (p Project) Build(ctx context.Context, env []string, output io.Writer) erro
 // uses, which can stop libc++ finding its own, so Build starts that folder's cache afresh.
 func toolchainOf(ctx context.Context, env []string) string {
 	var named strings.Builder
-	for _, args := range [][]string{{"cmake", "--version"}, {"xcrun", "--show-sdk-path"}} {
+	commands := [][]string{{"cmake", "--version"}}
+	if runtime.GOOS == "darwin" {
+		commands = append(commands, []string{"xcrun", "--show-sdk-path"})
+	}
+	for _, args := range commands {
 		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 		cmd.Env = env
 		out, _ := cmd.Output()
