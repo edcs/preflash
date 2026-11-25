@@ -150,10 +150,9 @@ cd preflash
 
 ### Build from source
 
-Building needs Go as well:
+Building needs Go as well. On a Mac, run `brew install go`. On Linux, install your distribution's Go package or a release from [go.dev/dl](https://go.dev/dl/). Then build:
 
 ```sh
-brew install go
 go build -o preflash ./cmd/preflash
 export PATH="$PWD:$PATH"
 ```
@@ -200,7 +199,7 @@ preflash run [--project dir] [--board file] [--headless] [--sanitize address|thr
 
 ### The window, buttons and power
 
-The window is a process of its own, `preflash-window`, built beside the app. It stays where it is while the firmware restarts, whether by `esp_restart`, RST, a power change or a crash, and keeps the last frame up until the new boot draws. Power-off and download mode run no firmware, so they black the panel out, and the boot after them starts from black as the board does. Under `preflash run`, closing the window quits the app and quitting the app closes the window. The terminal app keeps the window up while it rebuilds or restarts the app, and closes it when you quit the terminal app. If the window process dies, the app starts a new one. The window writes its errors to a log beside the control socket, `~/Library/Caches/preflash/<hash>.window.log`. If no window stays open, the app stops with `preflash: couldn't open the window: ` and the log's last line. `--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked screen, and buttons, rotation and power still work from the command line and the socket.
+The window is a process of its own, `preflash-window`, built beside the app. It stays where it is while the firmware restarts, whether by `esp_restart`, RST, a power change or a crash, and keeps the last frame up until the new boot draws. Power-off and download mode run no firmware, so they black the panel out, and the boot after them starts from black as the board does. Under `preflash run`, closing the window quits the app and quitting the app closes the window. The terminal app keeps the window up while it rebuilds or restarts the app, and closes it when you quit the terminal app. If the window process dies, the app starts a new one. The window writes its errors to a log beside the control socket, `~/Library/Caches/preflash/<hash>.window.log` (`~/.cache/preflash/<hash>.window.log` on Linux, or under `$XDG_CACHE_HOME` if you set it). If no window stays open, the app stops with `preflash: couldn't open the window: ` and the log's last line. `--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked screen, and buttons, rotation and power still work from the command line and the socket.
 
 The title bar shows the project's name. Under it, a strip holds the board's buttons on the left and the rotate button on the right, and a status bar under the panel shows the board's full name and how far it's turned. A narrow panel, such as the 3.49 V2's, sits centred on black in a window at least 250 points wide. Hovering a button shows what it's wired to in the status bar.
 
@@ -449,7 +448,7 @@ Firmware that writes the AXP2101's soft power-off bit switches the board off, an
 
 Preflash catches a segfault, a bus error, an illegal instruction, an arithmetic fault, a trap and an abort, including `abort()`, a failed `ESP_ERROR_CHECK`, `esp_system_abort`, a watchdog panic and a call Preflash doesn't implement. The failed check prints as it does on a device.
 
-The app saves a report to `crash.json` in the build folder and prints a line on the serial stream. `preflash crash` turns the report into a title, a source line and a call stack, using `dsymutil` and `atos`. The first look at a crash takes a few seconds, while `dsymutil` gathers the debug information. After `preflash send crash null`, which runs the demo's [`mishaps.cpp`](examples/demo/main/mishaps.cpp):
+The app saves a report to `crash.json` in the build folder and prints a line on the serial stream. `preflash crash` turns the report into a title, a source line and a call stack. On macOS it uses `dsymutil` and `atos`, and the first look at a crash takes a few seconds while `dsymutil` gathers the debug information. On Linux it uses `addr2line`. After `preflash send crash null`, which runs the demo's [`mishaps.cpp`](examples/demo/main/mishaps.cpp):
 
 ```text
 $ preflash crash
