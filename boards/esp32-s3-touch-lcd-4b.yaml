@@ -19,3 +19,10 @@ backlight:
   active_low: true
 audio_codec: es8311
 power_amp: exio3
+# Buttons, in strip order, from Waveshare's ESP32-S3-Touch-LCD-4B.pdf schematic (the file
+# on the board's wiki page, dated 2025-08-07, which carries no revision mark): Key3 "PWR"
+# goes to the AXP2101's PWRON, Key1 "BOOT" to IO0, and Key2 to the module's EN (RESET).
+buttons:
+  - {name: PWR, axp2101: pwrkey}
+  - {name: BOOT, gpio: gpio0, active_low: true}
+  - {name: RST, reset: en}

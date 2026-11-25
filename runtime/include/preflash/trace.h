@@ -16,7 +16,7 @@
 // then each hook below costs the one relaxed load in on().
 namespace preflash::trace {
 
-enum class Stream : uint8_t { I2c, Gpio, Task, Nvs, Net };
+enum class Stream : uint8_t { I2c, Gpio, Task, Nvs, Net, Button };
 
 struct Record {
   uint64_t seq;   // counts every record of this boot, so a gap shows some were lost

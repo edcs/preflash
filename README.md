@@ -179,6 +179,8 @@ The window is a process of its own, `preflash-window`, built beside the app. It 
 
 The title bar shows the project's name. Under it, a strip holds the board's buttons on the left and the rotate button on the right, and a status bar under the panel shows the board's full name and how far it's turned. A narrow panel, such as the 3.49 V2's, sits centred on black in a window at least 250 points wide. Hovering a button shows what it's wired to in the status bar.
 
+A board button goes down when you press the mouse on it and comes up when you let go, or when the pointer leaves it. A held button shows filled, whether you hold it or a script does. BOOT, and PWR on a board without a power chip, move the pin the real button moves, so firmware reads them as it would on the device and Preflash adds nothing. Firmware that reads a key by interrupt sees the press too: `gpio_install_isr_service`, `gpio_isr_handler_add`, `gpio_intr_enable` and `gpio_set_intr_type` work with every edge and level type, and the handler runs on a thread that stands in for the ISR. A level type fires once as the pin enters its level, not for as long as it stays there, and also once when it's armed (`gpio_intr_enable` or `gpio_isr_handler_add`) while the pin is already at its level, so a key held through a restart still reaches the new boot. `gpio_isr_register` stops the firmware as unsupported. A button held while the firmware restarts is still held when it boots again, so holding BOOT through a restart reaches the new boot. The mouse and scripts hold buttons separately: a button stays down until everyone holding it lets go, so a script's `tap` doesn't release a button you're holding. A rebuild in the terminal app starts a new app, which lets go of what scripts held and keeps what the mouse holds. PWR on the AXP2101 and RST show as held but do nothing more yet.
+
 The rotate button and ⌘→ turn the board a quarter clockwise, and ⌘← turns it back. The window turns with it: it swaps between portrait and landscape and draws the panel's picture turned the same way, so firmware that ignores the motion sensor shows sideways. A click lands on the panel pixel under the pointer however it's turned, and the strip and status bar stay upright. This is the `rotation` [hardware setting](#break-the-hardware), so it lasts through restarts, and boards with no motion sensor can turn too. `shot`, `touch` and the frames stream keep the panel's own orientation and coordinates.
 
 `--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked Mac.
@@ -268,14 +270,15 @@ A running app listens on a private Unix socket, and the `preflash` command talks
 | Command | What it does |
 | --- | --- |
 | `preflash send <line...>` | Sends a line to the firmware's console and returns without waiting for it to run. Put `--project` before the line |
-| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, rotation (LVGL's), board rotation (the way the board is turned), frames, fps, Wi-Fi state and serial port |
+| `preflash status [--json]` | Shows the project, board, pid, uptime, backlight, rotation (LVGL's), board rotation (the way the board is turned), the board's buttons and which are down, frames, fps, Wi-Fi state and serial port |
 | `preflash serial` | Prints the serial stream, starting with what this boot has kept (up to 256 KiB), and follows it through restarts until the app stops |
 | `preflash port` | Prints the virtual serial port's path |
 | `preflash shot <file.png\|file.bmp>` | Saves what the panel shows |
 | `preflash touch x y [ms]` | Presses the panel, in the panel's own coordinates, and returns after the release |
-| `preflash trace [--stream x] [--json]` | Prints what firmware does to the hardware, starting with what the app has kept, and follows it through restarts. `x` is `i2c`, `gpio`, `task`, `nvs` or `net` |
+| `preflash trace [--stream x] [--json]` | Prints what firmware does to the hardware, starting with what the app has kept, and follows it through restarts. `x` is `i2c`, `gpio`, `task`, `nvs`, `net` or `button` |
 | `preflash trace --save file` | Saves what the app has kept as JSON lines |
 | `preflash hardware [name value] [--json]` | Shows the board's physical state and forced failures, or changes one |
+| `preflash hardware button <name> press\|release\|tap [ms]` | Presses one of the board's buttons, such as `BOOT`, lets go of it, or taps it: presses, waits `ms` (100 unless given) and lets go, so `tap 3000` is a three-second hold. `press` holds it until a `release`. The trace's `button` stream shows each press beside what the firmware did |
 | `preflash quit` | Stops the app and returns once it has gone |
 | `preflash crash [--json]` | Prints the last crash report |
 | `preflash bench [--board file]` | Times a clean build, a rebuild, the boot, the frame rate, the socket and the serial stream on a copy of the project |
@@ -447,6 +450,9 @@ A few keys cover wiring that differs between boards. The stock `ESP32-S3-Touch-L
 | `i2c[].bus` | The `i2c_port` a chip sits on, 0 by default. Firmware on the other bus gets no answer |
 | `backlight.enable` | What cuts the backlight when low: a pin, `gpio43`, or a TCA9554 bit, `exio1` |
 | `power_amp` | The expander bit behind `BSP_POWER_AMP_IO`, such as `exio3` |
+| `buttons` | The board's hardware buttons, in the order the window's button strip shows them. Each has a `name` and one of `gpio: gpio0` or `expander: tca9554.3` (both with `active_low`), `axp2101: pwrkey`, `reset: en`, or `power: {key: gpio16, active_low: true, hold: tca9554.6}` |
+
+The stock boards list the buttons their schematics show, and the window names each one with where it connects. A list under `changes` replaces the stock one. A button on `axp2101` needs an `axp2101` chip under `i2c`, and names must be unique. Press them in the window or with [`preflash hardware button`](#drive-it-from-a-script).
 
 A channel set up with `ledc_channel_config` on the backlight pin sets the brightness, so firmware dims the panel through LEDC as it would on the board. On a stock 3.49 V2 the window shows the bare portrait panel, so firmware that draws in landscape appears on its side. `esp_lcd_new_panel_axs15231b` is the one panel driver Preflash has, and any other stops the build at the missing call. The demo's [`board_349.cpp`](examples/demo/main/board_349.cpp) drives that panel with no BSP, and [`board_4b.cpp`](examples/demo/main/board_4b.cpp) goes through the board package.
 
@@ -479,7 +485,7 @@ If your firmware stops on a call Preflash doesn't implement, that call needs a s
 `make test` can't do these, so try them yourself with the demo:
 
 - **A mouse click in the window.** The tests press the panel through the socket. Click a tile with a real mouse and watch the page open.
-- **The window's strip, status bar and turning.** The tests check the layout and the turned picture without a screen. Run the demo on both boards and check the strip and status bar, every turn with the rotate button, ⌘→ and ⌘←, that a click lands on the pixel under the pointer when turned, and the status bar wrapping the 3.49 V2's long name.
+- **The window's strip, status bar and turning.** The tests check the layout and the turned picture without a screen. Run the demo on both boards and check the strip and status bar, that a button shows filled while the mouse holds it and while `preflash hardware button BOOT press` does, every turn with the rotate button, ⌘→ and ⌘←, that a click lands on the pixel under the pointer when turned, and the status bar wrapping the 3.49 V2's long name.
 - **The window through a restart.** The tests run the window with SDL's dummy driver. Run the demo, send `restart` and press `^R`, and check the window stays put with its last frame until the new boot draws.
 - **The audible chime.** The tests count the sample frames firmware writes. Press the Beep shortcut and listen.
 - **The debug and crash screens with a window open.** The tests run these screens headless. Run the demo with a window, press `^D`, then send `crash null`.

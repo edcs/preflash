@@ -20,7 +20,10 @@
 #include "freertos/task.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "host/window.h"
 #include "preflash/board.h"
+#include "preflash/buttons.h"
+#include "preflash/bus.h"
 #include "preflash/control.h"
 #include "preflash/hardware.h"
 #include "preflash/panel.h"
@@ -771,4 +774,150 @@ TEST_F(SocketServe, ARequestThenHangingUpOneWayStillGetsItsReply) {
   while ((got = read(fd, chunk, sizeof chunk)) > 0) text.append(chunk, static_cast<size_t>(got));
   close(fd);
   EXPECT_EQ(json::parse(text)["id"], 9);
+}
+
+namespace {
+
+// The stock 4B's three: PWR on the AXP2101, BOOT on GPIO0 and RST on EN.
+preflash::Board board_with_buttons() {
+  return preflash::parse_board(R"({
+    "name": "T", "display": {"width": 16, "height": 8}, "i2c": [],
+    "backlight": {"pin": 4, "active_low": true}, "audio_codec": "none",
+    "buttons": [{"name": "PWR", "kind": "axp2101"},
+                {"name": "BOOT", "kind": "gpio", "pin": 0, "active_low": true},
+                {"name": "RST", "kind": "reset"}]})");
+}
+
+}  // namespace
+
+TEST_F(SocketServe, ListsButtonsAndBoardRotation) {
+  preflash::buttons::load(board_with_buttons());
+  Client client(path());
+  const json reply = client.call({{"op", "status"}});
+  EXPECT_EQ(reply["board_rotation"], preflash::hardware::rotation());
+  const json want = json::array({
+      {{"name", "PWR"}, {"wiring", "AXP2101 PWRON"}, {"down", false}},
+      {{"name", "BOOT"}, {"wiring", "GPIO0, active low"}, {"down", false}},
+      {{"name", "RST"}, {"wiring", "EN"}, {"down", false}},
+  });
+  EXPECT_EQ(reply["buttons"], want);
+  preflash::buttons::load(preflash::Board{});
+}
+
+// The window's press lands where a script's does, so a script sees it held.
+TEST_F(SocketServe, AButtonFromTheWindowShowsInStatus) {
+  preflash::buttons::load(board_with_buttons());
+  preflash::window::handle({{"op", "button"}, {"name", "BOOT"}, {"down", true}});
+  Client client(path());
+  const json reply = client.call({{"op", "status"}});
+  EXPECT_EQ(reply["buttons"][1]["name"], "BOOT");
+  EXPECT_EQ(reply["buttons"][1]["down"], true);
+  EXPECT_FALSE(preflash::gpio_read(0));
+  preflash::window::handle({{"op", "button"}, {"name", "BOOT"}, {"down", false}});
+  EXPECT_TRUE(preflash::gpio_read(0));
+  preflash::buttons::load(preflash::Board{});
+}
+
+// The window says what its mouse holds on each connect, which replaces the window's holds and
+// leaves a script's alone.
+TEST_F(SocketServe, TheWindowsHelloReplacesOnlyTheWindowsHolds) {
+  using preflash::buttons::Owner;
+  preflash::buttons::load(board_with_buttons());
+  ASSERT_EQ(preflash::buttons::set("PWR", true, Owner::Script), "");
+  preflash::window::handle({{"op", "hello"}, {"held", {"BOOT", "NOPE"}}});
+  EXPECT_EQ(preflash::buttons::held_by(Owner::Window), std::vector<std::string>{"BOOT"});
+  EXPECT_EQ(preflash::buttons::held(), (std::vector<std::string>{"PWR", "BOOT"}));
+  EXPECT_FALSE(preflash::gpio_read(0));
+  preflash::buttons::load(preflash::Board{});
+}
+
+// The mouse let go of BOOT while the app restarted, so nobody heard it: the next hello lacks
+// it, and BOOT comes up. The script's PWR stays down.
+TEST_F(SocketServe, AReleaseWhileDisconnectedLetsGoOnTheNextHello) {
+  using preflash::buttons::Owner;
+  preflash::buttons::load(board_with_buttons());
+  preflash::window::handle({{"op", "button"}, {"name", "BOOT"}, {"down", true}});
+  ASSERT_EQ(preflash::buttons::set("PWR", true, Owner::Script), "");
+  setenv("PREFLASH_HELD", preflash::buttons::held_env().c_str(), 1);
+  preflash::buttons::load(board_with_buttons());  // as the restarted app does
+  unsetenv("PREFLASH_HELD");
+  EXPECT_FALSE(preflash::gpio_read(0));
+  preflash::window::handle({{"op", "hello"}, {"held", json::array()}});
+  EXPECT_FALSE(preflash::buttons::down("BOOT"));
+  EXPECT_TRUE(preflash::gpio_read(0));
+  EXPECT_TRUE(preflash::buttons::down("PWR"));
+  preflash::buttons::load(preflash::Board{});
+}
+
+// A window that died and came back holds nothing, and says so: a script's hold stays.
+TEST_F(SocketServe, ARespawnedWindowsEmptyHelloLeavesAScriptsHold) {
+  preflash::buttons::load(board_with_buttons());
+  Client client(path());
+  ASSERT_EQ(client.call({{"op", "button"}, {"name", "BOOT"}, {"action", "press"}})["ok"], true);
+  preflash::window::handle({{"op", "hello"}, {"held", json::array()}});
+  EXPECT_TRUE(preflash::buttons::down("BOOT"));
+  EXPECT_FALSE(preflash::gpio_read(0));
+  EXPECT_EQ(client.call({{"op", "status"}})["buttons"][1]["down"], true);
+  preflash::buttons::load(preflash::Board{});
+}
+
+// A script's tap lets go of its own press only, so the window's hold stays.
+TEST_F(SocketServe, ATapLeavesAnotherOwnersHold) {
+  preflash::buttons::load(board_with_buttons());
+  preflash::window::handle({{"op", "button"}, {"name", "BOOT"}, {"down", true}});
+  Client client(path());
+  EXPECT_EQ(client.call({{"op", "button"}, {"name", "BOOT"}, {"action", "tap"}, {"ms", 0}})["ok"],
+            true);
+  EXPECT_TRUE(preflash::buttons::down("BOOT"));
+  EXPECT_FALSE(preflash::gpio_read(0));
+  preflash::window::handle({{"op", "button"}, {"name", "BOOT"}, {"down", false}});
+  EXPECT_TRUE(preflash::gpio_read(0));
+  preflash::buttons::load(preflash::Board{});
+}
+
+TEST_F(SocketServe, TapPressesThenReleases) {
+  preflash::buttons::load(board_with_buttons());
+  Client watcher(path());
+  ASSERT_EQ(watcher.call({{"op", "subscribe"}, {"streams", {"trace"}}})["ok"], true);
+  Client client(path());
+  const json reply = client.call({{"op", "button"}, {"name", "BOOT"}, {"action", "tap"}, {"ms", 50}});
+  EXPECT_EQ(reply["ok"], true);
+  EXPECT_TRUE(preflash::gpio_read(0));
+  std::vector<json> rows;
+  while (rows.size() < 2) {
+    const json row = watcher.read_line();
+    ASSERT_TRUE(row.is_object());
+    if (row.value("stream", "") == "button") rows.push_back(row);
+  }
+  EXPECT_EQ(rows[0]["name"], "BOOT");
+  EXPECT_EQ(rows[0]["down"], true);
+  EXPECT_EQ(rows[1]["name"], "BOOT");
+  EXPECT_EQ(rows[1]["down"], false);
+  EXPECT_GE(rows[1]["us"].get<int64_t>() - rows[0]["us"].get<int64_t>(), 50000);
+  preflash::buttons::load(preflash::Board{});
+}
+
+TEST_F(SocketServe, PressAndReleaseHoldUntilLetGo) {
+  preflash::buttons::load(board_with_buttons());
+  Client client(path());
+  EXPECT_EQ(client.call({{"op", "button"}, {"name", "BOOT"}, {"action", "press"}})["ok"], true);
+  EXPECT_FALSE(preflash::gpio_read(0));
+  EXPECT_EQ(client.call({{"op", "status"}})["buttons"][1]["down"], true);
+  EXPECT_EQ(client.call({{"op", "button"}, {"name", "BOOT"}, {"action", "release"}})["ok"], true);
+  EXPECT_TRUE(preflash::gpio_read(0));
+  const json bad = client.call({{"op", "button"}, {"name", "BOOT"}, {"action", "wiggle"}});
+  EXPECT_EQ(bad["ok"], false);
+  EXPECT_EQ(bad["error"], "button needs a name and an action: press, release or tap");
+  EXPECT_EQ(client.call({{"op", "button"}, {"name", "BOOT"}, {"action", "tap"}, {"ms", -1}})["ok"],
+            false);
+  preflash::buttons::load(preflash::Board{});
+}
+
+TEST_F(SocketServe, UnknownNameListsTheBoardsButtons) {
+  preflash::buttons::load(board_with_buttons());
+  Client client(path());
+  const json reply = client.call({{"op", "button"}, {"name", "FOO"}, {"action", "press"}});
+  EXPECT_EQ(reply["ok"], false);
+  EXPECT_EQ(reply["error"], "no button named FOO: the board has PWR, BOOT, RST");
+  preflash::buttons::load(preflash::Board{});
 }

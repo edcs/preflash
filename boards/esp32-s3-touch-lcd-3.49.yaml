@@ -15,3 +15,13 @@ backlight:
   pin: gpio42
   active_low: true
   enable: exio1
+# Buttons, in strip order, from "ESP32-S3-Touch-LCD-3.49 V2.pdf" in Waveshare's
+# waveshareteam/ESP32-S3-Touch-LCD-3.49-V2 repository (its title block reads V1.1). Key1 is the
+# power key: it pulls SYS_OUT (IO16, 10K pull-up) low through D3, so it reads active low, and
+# through D4 it turns on Q2, which feeds VSYS from the battery. SYS_EN (EXIO6, the TCA9554's P6)
+# holds Q2 on through T1 once the firmware drives it high. VBUS turns Q1 off, so USB powers the
+# board whatever the hold does. Key2 is BOOT on IO0 and Key3 is RESET on the module's EN.
+buttons:
+  - {name: PWR, power: {key: gpio16, active_low: true, hold: tca9554.6}}
+  - {name: BOOT, gpio: gpio0, active_low: true}
+  - {name: RST, reset: en}

@@ -214,6 +214,7 @@ TEST(Queues, NullHandleAbortsNamingTheCall) {
 
 TEST(Tasks, NullHandleAbortsNamingTheCall) {
   EXPECT_DEATH(xTaskNotifyGive(nullptr), "xTaskNotifyGive");
+  EXPECT_DEATH(vTaskNotifyGiveFromISR(nullptr, nullptr), "vTaskNotifyGiveFromISR");
 }
 
 TEST(Timer, IsMonotonicMicroseconds) {

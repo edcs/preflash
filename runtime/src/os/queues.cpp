@@ -58,6 +58,11 @@ BaseType_t xQueueSend(QueueHandle_t queue, const void* item, TickType_t ticks_to
   return pdTRUE;
 }
 
+BaseType_t xQueueSendFromISR(QueueHandle_t queue, const void* item, BaseType_t* task_woken) {
+  if (task_woken) *task_woken = pdFALSE;  // the host's scheduler has already been told
+  return xQueueSend(queue, item, 0);
+}
+
 BaseType_t xQueueReceive(QueueHandle_t queue, void* item, TickType_t ticks_to_wait) {
   if (!queue) preflash_unsupported("xQueueReceive", "the queue handle is null");
   std::unique_lock<std::mutex> lock(queue->mutex);

@@ -52,6 +52,8 @@ type Board struct {
 	AudioCodec string    `yaml:"audio_codec" json:"audio_codec"`
 	// PowerAmp is the expander bit that switches the speaker amplifier, if there is one.
 	PowerAmp *int `yaml:"-" json:"power_amp_bit,omitempty"`
+	// Buttons are the board's hardware buttons, in strip order.
+	Buttons []Button `yaml:"-" json:"buttons,omitempty"`
 
 	// Base is the board at the root of the extends chain, if there is one, and Changes
 	// what the chain changed from it, in path order. Neither reaches the runtime.
@@ -60,6 +62,59 @@ type Board struct {
 
 	// Source is the file this came from. A stock board has none.
 	Source string `yaml:"-" json:"-"`
+}
+
+// Button is one hardware button, which does exactly one of what GPIO, Expander, AXP2101,
+// Reset and Power say.
+type Button struct {
+	Name string
+	// GPIO is a soft key on an ESP32 pin, and Expander the same on a TCA9554 input bit.
+	GPIO      *int
+	Expander  *int
+	ActiveLow bool
+	// AXP2101 is "pwrkey", the chip's PWRON key.
+	AXP2101 string
+	// Reset is "en", the chip's EN pin.
+	Reset string
+	// Power is a power key on a board without a power chip.
+	Power *PowerKey
+}
+
+// PowerKey is a power key the firmware reads on Key, and keeps the battery on by driving
+// the hold output, which is a pin (HoldGPIO) or an expander bit (HoldExpander).
+type PowerKey struct {
+	Key          int
+	ActiveLow    bool
+	HoldGPIO     *int
+	HoldExpander *int
+}
+
+// MarshalJSON gives the runtime's form: a kind, and the pin it acts on if it has one.
+func (b Button) MarshalJSON() ([]byte, error) {
+	out := struct {
+		Name       string `json:"name"`
+		Kind       string `json:"kind"`
+		Pin        *int   `json:"pin,omitempty"`
+		ActiveLow  *bool  `json:"active_low,omitempty"`
+		HoldPin    *int   `json:"hold_pin,omitempty"`
+		HoldExpBit *int   `json:"hold_expander_bit,omitempty"`
+	}{Name: b.Name}
+	low := b.ActiveLow
+	switch {
+	case b.GPIO != nil:
+		out.Kind, out.Pin, out.ActiveLow = "gpio", b.GPIO, &low
+	case b.Expander != nil:
+		out.Kind, out.Pin, out.ActiveLow = "expander", b.Expander, &low
+	case b.AXP2101 != "":
+		out.Kind = "axp2101"
+	case b.Reset != "":
+		out.Kind = "reset"
+	case b.Power != nil:
+		key, plow := b.Power.Key, b.Power.ActiveLow
+		out.Kind, out.Pin, out.ActiveLow = "power", &key, &plow
+		out.HoldPin, out.HoldExpBit = b.Power.HoldGPIO, b.Power.HoldExpander
+	}
+	return json.Marshal(out)
 }
 
 // Change is one value a board file sets over the board it extends.
@@ -132,6 +187,10 @@ func load(src source, path string) (Board, error) {
 	if err != nil {
 		return Board{}, fmt.Errorf("%s: %w", path, err)
 	}
+	buttons, err := takeButtons(merged)
+	if err != nil {
+		return Board{}, fmt.Errorf("%s: %w", path, err)
+	}
 	if err := convertPins(merged); err != nil {
 		return Board{}, fmt.Errorf("%s: %w", path, err)
 	}
@@ -151,7 +210,7 @@ func load(src source, path string) (Board, error) {
 	if b.Display.Width <= 0 || b.Display.Height <= 0 {
 		return Board{}, fmt.Errorf("%s: display.width and display.height must be positive", path)
 	}
-	b.Backlight.EnableExpander, b.PowerAmp = enableBit, ampBit
+	b.Backlight.EnableExpander, b.PowerAmp, b.Buttons = enableBit, ampBit, buttons
 	if err := check(&b); err != nil {
 		return Board{}, fmt.Errorf("%s: %w", path, err)
 	}
@@ -203,15 +262,30 @@ func check(b *Board) error {
 	default:
 		return fmt.Errorf("display.byte_order: %q is neither le nor be", b.Display.ByteOrder)
 	}
-	hasExpander := false
+	hasExpander, hasAXP := false, false
 	for i, chip := range b.I2C {
 		if chip.Bus < 0 || chip.Bus > maxI2CBus {
 			return fmt.Errorf("i2c[%d].bus: %d is not a bus, it must be 0 or %d", i, chip.Bus, maxI2CBus)
 		}
 		hasExpander = hasExpander || chip.Chip == "tca9554"
+		hasAXP = hasAXP || chip.Chip == "axp2101"
 	}
 	if b.Backlight.EnableExpander != nil && !hasExpander {
 		return errors.New("backlight.enable: an exio bit needs a tca9554 under i2c")
+	}
+	seen := map[string]bool{}
+	for _, btn := range b.Buttons {
+		if seen[btn.Name] {
+			return fmt.Errorf("buttons: two named %s", btn.Name)
+		}
+		seen[btn.Name] = true
+		if btn.AXP2101 != "" && !hasAXP {
+			return fmt.Errorf("buttons: %s uses axp2101 but the board has no axp2101", btn.Name)
+		}
+		usesExpander := btn.Expander != nil || (btn.Power != nil && btn.Power.HoldExpander != nil)
+		if usesExpander && !hasExpander {
+			return fmt.Errorf("buttons: %s uses a tca9554 but the board has none under i2c", btn.Name)
+		}
 	}
 	return nil
 }
@@ -420,4 +494,142 @@ func convertPins(doc map[string]any) error {
 		bl[key] = n
 	}
 	return nil
+}
+
+var expanderRefPattern = regexp.MustCompile(`^tca9554\.([0-7])$`)
+
+// takeButtons removes the buttons list from the map and reads it.
+func takeButtons(doc map[string]any) ([]Button, error) {
+	raw, present := doc["buttons"]
+	if !present {
+		return nil, nil
+	}
+	delete(doc, "buttons")
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, errors.New("buttons: must be a list")
+	}
+	var out []Button
+	for i, item := range list {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("buttons[%d]: must be a map with a name", i)
+		}
+		btn, err := readButton(i, entry)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, btn)
+	}
+	return out, nil
+}
+
+func readButton(i int, entry map[string]any) (Button, error) {
+	name, _ := entry["name"].(string)
+	if name == "" {
+		return Button{}, fmt.Errorf("buttons[%d].name: is missing", i)
+	}
+	btn := Button{Name: name}
+	kinds := 0
+	for key := range entry {
+		switch key {
+		case "name", "active_low":
+			continue
+		case "gpio", "expander", "axp2101", "reset", "power":
+			kinds++
+		default:
+			return Button{}, fmt.Errorf("buttons: %s has an unknown key %q", name, key)
+		}
+	}
+	if kinds != 1 {
+		return Button{}, fmt.Errorf("buttons: %s needs exactly one of gpio, expander, axp2101, reset or power", name)
+	}
+	needLow := func() error {
+		low, ok := entry["active_low"].(bool)
+		if !ok {
+			return fmt.Errorf("buttons: %s needs active_low: true or false", name)
+		}
+		btn.ActiveLow = low
+		return nil
+	}
+	var err error
+	switch {
+	case entry["gpio"] != nil:
+		var pin int
+		if pin, err = parsePin(name, "gpio", entry["gpio"]); err == nil {
+			btn.GPIO, err = &pin, needLow()
+		}
+	case entry["expander"] != nil:
+		var bit int
+		if bit, err = parseExpanderRef(name, "expander", entry["expander"]); err == nil {
+			btn.Expander, err = &bit, needLow()
+		}
+	case entry["axp2101"] != nil:
+		if entry["axp2101"] != "pwrkey" {
+			err = fmt.Errorf("buttons: %s: axp2101 must be pwrkey", name)
+		}
+		btn.AXP2101 = "pwrkey"
+	case entry["reset"] != nil:
+		if entry["reset"] != "en" {
+			err = fmt.Errorf("buttons: %s: reset must be en", name)
+		}
+		btn.Reset = "en"
+	default:
+		btn.Power, err = readPowerKey(name, entry["power"])
+	}
+	return btn, err
+}
+
+func readPowerKey(name string, raw any) (*PowerKey, error) {
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("buttons: %s: power must be a map with key, active_low and hold", name)
+	}
+	for key := range m {
+		if key != "key" && key != "active_low" && key != "hold" {
+			return nil, fmt.Errorf("buttons: %s: power has an unknown key %q", name, key)
+		}
+	}
+	key, err := parsePin(name, "power.key", m["key"])
+	if err != nil {
+		return nil, err
+	}
+	low, ok := m["active_low"].(bool)
+	if !ok {
+		return nil, fmt.Errorf("buttons: %s needs power.active_low: true or false", name)
+	}
+	p := &PowerKey{Key: key, ActiveLow: low}
+	hold, _ := m["hold"].(string)
+	if g := pinPattern.FindStringSubmatch(hold); g != nil {
+		pin, _ := strconv.Atoi(g[1])
+		p.HoldGPIO = &pin
+	} else if e := expanderRefPattern.FindStringSubmatch(hold); e != nil {
+		bit, _ := strconv.Atoi(e[1])
+		p.HoldExpander = &bit
+	} else {
+		return nil, fmt.Errorf("buttons: %s: power.hold %v is not a pin, write it like gpio5 or tca9554.6", name, m["hold"])
+	}
+	return p, nil
+}
+
+func parsePin(name, field string, v any) (int, error) {
+	s, _ := v.(string)
+	m := pinPattern.FindStringSubmatch(s)
+	if m == nil {
+		return 0, fmt.Errorf("buttons: %s: %s %v is not a pin, write it like gpio4", name, field, v)
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil || n > 48 {
+		return 0, fmt.Errorf("buttons: %s: %s %q is out of range", name, field, s)
+	}
+	return n, nil
+}
+
+func parseExpanderRef(name, field string, v any) (int, error) {
+	s, _ := v.(string)
+	m := expanderRefPattern.FindStringSubmatch(s)
+	if m == nil {
+		return 0, fmt.Errorf("buttons: %s: %s %v is not an expander input, write it like tca9554.3", name, field, v)
+	}
+	return int(m[1][0] - '0'), nil
 }

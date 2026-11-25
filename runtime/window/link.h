@@ -22,8 +22,10 @@ class Link {
   // or the socket can't be made.
   bool listen(const std::string& path, std::string* error);
   // Accepts a waiting app, which replaces any it had, then reads whole lines and passes each
-  // valid message on. Lines that aren't a message are dropped.
-  void poll(std::function<void(const nlohmann::json&)> on_message);
+  // valid message on. Lines that aren't a message are dropped. on_connect runs once a new app
+  // is in, before any of its messages, so that what it sends goes out first.
+  void poll(std::function<void(const nlohmann::json&)> on_message,
+            std::function<void()> on_connect = nullptr);
   // False if no app is connected, or its connection can't take more than it has backed up.
   bool send(const nlohmann::json& message);
   bool connected() const { return client_ >= 0; }

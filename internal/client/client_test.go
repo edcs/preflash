@@ -144,7 +144,7 @@ func TestDialGivesUpOnAListenerThatNeverAnswers(t *testing.T) {
 func TestStatusReadsEveryField(t *testing.T) {
 	path := shortPath(t)
 	startFake(t, path, func(req map[string]any, reply func(string)) {
-		reply(fmt.Sprintf(`{"id":%d,"ok":true,"project":"demo","board":"B","width":480,"height":320,"pid":7,"uptime_ms":1500,"backlight":40,"rotation":90,"board_rotation":180,"frames":12,"fps":3,"wifi":"connected","serial_port":"/tmp/x.tty"}`, int(req["id"].(float64))))
+		reply(fmt.Sprintf(`{"id":%d,"ok":true,"project":"demo","board":"B","width":480,"height":320,"pid":7,"uptime_ms":1500,"backlight":40,"rotation":90,"board_rotation":180,"frames":12,"fps":3,"wifi":"connected","serial_port":"/tmp/x.tty","buttons":[{"name":"PWR","wiring":"AXP2101 PWRON","down":true},{"name":"BOOT","wiring":"GPIO0, active low","down":false}],"power":"on"}`, int(req["id"].(float64))))
 	})
 	c, err := Dial(path)
 	require.NoError(t, err)
@@ -152,7 +152,9 @@ func TestStatusReadsEveryField(t *testing.T) {
 
 	got, err := c.Status()
 	require.NoError(t, err)
-	assert.Equal(t, Status{Project: "demo", Board: "B", Width: 480, Height: 320, PID: 7, UptimeMs: 1500, Backlight: 40, Rotation: 90, BoardRotation: 180, Frames: 12, FPS: 3, WiFi: "connected", SerialPort: "/tmp/x.tty"}, got)
+	assert.Equal(t, Status{Project: "demo", Board: "B", Width: 480, Height: 320, PID: 7, UptimeMs: 1500, Backlight: 40, Rotation: 90, BoardRotation: 180, Frames: 12, FPS: 3, WiFi: "connected", SerialPort: "/tmp/x.tty",
+		Buttons: []ButtonState{{Name: "PWR", Wiring: "AXP2101 PWRON", Down: true}, {Name: "BOOT", Wiring: "GPIO0, active low"}},
+		Power:   "on"}, got)
 }
 
 func TestAnErrorReplyBecomesAnError(t *testing.T) {
@@ -200,6 +202,21 @@ func TestPointerSendsTheOp(t *testing.T) {
 	assert.EqualValues(t, 3, seen[0]["x"])
 	assert.EqualValues(t, 4, seen[0]["y"])
 	assert.Equal(t, true, seen[0]["down"])
+}
+
+func TestButtonSendsTheOp(t *testing.T) {
+	path := shortPath(t)
+	app := startFake(t, path, func(req map[string]any, reply func(string)) { reply(ok(req)) })
+	c, err := Dial(path)
+	require.NoError(t, err)
+	defer c.Close()
+
+	require.NoError(t, c.Button("BOOT", "tap", 50))
+	require.NoError(t, c.Button("PWR", "press", 0))
+	seen := app.seen()
+	require.Len(t, seen, 2)
+	assert.Equal(t, map[string]any{"id": float64(2), "op": "button", "name": "BOOT", "action": "tap", "ms": float64(50)}, seen[0])
+	assert.Equal(t, map[string]any{"id": float64(3), "op": "button", "name": "PWR", "action": "press"}, seen[1])
 }
 
 func TestFrameEventsCarryTheNumber(t *testing.T) {

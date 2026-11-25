@@ -343,14 +343,6 @@ TEST(Gpio, ConfigRejectsAnEmptyMaskAndMissingPins) {
   EXPECT_EQ(gpio_config(nullptr), ESP_ERR_INVALID_ARG);
 }
 
-TEST(GpioDeathTest, ConfigNamesInterruptsItCantRaise) {
-  gpio_config_t config = {};
-  config.pin_bit_mask = 1ULL << GPIO_NUM_12;
-  config.mode = GPIO_MODE_INPUT;
-  config.intr_type = GPIO_INTR_NEGEDGE;
-  EXPECT_DEATH(gpio_config(&config), "gpio_config");
-}
-
 TEST(Gpio, RejectsPinsTheChipDoesntHave) {
   EXPECT_EQ(gpio_set_level(static_cast<gpio_num_t>(22), 1), ESP_ERR_INVALID_ARG);
   EXPECT_EQ(gpio_set_direction(static_cast<gpio_num_t>(49), GPIO_MODE_OUTPUT), ESP_ERR_INVALID_ARG);

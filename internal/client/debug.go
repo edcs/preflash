@@ -5,16 +5,18 @@ import "fmt"
 // TraceRecord is one thing firmware did to the hardware. A gap in Seq means records were
 // lost to a reader that fell behind.
 type TraceRecord struct {
-	Stream   string `json:"stream"` // "i2c", "gpio", "task", "nvs" or "net"
+	Stream   string `json:"stream"` // "i2c", "gpio", "task", "nvs", "net" or "button"
 	Seq      uint64 `json:"seq"`
 	Us       int64  `json:"us"`      // since boot
-	Subject  string `json:"subject"` // an address, a pin, a task, a key, or "wifi" or "http"
+	Subject  string `json:"subject"` // an address, a pin, a task, a key, "wifi", "http" or a button
 	Op       string `json:"op"`
 	Detail   string `json:"detail"`
 	Injected bool   `json:"injected"` // a forced failure caused this
 	Bus      int    `json:"bus"`      // i2c only, like the two below
 	Address  int    `json:"address"`
 	Device   string `json:"device"` // the board's chip at that address, if any
+	Name     string `json:"name"`   // button only, like the one below
+	Down     bool   `json:"down"`
 }
 
 // Time is when the record happened, like the mockup's 04:11.204.

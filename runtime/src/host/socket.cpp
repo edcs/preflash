@@ -29,6 +29,7 @@
 
 #include "esp_timer.h"
 #include "preflash/board.h"
+#include "preflash/buttons.h"
 #include "preflash/control.h"
 #include "preflash/crash.h"
 #include "preflash/hardware.h"
@@ -137,6 +138,7 @@ void op_status(Connection& c, const json&, const json& id) {
             {"backlight", panel::brightness()},
             {"rotation", panel::rotation()},
             {"board_rotation", hardware::rotation()},
+            {"buttons", buttons::describe()},
             {"frames", panel::frames_drawn()},
             {"fps", panel::fps()},
             {"wifi", wifi_state()},
@@ -285,6 +287,33 @@ void op_pointer(Connection& c, const json& request, const json& id) {
   reply_ok(c, id);
 }
 
+// A press, a release, or a press held for ms and then let go, on this client's own thread.
+void op_button(Connection& c, const json& request, const json& id) {
+  constexpr int kDefaultTapMs = 100;
+  const auto name = text_field(request, "name");
+  const auto action = text_field(request, "action");
+  const auto ms = request.contains("ms") ? int_field(request, "ms") : kDefaultTapMs;
+  if (!name || !action || (*action != "press" && *action != "release" && *action != "tap")) {
+    reply_error(c, id, "button needs a name and an action: press, release or tap");
+    return;
+  }
+  if (!ms || *ms < 0) {
+    reply_error(c, id, "a button's ms is 0 or more");
+    return;
+  }
+  // A script's hold, so a tap lets go of its own press and leaves the window's alone.
+  std::string error = buttons::set(*name, *action != "release", buttons::Owner::Script);
+  if (error.empty() && *action == "tap") {
+    std::this_thread::sleep_for(std::chrono::milliseconds(*ms));
+    error = buttons::set(*name, false, buttons::Owner::Script);
+  }
+  if (!error.empty()) {
+    reply_error(c, id, error);
+    return;
+  }
+  reply_ok(c, id);
+}
+
 void op_shot(Connection& c, const json& request, const json& id) {
   const auto path = text_field(request, "path");
   if (!path) {
@@ -332,7 +361,7 @@ const std::map<std::string, Op> kOps = {
     {"hello", op_hello}, {"status", op_status}, {"send", op_send}, {"subscribe", op_subscribe},
     {"frame", op_frame}, {"touch", op_touch},   {"pointer", op_pointer}, {"shot", op_shot},
     {"quit", op_quit},   {"tasks", op_tasks},   {"nvs", op_nvs}, {"trace_save", op_trace_save},
-    {"hardware", op_hardware}, {"hardware_set", op_hardware_set},
+    {"hardware", op_hardware}, {"hardware_set", op_hardware_set}, {"button", op_button},
 };
 
 void handle_line(Connection& c, const std::string& line) {

@@ -46,14 +46,22 @@ I2cBus& i2c_bus(int port = 0);
 struct ExpanderPins {
   uint32_t outputs;  // pins that are outputs
   uint32_t levels;   // what those drive, kept while a pin is an input
+  uint32_t outside;  // what's on each input: high from the pull-ups unless a button pulls it
+  // What firmware reads of every pin: an output's own level, or what's on an input.
+  uint32_t seen() const { return (levels & outputs) | (outside & ~outputs); }
 };
 ExpanderPins expander_pins();
 // Change only the bits in mask.
 void expander_set_outputs(uint32_t mask, uint32_t outputs);
 void expander_set_levels(uint32_t mask, uint32_t levels);
-// As the chip's power-on: every pin an input, every level high.
+// As the chip's power-on: every pin an input, every level high. What's outside the chip, such
+// as a button held down, stays as it is.
 void expander_power_on();
-// What's on the pin. Nothing drives an input here, so the chip's pull-up holds it high.
+// Drives an input from outside the chip, as a button does, like gpio_write for a GPIO. An
+// output pin goes on reading its own level.
+void expander_drive(int bit, bool level);
+// What's on the pin. An input reads high from the chip's pull-up, unless something outside
+// drives it.
 bool expander_level(int bit);
 
 // Whether firmware has started this SPI bus.

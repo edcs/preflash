@@ -66,6 +66,7 @@ const char* stream_name(Stream stream) {
     case Stream::Task: return "task";
     case Stream::Nvs: return "nvs";
     case Stream::Net: return "net";
+    case Stream::Button: return "button";
   }
   return "";
 }
@@ -275,6 +276,10 @@ nlohmann::json to_json(const Record& record) {
     row["bus"] = record.bus;
     row["address"] = record.address;
     row["device"] = device_name(board(), record.bus, record.address);
+  } else if (record.stream == Stream::Button) {
+    // A press or a release of the button the subject names, with its wiring as the detail.
+    row["name"] = record.subject;
+    row["down"] = std::strcmp(record.op, "press") == 0;
   }
   return row;
 }

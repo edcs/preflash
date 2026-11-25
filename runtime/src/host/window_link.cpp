@@ -20,10 +20,12 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
 #include "preflash/board.h"
+#include "preflash/buttons.h"
 #include "preflash/crash.h"
 #include "preflash/hardware.h"
 #include "preflash/panel.h"
@@ -33,10 +35,21 @@
 #include "sdl_audio.h"
 #include "window.h"
 
-namespace preflash::window {
-namespace {
-
 using nlohmann::json;
+
+namespace preflash::window {
+
+json board_message(const Board& b, const std::string& project, const std::string& frame_path) {
+  json buttons = json::array();
+  for (const Button& button : b.buttons) {
+    buttons.push_back({{"name", button.name}, {"wiring", wiring(button)}});
+  }
+  return {{"op", "board"},         {"project", project}, {"board", b.name},
+          {"width", b.width},      {"height", b.height}, {"buttons", buttons},
+          {"frame_path", frame_path}};
+}
+
+namespace {
 using Clock = std::chrono::steady_clock;
 
 // How long a window just started gets to answer.
@@ -68,6 +81,9 @@ int g_quick_failures = 0;
 struct Shown {
   int backlight = -1;
   int rotation = -1;
+  std::vector<std::string> held;
+
+  bool operator==(const Shown&) const = default;
 } g_shown;
 
 std::string from_env(const char* name, const std::string& fallback) {
@@ -188,25 +204,18 @@ bool send(const json& message) {
 
 std::string project_name() { return from_env("PREFLASH_PROJECT", board().name); }
 
-void send_board() {
-  send({{"op", "board"},
-        {"project", project_name()},
-        {"board", board().name},
-        {"width", board().width},
-        {"height", board().height},
-        {"buttons", json::array()},
-        {"frame_path", g_frame_path}});
-}
+void send_board() { send(board_message(board(), project_name(), g_frame_path)); }
 
-// The rotation is the board's, which the window turns by, and not LVGL's.
+// The rotation is the board's, which the window turns by, and not LVGL's. Held buttons are
+// all of them, so the strip shows a script's presses too.
 void send_state(bool always) {
-  const Shown now{panel::brightness(), hardware::rotation()};
-  if (!always && now.backlight == g_shown.backlight && now.rotation == g_shown.rotation) return;
+  const Shown now{panel::brightness(), hardware::rotation(), buttons::held()};
+  if (!always && now == g_shown) return;
   if (send({{"op", "state"},
             {"power", "on"},
             {"backlight", now.backlight},
             {"rotation", now.rotation},
-            {"held", json::array()}})) {
+            {"held", now.held}})) {
     g_shown = now;
   }
 }
@@ -240,11 +249,21 @@ void handle(const json& message) {
   } else if (name == "quit") {
     socket::quit();
   } else if (name == "hello") {
-    // Which buttons the window holds, of which there are none until boards have buttons.
+    // The window's mouse holds, which replace those this app has as the window's: what's gone
+    // was let go while no app heard it, and what's new was pressed then. Scripts' holds stay.
+    // Names this board lacks are the window's last board's, and left out.
     const auto held = message.find("held");
-    if (held != message.end() && held->is_array() && !held->empty()) {
-      std::fprintf(stderr, "preflash: the window holds buttons, which this app can't press\n");
+    if (held == message.end() || !held->is_array()) return;
+    std::vector<std::string> names;
+    for (const json& n : *held) {
+      if (n.is_string()) names.push_back(n.get<std::string>());
     }
+    for (const std::string& was : buttons::held_by(buttons::Owner::Window)) {
+      if (std::find(names.begin(), names.end(), was) == names.end()) {
+        buttons::set(was, false, buttons::Owner::Window);
+      }
+    }
+    for (const std::string& now : names) buttons::set(now, true, buttons::Owner::Window);
   } else if (name == "rotate") {
     const int by = as_int(message, "by");
     if (by != 90 && by != -90) return;
@@ -254,7 +273,15 @@ void handle(const json& message) {
       std::fprintf(stderr, "preflash: couldn't turn the board: %s\n", error.c_str());
     }
   } else if (name == "button") {
-    std::fprintf(stderr, "preflash: the window sent a button, which this app can't press yet\n");
+    const auto button = message.find("name");
+    const auto down = message.find("down");
+    if (button == message.end() || !button->is_string() || down == message.end() ||
+        !down->is_boolean()) {
+      return;
+    }
+    const std::string error =
+        buttons::set(button->get<std::string>(), down->get<bool>(), buttons::Owner::Window);
+    if (!error.empty()) std::fprintf(stderr, "preflash: %s\n", error.c_str());
   }
 }
 

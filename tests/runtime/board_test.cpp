@@ -168,3 +168,70 @@ TEST(Board, BspResolutionComesFromTheBoard) {
   EXPECT_EQ(BSP_LCD_H_RES, preflash::board().width);
   EXPECT_EQ(BSP_LCD_V_RES, preflash::board().height);
 }
+
+namespace {
+
+const char* kButtons = R"({
+  "name": "Test",
+  "display": {"width": 480, "height": 320},
+  "i2c": [],
+  "backlight": {"pin": 4, "active_low": true},
+  "audio_codec": "none",
+  "buttons": [
+    {"name": "BOOT", "kind": "gpio", "pin": 0, "active_low": true},
+    {"name": "X", "kind": "expander", "pin": 3, "active_low": false},
+    {"name": "PWR", "kind": "axp2101"},
+    {"name": "RST", "kind": "reset"},
+    {"name": "P", "kind": "power", "pin": 16, "active_low": true, "hold_expander_bit": 6},
+    {"name": "Q", "kind": "power", "pin": 17, "active_low": false, "hold_pin": 18}
+  ]
+})";
+
+}  // namespace
+
+TEST(Board, ParsesEachButtonKind) {
+  using Kind = preflash::Button::Kind;
+  const preflash::Board b = preflash::parse_board(kButtons);
+  ASSERT_EQ(b.buttons.size(), 6u);
+  EXPECT_EQ(b.buttons[0].name, "BOOT");
+  EXPECT_EQ(b.buttons[0].kind, Kind::Gpio);
+  EXPECT_EQ(b.buttons[0].pin, 0);
+  EXPECT_TRUE(b.buttons[0].active_low);
+  EXPECT_EQ(b.buttons[1].kind, Kind::Expander);
+  EXPECT_EQ(b.buttons[1].pin, 3);
+  EXPECT_FALSE(b.buttons[1].active_low);
+  EXPECT_EQ(b.buttons[2].kind, Kind::Axp2101);
+  EXPECT_EQ(b.buttons[3].kind, Kind::Reset);
+  EXPECT_EQ(b.buttons[4].kind, Kind::Power);
+  EXPECT_EQ(b.buttons[4].pin, 16);
+  EXPECT_FALSE(b.buttons[4].hold_pin.has_value());
+  ASSERT_TRUE(b.buttons[4].hold_expander_bit.has_value());
+  EXPECT_EQ(*b.buttons[4].hold_expander_bit, 6);
+  ASSERT_TRUE(b.buttons[5].hold_pin.has_value());
+  EXPECT_EQ(*b.buttons[5].hold_pin, 18);
+}
+
+TEST(Board, AnUnknownButtonKindNamesIt) {
+  std::string json = kButtons;
+  json.replace(json.find("\"reset\""), 7, "\"nope\"");
+  try {
+    preflash::parse_board(json);
+    FAIL() << "expected a throw";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string(e.what()).find("buttons[3].kind"), std::string::npos) << e.what();
+  }
+}
+
+TEST(Board, NoButtonsIsAnEmptyList) {
+  EXPECT_TRUE(preflash::parse_board(kBoard).buttons.empty());
+}
+
+TEST(Board, WiringSaysWhereEachButtonGoes) {
+  const preflash::Board b = preflash::parse_board(kButtons);
+  EXPECT_EQ(preflash::wiring(b.buttons[0]), "GPIO0, active low");
+  EXPECT_EQ(preflash::wiring(b.buttons[1]), "TCA9554 bit 3, active high");
+  EXPECT_EQ(preflash::wiring(b.buttons[2]), "AXP2101 PWRON");
+  EXPECT_EQ(preflash::wiring(b.buttons[3]), "EN");
+  EXPECT_EQ(preflash::wiring(b.buttons[4]), "GPIO16 key, TCA9554 bit 6 hold");
+  EXPECT_EQ(preflash::wiring(b.buttons[5]), "GPIO17 key, GPIO18 hold");
+}

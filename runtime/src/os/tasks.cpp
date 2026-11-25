@@ -173,6 +173,12 @@ BaseType_t xTaskNotifyGive(TaskHandle_t task) {
   return pdPASS;
 }
 
+void vTaskNotifyGiveFromISR(TaskHandle_t task, BaseType_t* task_woken) {
+  if (!task) preflash_unsupported("vTaskNotifyGiveFromISR", "the task handle is null");
+  if (task_woken) *task_woken = pdFALSE;
+  xTaskNotifyGive(task);
+}
+
 uint32_t ulTaskNotifyTake(BaseType_t clear_count_on_exit, TickType_t ticks_to_wait) {
   tskTaskControlBlock* self = current_task();
   std::unique_lock<std::mutex> lock(self->mutex);

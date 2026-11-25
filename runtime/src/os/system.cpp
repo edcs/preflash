@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <random>
+#include <string>
 
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
@@ -17,6 +18,7 @@
 #include "esp_random.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "preflash/buttons.h"
 #include "preflash/chips.h"
 #include "preflash/crash.h"
 #include "preflash/fail.h"
@@ -36,8 +38,14 @@ constexpr size_t kReportedFreeBytes = 256 * 1024;
 // pass on every open descriptor, the calling thread's blocked signals and any
 // ignored ones, so this closes every descriptor but the standard three and the
 // virtual serial port, and resets the signals in the same step, whichever thread
-// opened what. Returns only on failure.
+// opened what. Buttons held now are held when the next run starts. Returns only on failure.
 int exec_clean(const char* path, char* const argv[]) {
+  const std::string held = preflash::buttons::held_env();
+  if (held.empty()) {
+    unsetenv("PREFLASH_HELD");
+  } else {
+    setenv("PREFLASH_HELD", held.c_str(), 1);
+  }
   posix_spawnattr_t attr;
   posix_spawn_file_actions_t actions;
   if (posix_spawnattr_init(&attr) != 0) return -1;

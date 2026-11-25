@@ -19,10 +19,8 @@ uint8_t Tca9554::load(uint8_t reg) {
   const ExpanderPins pins = expander_pins();
   const auto config = static_cast<uint8_t>(~pins.outputs);
   switch (reg) {
-    case kInput: {
-      const uint32_t driven = pins.levels & pins.outputs;
-      return static_cast<uint8_t>((driven | ~pins.outputs) ^ regs_[kPolarity]);
-    }
+    case kInput:  // an input reads what's on it: the pull-up, or a button holding it down
+      return static_cast<uint8_t>(pins.seen() ^ regs_[kPolarity]);
     case kOutput:
       return static_cast<uint8_t>(pins.levels);
     case kPolarity:

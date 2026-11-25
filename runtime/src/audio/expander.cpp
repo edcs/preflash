@@ -12,7 +12,7 @@ namespace {
 constexpr uint32_t kAllPins = 0xffffffff;
 
 std::mutex g_mutex;
-ExpanderPins g_pins = {0, kAllPins};
+ExpanderPins g_pins = {0, kAllPins, kAllPins};
 
 }  // namespace
 
@@ -33,13 +33,17 @@ void expander_set_levels(uint32_t mask, uint32_t levels) {
 
 void expander_power_on() {
   std::lock_guard<std::mutex> lock(g_mutex);
-  g_pins = {0, kAllPins};
+  g_pins.outputs = 0;
+  g_pins.levels = kAllPins;
 }
 
-bool expander_level(int bit) {
-  const ExpanderPins pins = expander_pins();
-  return !(pins.outputs >> bit & 1) || (pins.levels >> bit & 1);
+void expander_drive(int bit, bool level) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  const uint32_t mask = 1u << bit;
+  g_pins.outside = (g_pins.outside & ~mask) | (level ? mask : 0);
 }
+
+bool expander_level(int bit) { return expander_pins().seen() >> bit & 1; }
 
 }  // namespace preflash
 
@@ -79,10 +83,7 @@ esp_err_t esp_io_expander_set_level(esp_io_expander_handle_t handle, uint32_t pi
 esp_err_t esp_io_expander_get_level(esp_io_expander_handle_t handle, uint32_t pin_num_mask,
                                     uint32_t* level_mask) {
   if (!handle || !level_mask) return ESP_ERR_INVALID_ARG;
-  const preflash::ExpanderPins pins = preflash::expander_pins();
-  // Nothing drives an input here, so it reads high, as the chip's pull-ups would.
-  const uint32_t seen = (pins.levels & pins.outputs) | ~pins.outputs;
-  *level_mask = seen & pin_num_mask;
+  *level_mask = preflash::expander_pins().seen() & pin_num_mask;
   return ESP_OK;
 }
 

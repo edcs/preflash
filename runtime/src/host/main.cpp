@@ -14,6 +14,7 @@
 #include "freertos/task.h"
 #include "preflash/audio.h"
 #include "preflash/board.h"
+#include "preflash/buttons.h"
 #include "preflash/chips.h"
 #include "preflash/control.h"
 #include "preflash/hardware.h"
@@ -97,6 +98,8 @@ int main() {
     // Before the chips, which read it as they start.
     preflash::hardware::load(preflash::board());
     preflash::attach_chips(preflash::board());
+    // Before firmware reads a pin, so that a button held through a restart is down at boot.
+    preflash::buttons::load(preflash::board());
   } catch (const std::exception& e) {
     std::fprintf(stderr, "preflash: %s\n", e.what());
     return 1;
