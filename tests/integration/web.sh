@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs preflash web on the demo and drives it as a browser would: the page, the terminal app's
-# start, the device's frames, a tap, a button, the host check, and a clean ^C.
+# start, the device's frames, a tap, a button, the beep's sound, the host check, and a clean ^C.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -68,6 +68,10 @@ done
 pf status --project "$project" > /dev/null 2>&1 || fail "the app never answered status" "$(cat "$app_log")"
 
 "$scratch/webprobe" device "$addr" "$scratch/preflash" "$project" || fail "the device stream check failed" "$(cat "$app_log")"
+
+# The demo's beep reaches /audio as a format message and Opus packets, the first of them a burst
+# start. The probe hears the format, which means the relay is subscribed, before the beep goes out.
+"$scratch/webprobe" audio "$addr" "$scratch/preflash" "$project" || fail "the sound check failed" "$(cat "$app_log")"
 
 # A page from another origin is refused.
 code="$(curl -s -o /dev/null -w '%{http_code}' \

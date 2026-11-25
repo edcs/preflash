@@ -54,9 +54,18 @@ func TestThePageAndItsAssetsAreServed(t *testing.T) {
 		}
 		data, err := fs.ReadFile(static, path)
 		require.NoError(t, err)
-		assert.False(t, remote.MatchString(withoutComments(string(data))), "%s links off the machine", path)
+		text := withoutComments(string(data))
+		for _, words := range harmlessURLs[path] {
+			text = strings.ReplaceAll(text, words, "")
+		}
+		assert.False(t, remote.MatchString(text), "%s links off the machine", path)
 		return nil
 	}))
+}
+
+// harmlessURLs are addresses in vendored code that nothing loads: text in an error message.
+var harmlessURLs = map[string][]string{
+	"vendor/opus-decoder.min.js": {"https://github.com/eshaz/simple-yenc"},
 }
 
 var comments = regexp.MustCompile(`(?s)/\*.*?\*/|<!--.*?-->|(^|[^:"'\\])//[^\n]*`)
@@ -79,4 +88,35 @@ func TestThePageHasZoomControlsAndADivider(t *testing.T) {
 	} {
 		assert.Contains(t, string(page), control)
 	}
+}
+
+// The speaker button and the scripts that play the device's sound are on the page, and served
+// as scripts. The worklet isn't in index.html: audio.js loads it into the AudioContext.
+func TestThePageHasASpeakerButtonAndItsScripts(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	srv := &http.Server{Handler: New(Options{}).mux}
+	go srv.Serve(ln)
+	t.Cleanup(func() { srv.Close() })
+	base := "http://" + ln.Addr().String() + "/"
+
+	page, err := fs.ReadFile(staticFiles, "static/index.html")
+	require.NoError(t, err)
+	assert.Contains(t, string(page), `<button type="button" id="speaker"`)
+	for _, script := range []string{"vendor/opus-decoder.min.js", "audio.js"} {
+		assert.Contains(t, string(page), `<script src="`+script+`"`)
+	}
+	audio, err := fs.ReadFile(staticFiles, "static/audio.js")
+	require.NoError(t, err)
+	assert.Contains(t, string(audio), `addModule('audio-worklet.js')`)
+
+	for _, script := range []string{"audio.js", "audio-worklet.js", "vendor/opus-decoder.min.js"} {
+		res, err := http.Get(base + script)
+		require.NoError(t, err)
+		res.Body.Close()
+		require.Equal(t, 200, res.StatusCode, script)
+		assert.Contains(t, res.Header.Get("Content-Type"), "javascript", script)
+	}
+	_, err = fs.ReadFile(staticFiles, "static/vendor/LICENSE.opus-decoder")
+	assert.NoError(t, err, "the decoder's licence is vendored with it")
 }

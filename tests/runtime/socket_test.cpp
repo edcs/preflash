@@ -747,7 +747,8 @@ TEST_F(SocketServe, AStalledAudioSubscriberDoesNotSlowTheCodec) {
   }
   // Far over what three writes cost, and far under never.
   EXPECT_LT(std::chrono::steady_clock::now() - wall, std::chrono::seconds(10));
-  EXPECT_EQ(fake.wakes_after(start), (std::vector<long long>{500'000, 1'000'000, 1'500'000}));
+  // Each write's deadline is the end of the sound so far, less the codec's 20 ms play-ahead.
+  EXPECT_EQ(fake.wakes_after(start), (std::vector<long long>{480'000, 980'000, 1'480'000}));
   ASSERT_EQ(esp_codec_dev_close(speaker), ESP_CODEC_DEV_OK);
   json line;
   do {

@@ -61,6 +61,8 @@ int add_tap(Tap* tap);
 void remove_tap(int id);
 // How many taps are in, for tests.
 size_t tap_count();
+// Removes every tap, for tests that must not leave one behind when they fail.
+void clear_taps();
 
 // The clock that paces sound with nowhere to go. Tests put in their own, so that they
 // check the waits the codec asks for rather than how long a loaded machine took to wake.

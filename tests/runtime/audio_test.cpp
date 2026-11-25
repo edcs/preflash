@@ -60,6 +60,10 @@ class FakeTap : public preflash::audio::Tap {
   std::string events;
 };
 
+// A write with nowhere to send its sound returns this much before that sound would
+// finish playing, as a write to I2S returns once its DMA has the samples.
+constexpr auto kPlayAhead = std::chrono::milliseconds(20);
+
 esp_codec_dev_sample_info_t mono(uint32_t rate) {
   esp_codec_dev_sample_info_t fs = {};
   fs.sample_rate = rate;
@@ -74,7 +78,10 @@ class Codec : public testing::Test {
     preflash::audio::set_sink(nullptr);
     preflash::audio::set_device_request({});
   }
+  // A test that fails an ASSERT returns before its remove_tap, and its tap, which lived
+  // on its stack, must not hear the next test's writes.
   void TearDown() override {
+    preflash::audio::clear_taps();
     preflash::audio::set_clock_for_test({});
     esp_codec_dev_close(speaker_);
     preflash::audio::set_sink(nullptr);
@@ -222,7 +229,7 @@ TEST_F(Codec, DeviceThatArrivesAfterOpenPlaysFromThenOn) {
   const auto start = std::chrono::steady_clock::now();
   ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
             ESP_CODEC_DEV_OK);
-  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100));
+  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100) - kPlayAhead);
   EXPECT_EQ(sink.queues, 0);
 
   preflash::audio::set_sink(&sink);
@@ -250,15 +257,12 @@ TEST_F(Codec, HeadlessAcceptsAudioAndPlaysNothing) {
   for (int i = 0; i < 20; ++i)
     ASSERT_EQ(esp_codec_dev_write(speaker_, pcm, sizeof(pcm)), ESP_CODEC_DEV_OK);
   EXPECT_EQ(preflash::audio_samples_written() - before, 3200u);
-  // Each write waits out its own 10 ms, so the waits add up to the sound's 200 ms.
-  ASSERT_EQ(fake_.wakes.size(), 20u);
-  std::chrono::steady_clock::duration waited{};
-  auto from = start;
-  for (const auto wake : fake_.wakes) {
-    waited += wake - from;
-    from = wake;
-  }
-  EXPECT_EQ(std::chrono::duration_cast<std::chrono::microseconds>(waited).count(), 200'000);
+  // Each write waits until the play-ahead before its own 10 ms would end, so the writes
+  // take the sound's 200 ms, less the play-ahead the last one returns early by.
+  std::vector<long long> deadlines;
+  for (int k = 1; k <= 20; ++k) deadlines.push_back(k * 10'000 - 20'000);
+  EXPECT_EQ(fake_.wakes_after(start), deadlines);
+  EXPECT_EQ(fake_.now - start, std::chrono::milliseconds(200) - kPlayAhead);
 }
 
 TEST_F(Codec, DroppedSoundTakesAsLongAsItWouldToPlay) {
@@ -268,7 +272,34 @@ TEST_F(Codec, DroppedSoundTakesAsLongAsItWouldToPlay) {
   const auto start = std::chrono::steady_clock::now();
   ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
             ESP_CODEC_DEV_OK);
-  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100));
+  EXPECT_GE(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100) - kPlayAhead);
+}
+
+// Firmware does work between writes, as a real decoder does. On hardware the I2S DMA
+// plays the last write meanwhile, so that work costs no time on the sound's clock;
+// headless, the writes keep pace with a deadline rather than each sleeping its own
+// length, so the work and the sleeps' overshoot don't add up to less than real time.
+TEST_F(Codec, HeadlessWritesKeepRealTimeDespiteWorkBetween) {
+  use_fake_clock();
+  auto fs = mono(16000);
+  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
+  std::vector<int16_t> pcm(320);  // 20 ms
+  constexpr int kWrites = 100;    // 2 s of sound
+  const auto start = fake_.now;
+  for (int i = 0; i < kWrites; ++i) {
+    ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
+              ESP_CODEC_DEV_OK);
+    fake_.advance(std::chrono::milliseconds(3));  // the firmware's work
+  }
+  // The k'th write waits until its sound would end, less the play-ahead. The work falls
+  // inside the sound already playing, so it never pushes a deadline later; a write that
+  // slept its own length after the work would end 99 * 3 ms late.
+  std::vector<long long> deadlines;
+  for (int k = 1; k <= kWrites; ++k) deadlines.push_back(k * 20'000 - 20'000);
+  EXPECT_EQ(fake_.wakes_after(start), deadlines);
+  // The last write returns the play-ahead before the sound ends, at real time.
+  ASSERT_FALSE(fake_.wakes.empty());
+  EXPECT_EQ(fake_.wakes.back() + kPlayAhead - start, std::chrono::milliseconds(2000));
 }
 
 TEST_F(Codec, SinkFailingMidWriteOnlyPacesWhatItDropped) {
@@ -283,8 +314,8 @@ TEST_F(Codec, SinkFailingMidWriteOnlyPacesWhatItDropped) {
   ASSERT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
             ESP_CODEC_DEV_OK);
   EXPECT_EQ(sink.bytes, 9u * 1600 * 2);
-  // Only the 100 ms the sink never took is waited out.
-  EXPECT_EQ(fake_.wakes_after(start), (std::vector<long long>{100'000}));
+  // Only the 100 ms the sink never took is waited out, less the play-ahead.
+  EXPECT_EQ(fake_.wakes_after(start), (std::vector<long long>{100'000 - 20'000}));
 }
 
 TEST_F(Codec, RejectsFormatsItCannotPlay) {
@@ -344,14 +375,16 @@ TEST_F(Codec, TapAddedWhileOpenGetsTheFormat) {
 TEST_F(Codec, TapDoesNotChangePacing) {
   use_fake_clock();
   auto fs = mono(16000);
-  ASSERT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
   std::vector<int16_t> pcm(1600);  // 100 ms
-  // The wakes one write asks for, counted from when it started.
+  // The wakes one write asks for, counted from when it started. Each run opens the
+  // codec afresh, so neither starts behind the other's deadline.
   auto paced = [&] {
+    EXPECT_EQ(esp_codec_dev_open(speaker_, &fs), ESP_CODEC_DEV_OK);
     const auto start = fake_.now;
     const size_t first = fake_.wakes.size();
     EXPECT_EQ(esp_codec_dev_write(speaker_, pcm.data(), static_cast<int>(pcm.size() * 2)),
               ESP_CODEC_DEV_OK);
+    EXPECT_EQ(esp_codec_dev_close(speaker_), ESP_CODEC_DEV_OK);
     return fake_.wakes_after(start, first);
   };
   const auto without = paced();
@@ -359,7 +392,7 @@ TEST_F(Codec, TapDoesNotChangePacing) {
   const int id = preflash::audio::add_tap(&tap);
   const auto with = paced();
   preflash::audio::remove_tap(id);
-  EXPECT_EQ(without, (std::vector<long long>{100'000}));
+  EXPECT_EQ(without, (std::vector<long long>{100'000 - 20'000}));  // less the play-ahead
   EXPECT_EQ(with, without);
   EXPECT_EQ(tap.writes.size(), 1u);
 }

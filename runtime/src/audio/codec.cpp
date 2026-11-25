@@ -20,6 +20,10 @@ constexpr int kMaxQueuedMs = 100;
 // is given up on, and writes are counted like a headless run's.
 constexpr auto kStallLimit = std::chrono::seconds(2);
 constexpr auto kPoll = std::chrono::milliseconds(5);
+// Sound with nowhere to go is paced against a deadline, as I2S DMA would play it: a
+// write returns this far ahead of the end of its sound, so the firmware's work before
+// the next write overlaps the sound instead of adding to it.
+constexpr auto kPlayAhead = std::chrono::milliseconds(20);
 
 struct Speaker {
   std::mutex lock;
@@ -28,6 +32,8 @@ struct Speaker {
   int rate = 0;
   int volume = 100;
   bool sink_gone = false;
+  // When the sound written so far, with nowhere to go, would finish playing.
+  std::chrono::steady_clock::time_point play_until{};
   // Closers waiting for the lock. A write in the middle of pacing sees it and lets go.
   std::atomic<int> closers{0};
 };
@@ -97,6 +103,12 @@ void remove_tap(int id) {
                g_taps.end());
 }
 
+void clear_taps() {
+  Speaker& s = speaker();
+  std::lock_guard<std::mutex> hold(s.lock);
+  g_taps.clear();
+}
+
 size_t tap_count() {
   Speaker& s = speaker();
   std::lock_guard<std::mutex> hold(s.lock);
@@ -144,6 +156,7 @@ int esp_codec_dev_open(esp_codec_dev_handle_t codec, esp_codec_dev_sample_info_t
     std::lock_guard<std::mutex> hold(s.lock);
     s.open = true;
     s.sink_gone = false;  // each open gets a fresh chance at the device
+    s.play_until = {};
     s.channels = fs->channel;
     s.rate = static_cast<int>(fs->sample_rate);
     if (preflash::g_sink) preflash::g_sink->start(s.rate, s.channels);
@@ -173,6 +186,7 @@ int esp_codec_dev_close(esp_codec_dev_handle_t codec) {
   if (s.open)
     for (auto& t : preflash::g_taps) t.second->stop();
   s.open = false;
+  s.play_until = {};
   return ESP_CODEC_DEV_OK;
 }
 
@@ -204,43 +218,46 @@ int esp_codec_dev_write(esp_codec_dev_handle_t codec, void* data, int len) {
     if (s.volume != 100)
       for (int16_t& v : scaled) v = static_cast<int16_t>(v * s.volume / 100);
     for (auto& t : preflash::g_taps) t.second->samples(scaled.data(), frames);
-  if (sinking) {
-    // The room check only sees what is already queued, so one long write is fed in
-    // pieces of about 100 ms; otherwise it would all go in at once and never pace.
-    const size_t chunk_frames =
-        std::max<size_t>(1, static_cast<size_t>(s.rate) * preflash::kMaxQueuedMs / 1000);
-    const size_t chunk_bytes = chunk_frames * frame_bytes;
-    const auto* bytes = reinterpret_cast<const uint8_t*>(scaled.data());
-    for (size_t at = 0; at < static_cast<size_t>(len); at += chunk_bytes) {
-      const size_t n = std::min(chunk_bytes, static_cast<size_t>(len) - at);
-      if (s.closers > 0) {
-        dropped = 0;  // closing: nothing is left to pace
-        break;
-      }
-      if (!preflash::wait_for_room(preflash::g_sink, s.closers)) {
+    if (sinking) {
+      // The room check only sees what is already queued, so one long write is fed in
+      // pieces of about 100 ms; otherwise it would all go in at once and never pace.
+      const size_t chunk_frames =
+          std::max<size_t>(1, static_cast<size_t>(s.rate) * preflash::kMaxQueuedMs / 1000);
+      const size_t chunk_bytes = chunk_frames * frame_bytes;
+      const auto* bytes = reinterpret_cast<const uint8_t*>(scaled.data());
+      for (size_t at = 0; at < static_cast<size_t>(len); at += chunk_bytes) {
+        const size_t n = std::min(chunk_bytes, static_cast<size_t>(len) - at);
         if (s.closers > 0) {
           dropped = 0;  // closing: nothing is left to pace
           break;
         }
-        std::fprintf(stderr, "preflash: the audio device stopped playing, so sound is dropped\n");
-        s.sink_gone = true;
-        break;
+        if (!preflash::wait_for_room(preflash::g_sink, s.closers)) {
+          if (s.closers > 0) {
+            dropped = 0;  // closing: nothing is left to pace
+            break;
+          }
+          std::fprintf(stderr, "preflash: the audio device stopped playing, so sound is dropped\n");
+          s.sink_gone = true;
+          break;
+        }
+        if (!preflash::g_sink->queue(bytes + at, n)) {
+          std::fprintf(stderr, "preflash: the audio device refused sound, so it is dropped\n");
+          s.sink_gone = true;
+          break;
+        }
+        dropped -= n / frame_bytes;
       }
-      if (!preflash::g_sink->queue(bytes + at, n)) {
-        std::fprintf(stderr, "preflash: the audio device refused sound, so it is dropped\n");
-        s.sink_gone = true;
-        break;
-      }
-      dropped -= n / frame_bytes;
-    }
     }
   }
   preflash::g_frames += frames;
   if (dropped > 0) {
     // I2S takes sound at its sample rate. Firmware can time itself by the writes, so
-    // sound with nowhere to go still takes as long as it would to play.
+    // sound with nowhere to go still takes as long as it would to play, counted from
+    // when the sound before it ends, as the DMA would play it.
     const auto playing = std::chrono::microseconds(dropped * 1000000 / static_cast<size_t>(s.rate));
-    const auto wake = preflash::clock_now() + playing;
+    const auto now = preflash::clock_now();
+    s.play_until = std::max(now, s.play_until) + playing;
+    const auto wake = s.play_until - preflash::kPlayAhead;
     auto sleep_until = preflash::g_clock.sleep_until;  // copied, as the lock is let go
     hold.unlock();
     if (sleep_until)
