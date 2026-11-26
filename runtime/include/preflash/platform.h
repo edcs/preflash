@@ -1,5 +1,8 @@
 #pragma once
 
+#include <sys/types.h>
+
+#include <cstddef>
 #include <string>
 
 // What macOS and Linux do differently, behind one name each.
@@ -27,5 +30,18 @@ bool close_on_exec_except(const int* keep, int count);
 // kernels or sandboxes without close_range. Returns false if it couldn't list them or mark
 // one. Where /proc is missing, as on macOS, it always returns false.
 bool close_on_exec_by_listing();
+
+// The process at the other end of a connected local socket, as "pid N, name", or empty if the
+// system won't say.
+std::string peer(int fd);
+
+// Keeps a hang-up from raising SIGPIPE at the process for writes to fd that go through
+// write. macOS does that with a socket option; Linux has none, so send_some does it
+// per call and this does nothing.
+void ignore_hang_ups(int fd);
+
+// write for a socket, with the same results and errno, that returns EPIPE for a client that
+// has gone instead of raising SIGPIPE. Linux does that with a flag on each send.
+ssize_t send_some(int fd, const void* data, size_t size);
 
 }  // namespace preflash::platform

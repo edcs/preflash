@@ -130,10 +130,7 @@ int dial() {
     close(fd);
     return -1;
   }
-#ifdef SO_NOSIGPIPE
-  const int on = 1;
-  setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
-#endif
+  platform::ignore_hang_ups(fd);
   const timeval patience{kSendPatienceSeconds, 0};
   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &patience, sizeof patience);
   return fd;
@@ -193,7 +190,7 @@ bool send(const json& message) {
   const std::string line = winlink::encode(message);
   size_t sent = 0;
   while (sent < line.size()) {
-    const ssize_t n = write(fd, line.data() + sent, line.size() - sent);
+    const ssize_t n = platform::send_some(fd, line.data() + sent, line.size() - sent);
     if (n > 0) {
       sent += static_cast<size_t>(n);
     } else if (n < 0 && errno == EINTR) {
@@ -406,7 +403,7 @@ void close_for_good() {
   // The newline first ends any line the main thread was part way through, which the window
   // then drops as bad, so the close arrives on a line of its own.
   static constexpr char kClose[] = "\n{\"op\":\"close\"}\n";
-  (void)!write(fd, kClose, sizeof kClose - 1);
+  (void)!platform::send_some(fd, kClose, sizeof kClose - 1);
 }
 
 bool supervised() { return g_supervised; }

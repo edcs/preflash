@@ -48,17 +48,33 @@ int exec_clean(const char* path, char* const argv[], char* const envp[]) {
   for (int number = 1; number < NSIG; ++number) {
     // main keeps these ignored only if they arrived that way, as under nohup, and the next
     // run must inherit that, unlike any other ignored signal. The exec resets caught ones.
-    if (number == SIGKILL || number == SIGSTOP || number == SIGTERM || number == SIGHUP) continue;
+    // SIGPIPE waits for last: other threads still run and only this one blocks signals, so a
+    // write to a dead pipe in the meantime would end the app mid-restart.
+    if (number == SIGKILL || number == SIGSTOP || number == SIGTERM || number == SIGHUP ||
+        number == SIGPIPE) {
+      continue;
+    }
     struct sigaction current {};
     if (sigaction(number, nullptr, &current) == 0 && current.sa_handler == SIG_IGN) {
       signal(number, SIG_DFL);
     }
   }
-  const int keep[] = {preflash::port::master_fd(), preflash::port::slave_fd()};
-  if (preflash::platform::close_on_exec_except(keep, 2)) {
+  // The standard three stay open as macOS keeps them below, even if something marked them to
+  // close on exec.
+  const int keep[] = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO, preflash::port::master_fd(),
+                      preflash::port::slave_fd()};
+  struct sigaction pipe_before {};
+  bool pipe_reset = false;
+  if (preflash::platform::close_on_exec_except(keep, 5)) {
+    if (sigaction(SIGPIPE, nullptr, &pipe_before) == 0 && pipe_before.sa_handler == SIG_IGN) {
+      signal(SIGPIPE, SIG_DFL);
+      pipe_reset = true;
+    }
     pthread_sigmask(SIG_SETMASK, &none, nullptr);
     execve(path, argv, envp);
   }
+  // Only a failed exec gets here, and the app goes on as it was.
+  if (pipe_reset) sigaction(SIGPIPE, &pipe_before, nullptr);
   pthread_sigmask(SIG_SETMASK, &previous, nullptr);
   return -1;
 #else

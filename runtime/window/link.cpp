@@ -10,6 +10,7 @@
 #include <cerrno>
 #include <cstring>
 
+#include "preflash/platform.h"
 #include "winlink/protocol.h"
 
 namespace preflash::window {
@@ -22,10 +23,7 @@ constexpr size_t kLongestBacklog = 1 << 20;
 void set_nonblocking(int fd) {
   fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
   fcntl(fd, F_SETFD, FD_CLOEXEC);
-#ifdef SO_NOSIGPIPE
-  const int on = 1;
-  setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
-#endif
+  platform::ignore_hang_ups(fd);
 }
 
 }  // namespace
@@ -169,7 +167,7 @@ void Link::poll(std::function<void(const nlohmann::json&)> on_message,
 
 bool Link::flush() {
   while (client_ >= 0 && !out_.empty()) {
-    const ssize_t sent = write(client_, out_.data(), out_.size());
+    const ssize_t sent = platform::send_some(client_, out_.data(), out_.size());
     if (sent > 0) {
       out_.erase(0, static_cast<size_t>(sent));
       continue;
