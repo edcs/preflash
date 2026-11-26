@@ -35,7 +35,8 @@ struct Pin {
   void* handler_arg = nullptr;
 };
 
-std::mutex g_mutex;
+// Never destroyed, like g_wake: the ISR thread may be waiting on them when the process ends.
+static auto& g_mutex = *new std::mutex;
 std::map<int, Pin> g_pins;
 
 // A level change that matches a pin's interrupt type queues the pin here, under g_mutex, and
@@ -44,7 +45,8 @@ std::map<int, Pin> g_pins;
 bool g_service = false;
 bool g_isr_thread = false;
 std::deque<int> g_events;
-std::condition_variable g_wake;
+// Never destroyed: glibc's destructor waits for the ISR thread, which never stops waiting.
+static auto& g_wake = *new std::condition_variable;
 
 bool exists(gpio_num_t pin) {
   return pin >= GPIO_NUM_0 && pin < GPIO_NUM_MAX && (pin <= GPIO_NUM_21 || pin >= GPIO_NUM_26);

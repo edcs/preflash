@@ -164,6 +164,31 @@ TEST(Tasks, DeletingItselfRunsNoDestructors) {
   EXPECT_FALSE(destroyed);
 }
 
+#ifdef __linux__
+size_t thread_count() {
+  size_t count = 0;
+  for ([[maybe_unused]] const auto& entry : std::filesystem::directory_iterator("/proc/self/task")) ++count;
+  return count;
+}
+
+TEST(Tasks, DeletedTaskThreadIsGone) {
+  static std::atomic<bool> about_to_go{false};
+  about_to_go = false;
+  const size_t before = thread_count();
+  auto body = [](void*) {
+    about_to_go = true;
+    vTaskDelete(nullptr);
+  };
+  ASSERT_EQ(xTaskCreate(body, "gone", 4096, nullptr, 1, nullptr), pdPASS);
+  const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while ((!about_to_go || thread_count() != before) && std::chrono::steady_clock::now() < give_up) {
+    vTaskDelay(1);
+  }
+  ASSERT_TRUE(about_to_go);
+  EXPECT_EQ(thread_count(), before);
+}
+#endif
+
 TEST(Tasks, DeletingItselfByHandleWorksToo) {
   static std::atomic<int> reached{0};
   reached = 0;

@@ -1,4 +1,8 @@
 #include <pthread.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -152,9 +156,19 @@ void vTaskDelete(TaskHandle_t task) {
   if (task && task != current_task()) {
     preflash_unsupported("vTaskDelete", "a task can only delete itself");
   }
+  // Also lets go of the thread's place in the crash handler's list.
   forget_task(current_task());
+#ifdef __linux__
+  // glibc's pthread_exit unwinds the stack and runs the task's destructors, which FreeRTOS
+  // never does, so the thread ends by the raw system call instead. glibc never learns it has
+  // gone, so its stack isn't reclaimed: each self-deleted task leaks one, freed by the exec
+  // at the next restart.
+  syscall(SYS_exit, 0);
+  __builtin_unreachable();
+#else
   // Ends the thread here without unwinding it, as FreeRTOS would.
   pthread_exit(nullptr);
+#endif
 }
 
 TaskHandle_t xTaskGetCurrentTaskHandle(void) { return current_task(); }
