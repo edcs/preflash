@@ -4,6 +4,8 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# For its helpers only: this script drives the app through a pseudo-terminal instead.
+source "$root/tests/integration/app.sh"
 
 lvgl="$root/build/tests/_deps/lvgl-src"
 [ -f "$lvgl/lvgl.h" ] || { echo "FAIL: no LVGL in $lvgl: build tests/runtime first" >&2; exit 1; }
@@ -20,7 +22,7 @@ rsync -a --exclude /demos --exclude /docs --exclude /examples --exclude /tests \
 # The tests edit this file, and rsync puts back its old time, which a build would believe.
 touch "$project/main/main.cpp"
 cp "$root/tests/fixtures/snoozel-4b.yaml" "$project/sim/"
-sed -i '' 's/^name: .*/name: mod/' "$project/sim/snoozel-4b.yaml"
+sed_in_place 's/^name: .*/name: mod/' "$project/sim/snoozel-4b.yaml"
 cat > "$project/.preflashrc" <<'RC'
 console:
   prompt: "fixture>"

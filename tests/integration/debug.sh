@@ -37,7 +37,7 @@ go build -C "$root" -o "$scratch/preflash" ./cmd/preflash
 pf() { "$scratch/preflash" "$@"; }
 
 real_project="$(cd "$project" && pwd -P)"
-state="$HOME/.preflash/state/debug_fixture-$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-8)"
+state="$HOME/.preflash/state/debug_fixture-$(printf '%s' "$real_project" | sha256 | cut -c1-8)"
 rm -rf "$state"
 
 wait_in_file() {
@@ -121,10 +121,10 @@ assert any(r["stream"] == "i2c" and r["device"] == "PCF85063" for r in rows), ro
 ' "$scratch/saved.jsonl" || fail "the saved trace is wrong" "$(cat "$scratch/saved.jsonl")"
 
 # The other two reads.
-output="$(python3 -I - "$(cd "$project" && pwd -P)" <<'PY'
+output="$(PREFLASH_CACHE="$(cache_dir)" python3 -I - "$(cd "$project" && pwd -P)" <<'PY'
 import hashlib, json, os, socket, sys
 digest = hashlib.sha256(sys.argv[1].encode()).hexdigest()[:12]
-path = os.path.expanduser(f"~/Library/Caches/preflash/{digest}.sock")
+path = os.path.join(os.environ["PREFLASH_CACHE"], f"{digest}.sock")
 s = socket.socket(socket.AF_UNIX)
 s.connect(path)
 f = s.makefile("rw")

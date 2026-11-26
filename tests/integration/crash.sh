@@ -26,14 +26,14 @@ rsync -a "$root/tests/fixtures/lvgl_project/" "$project/"
 rsync -a --exclude /demos --exclude /docs --exclude /examples --exclude /tests \
   "$lvgl/" "$project/managed_components/lvgl__lvgl/"
 # As a project on LVGL's own allocator has it, which a sanitizer can't see into.
-sed -i '' -e 's/^CONFIG_LV_USE_CLIB_MALLOC=y/CONFIG_LV_USE_BUILTIN_MALLOC=y\nCONFIG_LV_MEM_SIZE_KILOBYTES=256/' \
+sed_in_place -e 's/^CONFIG_LV_USE_CLIB_MALLOC=y/CONFIG_LV_USE_BUILTIN_MALLOC=y\nCONFIG_LV_MEM_SIZE_KILOBYTES=256/' \
   "$project/sdkconfig"
 
 go build -C "$root" -o "$scratch/preflash" ./cmd/preflash
 pf() { "$scratch/preflash" "$@"; }
 
 real_project="$(cd "$project" && pwd -P)"
-build_dir="$HOME/.preflash/build/$(basename "$real_project")-$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-8)"
+build_dir="$HOME/.preflash/build/$(basename "$real_project")-$(printf '%s' "$real_project" | sha256 | cut -c1-8)"
 rm -f "$build_dir"/crash.json "$build_dir"-address/crash.json "$build_dir"-thread/crash.json
 
 expect_in() {
@@ -131,20 +131,34 @@ fi
 pf quit --project "$project"
 finish_app
 
-# A sanitizer's report joins the crash report, with its own stack, and the plain build stays.
-plain_app="$build_dir/app"
-plain_sum="$(shasum "$plain_app")"
-crash_with overflow --sanitize address
-expect_in "heap-buffer-overflow in" "$report"
-expect_in "overflow_command" "$report"
-expect_in "main/main.cpp:" "$report"
-expect_in "AddressSanitizer: heap-buffer-overflow" "$(cat "$app_log")"
-[ -x "$build_dir-address/app" ] || fail "no build of its own for address"
-[ "$(shasum "$plain_app")" = "$plain_sum" ] || fail "a sanitized build changed the plain one"
+# Linux packages a sanitizer's runtime on its own, and a compiler without it can't link one.
+links_with() {
+  printf 'int main() { return 0; }\n' > "$scratch/sanitizer.cpp"
+  c++ -fsanitize="$1" "$scratch/sanitizer.cpp" -o "$scratch/sanitizer" > /dev/null 2>&1
+}
 
-crash_with race --sanitize thread
-expect_in "data race in" "$report"
-expect_in "race_task" "$report"
-expect_in "ThreadSanitizer: data race" "$(cat "$app_log")"
+# A sanitizer's report joins the crash report, with its own stack, and the plain build stays.
+if links_with address; then
+  plain_app="$build_dir/app"
+  plain_sum="$(sha256 "$plain_app")"
+  crash_with overflow --sanitize address
+  expect_in "heap-buffer-overflow in" "$report"
+  expect_in "overflow_command" "$report"
+  expect_in "main/main.cpp:" "$report"
+  expect_in "AddressSanitizer: heap-buffer-overflow" "$(cat "$app_log")"
+  [ -x "$build_dir-address/app" ] || fail "no build of its own for address"
+  [ "$(sha256 "$plain_app")" = "$plain_sum" ] || fail "a sanitized build changed the plain one"
+else
+  echo "SKIP: crash: c++ can't link -fsanitize=address here (install libasan)"
+fi
+
+if links_with thread; then
+  crash_with race --sanitize thread
+  expect_in "data race in" "$report"
+  expect_in "race_task" "$report"
+  expect_in "ThreadSanitizer: data race" "$(cat "$app_log")"
+else
+  echo "SKIP: crash: c++ can't link -fsanitize=thread here (install libtsan)"
+fi
 
 echo "PASS: crash"

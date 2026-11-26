@@ -359,6 +359,7 @@ func TestSocketPathFallsBackWhenHomeIsLong(t *testing.T) {
 
 func TestRunRefusesASocketPathThatCannotFit(t *testing.T) {
 	t.Setenv("HOME", "/Users/"+strings.Repeat("x", 100))
+	t.Setenv("XDG_CACHE_HOME", "")
 	t.Setenv("TMPDIR", "/tmp/"+strings.Repeat("y", 100))
 	t.Setenv("XDG_CACHE_HOME", "")
 

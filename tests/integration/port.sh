@@ -33,8 +33,8 @@ go build -C "$root" -o "$scratch/preflash" ./cmd/preflash
 pf() { "$scratch/preflash" "$@"; }
 
 real_project="$(cd "$project" && pwd -P)"
-sum="$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-12)"
-port="$HOME/Library/Caches/preflash/$sum.tty"
+sum="$(printf '%s' "$real_project" | sha256 | cut -c1-12)"
+port="$(cache_dir)/$sum.tty"
 
 start_run() { start_app "$scratch/preflash" run --project "$project" --headless; }
 
@@ -163,11 +163,8 @@ wait_for_output "ready, reset reason 1"
 [ "$(pf port --project "$project")" = "$port" ] || fail "preflash port printed something else" "$(pf port --project "$project")"
 [ -L "$port" ] || fail "no link at $port"
 device="$(readlink "$port")"
-case "$device" in
-  /dev/ttys*) ;;
-  *) fail "the link points at $device, which isn't a pseudo-terminal" ;;
-esac
-[ "$(stat -L -f %Lp "$port")" = 600 ] || fail "the port's mode is $(stat -L -f %Lp "$port")"
+grep -q "$(pty_pattern)" <<< "$device" || fail "the link points at $device, which isn't a pseudo-terminal"
+[ "$(file_mode "$port")" = 600 ] || fail "the port's mode is $(file_mode "$port")"
 pf status --json --project "$project" | python3 -I -c '
 import json, sys
 s = json.load(sys.stdin)

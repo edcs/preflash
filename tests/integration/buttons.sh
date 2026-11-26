@@ -125,7 +125,7 @@ rsync -a "$root/tests/fixtures/power_project/" "$project/"
 rsync -a --exclude /demos --exclude /docs --exclude /examples --exclude /tests \
   "$lvgl/" "$project/managed_components/lvgl__lvgl/"
 real_project="$(cd "$project" && pwd -P)"
-state="$HOME/.preflash/state/power-$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-8)"
+state="$HOME/.preflash/state/power-$(printf '%s' "$real_project" | sha256 | cut -c1-8)"
 rm -rf "$state"
 power_flags=(--board ESP32-S3-Touch-LCD-3.49-V2)
 
@@ -208,7 +208,7 @@ power_becomes on
 pf hardware --project "$project" usb unplugged > /dev/null
 power_becomes off
 quit
-window_socket="$HOME/Library/Caches/preflash/$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-12).window"
+window_socket="$(cache_dir)/$(printf '%s' "$real_project" | sha256 | cut -c1-12).window"
 rm -f "$window_socket"
 python3 -I - "$window_socket" > "$scratch/stand-in.log" 2>&1 <<'PY' &
 import socket, sys, threading
@@ -244,7 +244,7 @@ project="$root/build/integration/buttons/demo"
 mkdir -p "$project"
 rsync -a --delete "$root/examples/demo/" "$project/"
 real_project="$(cd "$project" && pwd -P)"
-sum="$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-8)"
+sum="$(printf '%s' "$real_project" | sha256 | cut -c1-8)"
 rm -rf "$HOME/.preflash/state/demo-$sum"
 
 boot_until "ready on"
@@ -295,7 +295,7 @@ saw "ready on"
 firmware_answers
 [ "$(field pid)" = "$pid" ] || fail "a double reset changed the app's pid"
 # Every process running the app's build is this one: neither reset left an app behind.
-exe="$(ps -o comm= -p "$pid")"
+exe="$(exe_of "$pid")"
 running="$(pgrep -f -- "$exe" | tr '\n' ' ')"
 [ "$running" = "$pid " ] || fail "a double reset left other apps running" "$(pgrep -fl -- "$exe")"
 [ "$(field power)" = '"on"' ] || fail "the double reset didn't end on" "$(status_json)"

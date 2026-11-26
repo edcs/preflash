@@ -411,7 +411,7 @@ TEST(Sntp, SyncsFromTheMacClock) {
   // Reading COMPLETED reset it.
   EXPECT_EQ(sntp_get_sync_status(), SNTP_SYNC_STATUS_RESET);
 
-  // The clock firmware sees is the Mac's, running on without a step.
+  // The clock firmware sees is the computer's, running on without a step.
   EXPECT_GE(g_hits.count.load(), 1);
   EXPECT_GE(g_hits.seconds.load(), static_cast<long>(before.tv_sec));
   EXPECT_LE(g_hits.seconds.load(), static_cast<long>(after.tv_sec));

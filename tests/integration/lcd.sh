@@ -33,8 +33,8 @@ pf() { "$scratch/preflash" "$@"; }
 board="ESP32-S3-Touch-LCD-3.49-V2"
 
 real_project="$(cd "$project" && pwd -P)"
-sum="$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-12)"
-port="$HOME/Library/Caches/preflash/$sum.tty"
+sum="$(printf '%s' "$real_project" | sha256 | cut -c1-12)"
+port="$(cache_dir)/$sum.tty"
 
 # Each argument is x,y,r,g,b for a pixel of a shot of the 172 by 640 panel. Prints what it
 # found if any is wrong.

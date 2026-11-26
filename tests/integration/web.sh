@@ -36,10 +36,10 @@ project="$root/build/integration/web/demo"
 mkdir -p "$project"
 rsync -a --delete "$root/examples/demo/" "$project/"
 real_project="$(cd "$project" && pwd -P)"
-sum="$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-8)"
+sum="$(printf '%s' "$real_project" | sha256 | cut -c1-8)"
 rm -rf "$HOME/.preflash/state/demo-$sum"
 rm -f "$HOME/.preflash/build/demo-$sum/crash.json"
-socket="$HOME/Library/Caches/preflash/$(printf '%s' "$real_project" | shasum -a 256 | cut -c1-12).sock"
+socket="$(cache_dir)/$(printf '%s' "$real_project" | sha256 | cut -c1-12).sock"
 [ ! -e "$socket" ] || fail "an app is already running on the demo copy: $socket"
 
 # Port 0, so that a port someone else holds doesn't matter.

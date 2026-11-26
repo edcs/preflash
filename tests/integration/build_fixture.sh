@@ -31,7 +31,7 @@ configure() {
 }
 
 listing() {
-  (cd "$work/project" && find . -type f -print0 | xargs -0 shasum | sort)
+  (cd "$work/project" && find . -type f -print0 | xargs -0 "${sha256_command[@]}" | sort)
 }
 
 expect_output() {
@@ -96,12 +96,12 @@ expect_output "ESP_PLATFORM is defined"
 expect_no_output "asserts are off"
 
 # A project that asked for no OS in LVGL gets none.
-sed -i '' 's/^CONFIG_LV_OS_FREERTOS=y$/CONFIG_LV_OS_NONE=y/' "$work/project/sdkconfig"
+sed_in_place 's/^CONFIG_LV_OS_FREERTOS=y$/CONFIG_LV_OS_NONE=y/' "$work/project/sdkconfig"
 log="$(configure)" || fail "configure with no LVGL OS" "$log"
 log="$(cmake --build "$work/build" 2>&1)" || fail "build with no LVGL OS" "$log"
 run_fixture
 expect_output "lvgl os_none=1 os_threads=0 color_depth=16 sdl=0"
-sed -i '' 's/^CONFIG_LV_OS_NONE=y$/CONFIG_LV_OS_FREERTOS=y/' "$work/project/sdkconfig"
+sed_in_place 's/^CONFIG_LV_OS_NONE=y$/CONFIG_LV_OS_FREERTOS=y/' "$work/project/sdkconfig"
 log="$(configure)" || fail "configure" "$log"
 log="$(cmake --build "$work/build" 2>&1)" || fail "build" "$log"
 
@@ -126,17 +126,17 @@ after="$(listing)"
 
 # ESP-IDF's project.cmake finds project components in components/ by itself.
 fresh_copy
-sed -i '' '/EXTRA_COMPONENT_DIRS/d' "$work/project/CMakeLists.txt"
+sed_in_place '/EXTRA_COMPONENT_DIRS/d' "$work/project/CMakeLists.txt"
 configure_log="$(configure)" || fail "configure without EXTRA_COMPONENT_DIRS" "$configure_log"
 
 # EXTRA_COMPONENT_DIRS can name a component's own folder.
 fresh_copy
-sed -i '' 's|set(EXTRA_COMPONENT_DIRS components)|set(EXTRA_COMPONENT_DIRS components/thing)|' "$work/project/CMakeLists.txt"
+sed_in_place 's|set(EXTRA_COMPONENT_DIRS components)|set(EXTRA_COMPONENT_DIRS components/thing)|' "$work/project/CMakeLists.txt"
 configure_log="$(configure)" || fail "configure with a component folder" "$configure_log"
 
 # EXTRA_COMPONENT_DIRS naming a missing folder stops the configure.
 fresh_copy
-sed -i '' 's|set(EXTRA_COMPONENT_DIRS components)|set(EXTRA_COMPONENT_DIRS nowhere)|' "$work/project/CMakeLists.txt"
+sed_in_place 's|set(EXTRA_COMPONENT_DIRS components)|set(EXTRA_COMPONENT_DIRS nowhere)|' "$work/project/CMakeLists.txt"
 if log="$(configure)"; then
   fail "a missing EXTRA_COMPONENT_DIRS folder was accepted" "$log"
 fi

@@ -58,3 +58,45 @@ quit_app() {
   finish_app
   [ "$app_status" -eq 0 ] || fail "the app quit with status $app_status" "$(cat "$app_log")"
 }
+
+# What differs between macOS and Linux, in one place, so the scripts read the same on both.
+
+# Edits a file where it is: BSD sed wants a backup suffix, even an empty one, and GNU sed
+# takes the empty string for the script.
+sed_in_place() {
+  if [ "$(uname)" = Darwin ]; then sed -i '' "$@"; else sed -i "$@"; fi
+}
+
+# The permission bits of what a path leads to, in octal, as 600.
+file_mode() {
+  if [ "$(uname)" = Darwin ]; then stat -L -f %Lp "$1"; else stat -L -c %a "$1"; fi
+}
+
+# Where Preflash keeps its sockets and port links, worked out as preflash does.
+cache_dir() {
+  if [ "$(uname)" = Darwin ]; then
+    echo "$HOME/Library/Caches/preflash"
+  else
+    case "${XDG_CACHE_HOME:-}" in
+      /*) echo "${XDG_CACHE_HOME%/}/preflash" ;;
+      *) echo "$HOME/.cache/preflash" ;;
+    esac
+  fi
+}
+
+# The SHA-256 of stdin, or of the files named, as shasum prints it. Linux may have only
+# sha256sum, which prints the same. find -exec can't run a function, so it takes the array.
+if command -v shasum > /dev/null; then sha256_command=(shasum -a 256); else sha256_command=(sha256sum); fi
+sha256() {
+  "${sha256_command[@]}" "$@"
+}
+
+# What a pseudo-terminal's device path starts with, as a grep pattern.
+pty_pattern() {
+  if [ "$(uname)" = Darwin ]; then echo '^/dev/ttys'; else echo '^/dev/pts/'; fi
+}
+
+# The program a process is running, as pgrep -f can find it.
+exe_of() {
+  if [ "$(uname)" = Darwin ]; then ps -o comm= -p "$1"; else readlink "/proc/$1/exe"; fi
+}

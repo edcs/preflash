@@ -63,7 +63,7 @@ Pcf85063::Pcf85063() : Pcf85063([] { return std::time(nullptr); }) {}
 Pcf85063::Pcf85063(std::function<std::time_t()> clock)
     : RegisterChip("pcf85063"), clock_(std::move(clock)) {
   // Section 8.2.1.3, table 8, except that the time registers start from the
-  // Mac's clock, as a chip does that's been running on its cell.
+  // computer's clock, as a chip does that's been running on its cell.
   std::fill(regs_.begin() + kSecondAlarm, regs_.begin() + kWeekdayAlarm + 1, 0x80);
   regs_[kTimerMode] = 0x18;
   counted_to_ = clock_();

@@ -623,7 +623,7 @@ void flush_stdio() {
 void hand_back() {
   if (!g_started) return;
   if (!g_handed_back.exchange(true)) {
-    for (const auto [fd, real] : {std::pair{STDOUT_FILENO, g_real_stdout}, std::pair{STDERR_FILENO, g_real_stderr}}) {
+    for (const auto& [fd, real] : {std::pair{STDOUT_FILENO, g_real_stdout}, std::pair{STDERR_FILENO, g_real_stderr}}) {
       if (real >= 0) {
         dup2(real, fd);
       } else {

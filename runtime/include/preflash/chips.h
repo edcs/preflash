@@ -41,7 +41,7 @@ class RegisterChip : public I2cDevice {
   uint8_t address_ = 0;
 };
 
-// NXP PCF85063A, datasheet rev. 7. Starts from the Mac's clock in UTC. Its
+// NXP PCF85063A, datasheet rev. 7. Starts from the computer's clock in UTC. Its
 // registers keep running through esp_restart, as a chip on its own cell does.
 class Pcf85063 : public RegisterChip {
  public:
