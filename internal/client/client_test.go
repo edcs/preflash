@@ -1058,3 +1058,34 @@ func TestWatchIgnoresAudioAndItsDrops(t *testing.T) {
 	assert.Equal(t, []int{5}, []int{<-dropped})
 	assert.Empty(t, dropped)
 }
+
+// A boot that replaces a stale socket leaves no file for a moment. Its absence counts from
+// when it went, so a restart that was slow to get there isn't taken for a quit.
+func TestDialWaitsOutASocketBeingReplacedLate(t *testing.T) {
+	path := shortPath(t)
+	stale, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	stale.(*net.UnixListener).SetUnlinkOnClose(false)
+	require.NoError(t, stale.Close())
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		os.Remove(path)
+		time.Sleep(30 * time.Millisecond)
+		next, err := net.Listen("unix", path)
+		if err != nil {
+			return
+		}
+		defer next.Close()
+		conn, err := next.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		bufio.NewReader(conn).ReadBytes('\n')
+		fmt.Fprintln(conn, `{"id":1,"ok":true,"protocol":1}`)
+	}()
+
+	c, err := dialWithin(path, 5*time.Second, 100*time.Millisecond, 0)
+	require.NoError(t, err)
+	c.Close()
+}
