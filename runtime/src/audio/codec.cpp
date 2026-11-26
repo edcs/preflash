@@ -38,23 +38,24 @@ struct Speaker {
   std::atomic<int> closers{0};
 };
 
-// Never destroyed: a socket thread can still remove its tap, under this lock, while the
-// process exits, and macOS aborts on locking a destroyed mutex.
+// The speaker and what hangs off it are never destroyed. The socket's connection threads
+// are detached and can still be letting go of their taps while static destructors run
+// at exit, and a destroyed mutex aborts the process.
 Speaker& speaker() {
-  static Speaker& s = *new Speaker;
-  return s;
+  static Speaker* s = new Speaker;
+  return *s;
 }
 
 audio::Sink* g_sink = nullptr;  // under the speaker's lock
-// Never destroyed, for the same reason as the speaker.
-std::vector<std::pair<int, audio::Tap*>>& g_taps =
-    *new std::vector<std::pair<int, audio::Tap*>>;  // under the speaker's lock
+// under the speaker's lock
+auto& g_taps = *new std::vector<std::pair<int, audio::Tap*>>;
 int g_next_tap = 1;
-std::mutex g_request_mutex;
-std::function<void()> g_request;
+std::mutex& g_request_mutex = *new std::mutex;
+std::function<void()>& g_request = *new std::function<void()>;
 bool g_requested = false;
 std::atomic<size_t> g_frames{0};
-audio::Clock g_clock;  // under the speaker's lock; empty members are steady_clock's
+// under the speaker's lock; empty members are steady_clock's
+audio::Clock& g_clock = *new audio::Clock;
 
 std::chrono::steady_clock::time_point clock_now() {
   return g_clock.now ? g_clock.now() : std::chrono::steady_clock::now();

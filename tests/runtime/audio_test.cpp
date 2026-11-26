@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <string>
 #include <thread>
 #include <vector>
@@ -452,4 +453,28 @@ TEST(Expander, SpeakerInitSwitchesTheAmpOn) {
   ASSERT_EQ(bsp_audio_poweramp_enable(false), ESP_OK);
   ASSERT_EQ(esp_io_expander_get_level(bsp_io_expander_init(), BSP_POWER_AMP_IO, &level), ESP_OK);
   EXPECT_EQ(level, 0u);
+}
+
+// The socket's connection threads are detached, so one can still be letting go of its tap
+// while the process exits and static destructors run. That must not abort the process.
+TEST(CodecDeathTest, LettingGoOfATapDuringExitDoesNotAbort) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  EXPECT_EXIT(
+      {
+        struct Quiet : preflash::audio::Tap {
+          void format(preflash::audio::TapFormat) override {}
+          void samples(const int16_t*, size_t) override {}
+          void stop() override {}
+        };
+        static Quiet tap;
+        // Registered before the codec's state is first built, so it runs after that state
+        // would be destroyed, and holds the process there while the thread carries on.
+        std::atexit([] { std::this_thread::sleep_for(std::chrono::milliseconds(200)); });
+        std::thread([] {
+          for (;;) preflash::audio::remove_tap(preflash::audio::add_tap(&tap));
+        }).detach();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        std::exit(0);
+      },
+      ::testing::ExitedWithCode(0), "");
 }
