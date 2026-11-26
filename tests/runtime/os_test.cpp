@@ -9,6 +9,11 @@
 #include <string>
 #include <thread>
 
+#ifdef __linux__
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
+
 #include "esp_http_client.h"
 #include "esp_wifi.h"
 #include "esp_err.h"
@@ -165,27 +170,21 @@ TEST(Tasks, DeletingItselfRunsNoDestructors) {
 }
 
 #ifdef __linux__
-size_t thread_count() {
-  size_t count = 0;
-  for ([[maybe_unused]] const auto& entry : std::filesystem::directory_iterator("/proc/self/task")) ++count;
-  return count;
-}
-
+// Other threads can start and end while this runs, so the test watches the task's own.
 TEST(Tasks, DeletedTaskThreadIsGone) {
-  static std::atomic<bool> about_to_go{false};
-  about_to_go = false;
-  const size_t before = thread_count();
+  static std::atomic<pid_t> tid{0};
+  tid = 0;
   auto body = [](void*) {
-    about_to_go = true;
+    tid = static_cast<pid_t>(syscall(SYS_gettid));
     vTaskDelete(nullptr);
   };
   ASSERT_EQ(xTaskCreate(body, "gone", 4096, nullptr, 1, nullptr), pdPASS);
   const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(1);
-  while ((!about_to_go || thread_count() != before) && std::chrono::steady_clock::now() < give_up) {
-    vTaskDelay(1);
-  }
-  ASSERT_TRUE(about_to_go);
-  EXPECT_EQ(thread_count(), before);
+  while (tid == 0 && std::chrono::steady_clock::now() < give_up) vTaskDelay(1);
+  ASSERT_NE(tid.load(), 0);
+  const std::filesystem::path mine = "/proc/self/task/" + std::to_string(tid.load());
+  while (std::filesystem::exists(mine) && std::chrono::steady_clock::now() < give_up) vTaskDelay(1);
+  EXPECT_FALSE(std::filesystem::exists(mine));
 }
 #endif
 

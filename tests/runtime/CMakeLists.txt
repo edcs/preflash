@@ -47,6 +47,10 @@ add_library(runtime_objs OBJECT ${RUNTIME_SOURCES})
 target_include_directories(runtime_objs PUBLIC ${RUNTIME_DIR}/include ${RUNTIME_DIR}/src ${RUNTIME_DIR})
 target_compile_definitions(runtime_objs PUBLIC CONFIG_FREERTOS_HZ=1000
                            CONFIG_ESP_TASK_WDT_INIT=1 CONFIG_ESP_TASK_WDT_TIMEOUT_S=5)
+# The crash report walks the stack by frame pointer, which GCC drops when optimising.
+if(NOT APPLE)
+  target_compile_options(runtime_objs PUBLIC -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
+endif()
 find_package(CURL REQUIRED)
 target_link_libraries(runtime_objs PUBLIC nlohmann_json::nlohmann_json lvgl CURL::libcurl)
 

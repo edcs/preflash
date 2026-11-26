@@ -55,6 +55,25 @@ class Crash : public testing::Test {
   std::string output_;
 };
 
+#ifndef __APPLE__
+// The build ID the linker gave the helper, as readelf prints it.
+std::string build_id_of(const std::string& binary) {
+  const std::string command = "readelf -n '" + binary + "' 2>/dev/null";
+  FILE* pipe = popen(command.c_str(), "r");
+  if (pipe == nullptr) return "";
+  std::string text;
+  char chunk[256];
+  while (fgets(chunk, sizeof chunk, pipe) != nullptr) text += chunk;
+  pclose(pipe);
+  const std::string marker = "Build ID: ";
+  const size_t at = text.find(marker);
+  if (at == std::string::npos) return "";
+  const size_t from = at + marker.size();
+  const size_t end = text.find_first_of(" \t\r\n", from);
+  return text.substr(from, end == std::string::npos ? std::string::npos : end - from);
+}
+#endif
+
 }  // namespace
 
 TEST_F(Crash, ANullReadSaysSoAndNamesTheTask) {
@@ -68,7 +87,14 @@ TEST_F(Crash, ANullReadSaysSoAndNamesTheTask) {
   EXPECT_EQ(r["pid"].is_number_integer(), true);
   EXPECT_GE(r["frames"].size(), 3u);
   EXPECT_TRUE(r["load_address"].is_string());
+#ifdef __APPLE__
   EXPECT_EQ(r["uuid"].get<std::string>().size(), 36u);
+#else
+  const std::string id = build_id_of(CRASH_HELPER);
+  EXPECT_EQ(r["uuid"].get<std::string>().size(), 40u);
+  EXPECT_FALSE(id.empty());
+  EXPECT_EQ(r["uuid"], id);
+#endif
   EXPECT_TRUE(fs::exists(r["executable"].get<std::string>()));
   EXPECT_FALSE(fs::exists(dir_ / "crash.json.next"));
   EXPECT_NE(output_.find("crashed on painter"), std::string::npos) << output_;
@@ -77,6 +103,15 @@ TEST_F(Crash, ANullReadSaysSoAndNamesTheTask) {
 TEST_F(Crash, ANullWriteSaysSo) {
   EXPECT_NE(run("write"), 0);
   EXPECT_EQ(report()["access"], "write");
+}
+
+// A store to a small address, as a null struct's field would be.
+TEST_F(Crash, AWriteFaultSaysWrite) {
+  EXPECT_NE(run("write_low"), 0);
+  const json r = report();
+  ASSERT_TRUE(r.is_object()) << output_;
+  EXPECT_EQ(r["access"], "write");
+  EXPECT_EQ(r["address"], "0x8");
 }
 
 TEST_F(Crash, AnAbortCounts) {

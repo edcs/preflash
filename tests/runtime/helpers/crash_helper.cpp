@@ -40,6 +40,7 @@ __attribute__((noinline)) int use_the_stack(int depth) {
 __attribute__((noinline)) void crash_now() {
   if (g_mode == "read") read_null(nullptr);
   if (g_mode == "write") write_null(nullptr);
+  if (g_mode == "write_low") write_null(reinterpret_cast<volatile int*>(8));
   if (g_mode == "abort") std::abort();
   if (g_mode == "unsupported") preflash_unsupported("flash_op", "because");
   if (g_mode == "check") ESP_ERROR_CHECK(ESP_ERR_NO_MEM);

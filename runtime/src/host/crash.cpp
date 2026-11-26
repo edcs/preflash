@@ -53,6 +53,7 @@ constexpr size_t kMessageBytes = 1024;
 constexpr size_t kAlternateStackBytes = 256 * 1024;
 constexpr size_t kOutBytes = 4096;
 constexpr size_t kLongestSanitizerText = 256 * 1024;
+#ifdef __APPLE__
 constexpr uint32_t kDataAbortLower = 0x24;
 constexpr uint32_t kDataAbortSame = 0x25;
 constexpr uint32_t kInstructionAbortLower = 0x20;
@@ -60,6 +61,7 @@ constexpr uint32_t kInstructionAbortSame = 0x21;
 constexpr uint32_t kEsrClassShift = 26;
 constexpr uint32_t kEsrClassMask = 0x3f;
 constexpr uint32_t kEsrWrite = 1u << 6;
+#endif
 // System code's return addresses carry a pointer signature in their top bits.
 constexpr uintptr_t kAddressBits = 0x00007fffffffffff;
 
