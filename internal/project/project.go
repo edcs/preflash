@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -211,6 +212,20 @@ func (p Project) LastCrash() (*crash.Report, error) {
 		return nil, fmt.Errorf("no crash report for %s: %w", filepath.Base(p.Dir), fs.ErrNotExist)
 	}
 	return crash.Read(newest)
+}
+
+// Jobs is how many compiles a build runs at once: PREFLASH_JOBS if set, or one per core. A
+// shared machine sets it lower, since each compile holds its own memory.
+func Jobs() (int, error) {
+	value := os.Getenv("PREFLASH_JOBS")
+	if value == "" {
+		return runtime.NumCPU(), nil
+	}
+	jobs, err := strconv.Atoi(value)
+	if err != nil || jobs < 1 {
+		return 0, fmt.Errorf("PREFLASH_JOBS is %q: it needs a whole number of jobs, 1 or more", value)
+	}
+	return jobs, nil
 }
 
 // CacheDir is the folder for what Preflash can download again and for its sockets: macOS's

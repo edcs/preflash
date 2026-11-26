@@ -277,7 +277,10 @@ func (p Project) Build(ctx context.Context, env []string, output io.Writer) erro
 	if fetched != "" {
 		env = append(slices.Clone(env), "PREFLASH_MANAGED_COMPONENTS="+fetched)
 	}
-	jobs := strconv.Itoa(runtime.NumCPU())
+	jobs, err := Jobs()
+	if err != nil {
+		return err
+	}
 	stamp := filepath.Join(p.BuildDir(), "toolchain")
 	toolchain := toolchainOf(ctx, env)
 	// A stopped build's probes name no toolchain, so they mustn't cost the folder its cache.
@@ -295,7 +298,7 @@ func (p Project) Build(ctx context.Context, env []string, output io.Writer) erro
 	}
 	steps := [][]string{
 		{"-S", p.Dir, "-B", p.BuildDir()},
-		{"--build", p.BuildDir(), "--parallel", jobs},
+		{"--build", p.BuildDir(), "--parallel", strconv.Itoa(jobs)},
 	}
 	for i, args := range steps {
 		cmd := exec.CommandContext(ctx, "cmake", args...)

@@ -849,3 +849,26 @@ func TestAnSdkconfigThatIsntThereStopsTheRun(t *testing.T) {
 
 	require.ErrorContains(t, err, "sdkconfig.small")
 }
+
+func TestBuildJobsDefaultToOnePerCore(t *testing.T) {
+	t.Setenv("PREFLASH_JOBS", "")
+	jobs, err := Jobs()
+	require.NoError(t, err)
+	assert.Equal(t, runtime.NumCPU(), jobs)
+}
+
+func TestPreflashJobsCapsTheBuild(t *testing.T) {
+	t.Setenv("PREFLASH_JOBS", "4")
+	jobs, err := Jobs()
+	require.NoError(t, err)
+	assert.Equal(t, 4, jobs)
+}
+
+func TestABadPreflashJobsSaysSo(t *testing.T) {
+	for _, value := range []string{"0", "-2", "four", "4.5"} {
+		t.Setenv("PREFLASH_JOBS", value)
+		_, err := Jobs()
+		require.Error(t, err, value)
+		assert.Contains(t, err.Error(), "PREFLASH_JOBS", value)
+	}
+}

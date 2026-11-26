@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -45,9 +44,13 @@ func buildTool(ctx context.Context) (string, error) {
 	// Each checkout gets a folder, because CMake won't move a build to another source.
 	sum := sha256.Sum256([]byte(root))
 	dir := filepath.Join(project.Home(), "replay", hex.EncodeToString(sum[:6]))
+	jobs, err := project.Jobs()
+	if err != nil {
+		return "", err
+	}
 	steps := [][]string{
 		{"-S", filepath.Join(root, "runtime", "replay"), "-B", dir},
-		{"--build", dir, "--parallel", strconv.Itoa(runtime.NumCPU())},
+		{"--build", dir, "--parallel", strconv.Itoa(jobs)},
 	}
 	for _, args := range steps {
 		output, err := exec.CommandContext(ctx, "cmake", args...).CombinedOutput()
