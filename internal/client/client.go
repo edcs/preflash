@@ -140,18 +140,27 @@ func Dial(path string) (*Client, error) {
 	return dialWithin(path, refusedGrace, 0, 0)
 }
 
-// dialWithin keeps trying for as long as patience lasts, or missingPatience once the
-// socket's file has gone, which usually means the app quit. It stops early if pid, the
-// process expected to come back, dies meanwhile.
+// dialWithin keeps trying for as long as patience lasts, or until the socket's file has
+// been gone for missingPatience, which usually means the app quit. It stops early if pid,
+// the process expected to come back, dies meanwhile.
 func dialWithin(path string, patience, missingPatience time.Duration, pid int) (*Client, error) {
 	start := time.Now()
+	// When the file went. A boot replacing the socket removes it for a moment, which may
+	// come long after the dialling began.
+	var missingSince time.Time
 	for {
 		c, err := dialOnce(path)
 		if err == nil || !errors.Is(err, ErrNotRunning) {
 			return c, err
 		}
-		waited := time.Since(start)
-		if waited >= patience || !alive(pid) || (errors.Is(err, fs.ErrNotExist) && waited >= missingPatience) {
+		now := time.Now()
+		if !errors.Is(err, fs.ErrNotExist) {
+			missingSince = time.Time{}
+		} else if missingSince.IsZero() {
+			missingSince = now
+		}
+		gone := !missingSince.IsZero() && now.Sub(missingSince) >= missingPatience
+		if now.Sub(start) >= patience || !alive(pid) || gone {
 			return nil, ErrNotRunning
 		}
 		time.Sleep(dialPause)
