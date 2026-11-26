@@ -26,3 +26,22 @@ jobs:
         env:
           # A runner builds each fixture cold, slower than the 10 s a warm Mac needs.
           PREFLASH_TEST_WAIT: "300"
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # The sanitizer runtimes (libasan, libtsan) ship with g++ on Ubuntu, so crash.sh finds them.
+      - run: sudo apt-get update && sudo apt-get install -y cmake g++ libsdl2-dev libcurl4-openssl-dev pkg-config
+      # GCC's thread sanitizer stops with "unexpected memory mapping" under the runner's 32 bits
+      # of mmap randomisation.
+      - run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - run: make test
+        env:
+          PREFLASH_TEST_WAIT: "300"
+          # The window tests use SDL's dummy drivers, and the runner has no sound card.
+          SDL_AUDIODRIVER: dummy

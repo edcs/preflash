@@ -8,14 +8,17 @@
 set -eu
 
 repo="edcs/preflash"
-name="preflash-darwin-arm64"
+name=""
 
 say() { printf 'preflash: %s\n' "$*"; }
 die() { printf 'preflash: %s\n' "$*" >&2; exit 1; }
 
 main() {
-	[ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] ||
-		die "Preflash runs on Apple Silicon Macs only"
+	case "$(uname -s)-$(uname -m)" in
+	Darwin-arm64) name="preflash-darwin-arm64" ;;
+	Linux-x86_64) name="preflash-linux-amd64" ;;
+	*) die "Preflash runs on Apple Silicon Macs and x86_64 Linux" ;;
+	esac
 	command -v curl >/dev/null || die "curl is missing"
 
 	prefix="${PREFLASH_PREFIX:-$HOME/.local}"
@@ -34,7 +37,14 @@ main() {
 	say "downloading $name ($version)"
 	curl -fsSL -o "$work/$name.tar.gz" "$base/$name.tar.gz" || die "couldn't download $base/$name.tar.gz"
 	curl -fsSL -o "$work/$name.tar.gz.sha256" "$base/$name.tar.gz.sha256" || die "couldn't download the checksum"
-	(cd "$work" && shasum -a 256 -c "$name.tar.gz.sha256" >/dev/null) || die "the download doesn't match its checksum"
+	# Compared by hand: some sha256sum builds only warn about a malformed checksum file.
+	if command -v sha256sum >/dev/null; then
+		actual="$(sha256sum "$work/$name.tar.gz")"
+	else
+		actual="$(shasum -a 256 "$work/$name.tar.gz")"
+	fi
+	expected="$(cut -d' ' -f1 "$work/$name.tar.gz.sha256")"
+	[ -n "$expected" ] && [ "${actual%% *}" = "$expected" ] || die "the download doesn't match its checksum"
 	tar -xzf "$work/$name.tar.gz" -C "$work"
 
 	mkdir -p "$prefix/bin" "$prefix/share"
@@ -55,14 +65,32 @@ main() {
 
 	say "installed $("$prefix/bin/preflash" version | cut -d' ' -f2) in $prefix/bin/preflash"
 
-	missing=""
-	command -v cmake >/dev/null || missing="$missing cmake"
-	command -v python3 >/dev/null || missing="$missing python"
-	if ! { command -v pkg-config >/dev/null && pkg-config --exists sdl2; } &&
-		! { command -v brew >/dev/null && brew list sdl2 >/dev/null 2>&1; }; then
-		missing="$missing sdl2"
+	if [ "$(uname -s)" = Linux ]; then
+		missing=""
+		command -v cmake >/dev/null || missing="$missing, cmake"
+		command -v python3 >/dev/null || missing="$missing, python3"
+		{ command -v c++ >/dev/null || command -v g++ >/dev/null; } || missing="$missing, a C++ compiler"
+		{ command -v pkg-config >/dev/null && pkg-config --exists sdl2 libcurl; } || missing="$missing, the SDL2 and libcurl development files"
+		if [ -n "$missing" ]; then
+			say "Preflash also needs ${missing#, }."
+			distro=""
+			[ ! -r /etc/os-release ] || distro="$(. /etc/os-release && echo "${ID:-} ${ID_LIKE:-}")"
+			case " $distro " in
+			*" fedora "* | *" rhel "*) say "On Fedora: sudo dnf install cmake gcc-c++ SDL2-devel libcurl-devel" ;;
+			*" debian "* | *" ubuntu "*) say "On Debian/Ubuntu: sudo apt install cmake g++ libsdl2-dev libcurl4-openssl-dev" ;;
+			*) say "With Homebrew: brew install cmake sdl2 curl" ;;
+			esac
+		fi
+	else
+		missing=""
+		command -v cmake >/dev/null || missing="$missing cmake"
+		command -v python3 >/dev/null || missing="$missing python"
+		if ! { command -v pkg-config >/dev/null && pkg-config --exists sdl2; } &&
+			! { command -v brew >/dev/null && brew list sdl2 >/dev/null 2>&1; }; then
+			missing="$missing sdl2"
+		fi
+		[ -z "$missing" ] || say "Preflash also needs:$missing. With Homebrew: brew install$missing"
 	fi
-	[ -z "$missing" ] || say "Preflash also needs:$missing. With Homebrew: brew install$missing"
 
 	case ":$PATH:" in
 	*":$prefix/bin:"*) ;;

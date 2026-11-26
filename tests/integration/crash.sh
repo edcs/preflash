@@ -131,6 +131,14 @@ fi
 pf quit --project "$project"
 finish_app
 
+# A CI image missing a sanitizer's library must fail, not quietly drop the checks.
+skip_sanitizer() {
+  if [ -n "${CI:-}" ]; then
+    fail "c++ can't link -fsanitize=$1 here ($2 is missing on this CI image)"
+  fi
+  echo "SKIP: crash: c++ can't link -fsanitize=$1 here (install $2)"
+}
+
 # Linux packages a sanitizer's runtime on its own, and a compiler without it can't link one.
 links_with() {
   printf 'int main() { return 0; }\n' > "$scratch/sanitizer.cpp"
@@ -149,7 +157,7 @@ if links_with address; then
   [ -x "$build_dir-address/app" ] || fail "no build of its own for address"
   [ "$(sha256 "$plain_app")" = "$plain_sum" ] || fail "a sanitized build changed the plain one"
 else
-  echo "SKIP: crash: c++ can't link -fsanitize=address here (install libasan)"
+  skip_sanitizer address libasan
 fi
 
 if links_with thread; then
@@ -158,7 +166,7 @@ if links_with thread; then
   expect_in "race_task" "$report"
   expect_in "ThreadSanitizer: data race" "$(cat "$app_log")"
 else
-  echo "SKIP: crash: c++ can't link -fsanitize=thread here (install libtsan)"
+  skip_sanitizer thread libtsan
 fi
 
 echo "PASS: crash"

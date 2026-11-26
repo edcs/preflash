@@ -385,7 +385,7 @@ TEST(Pcf85063, TimeCarriesAcrossARestart) {
   EXPECT_EQ(regs, (std::array<uint8_t, 7>{0x11, 0x35, 0x12, 0x02, 0x05, 0x03, 0x31}));
   EXPECT_EQ(std::getenv("PREFLASH_RTC_CARRY"), nullptr) << "taken once";
 
-  Pcf85063 fresh(clock.fn());  // a chip made later starts from the Mac as usual
+  Pcf85063 fresh(clock.fn());  // a chip made later starts from the computer as usual
   EXPECT_EQ(rtc_seconds(take<7>(fresh, 0x04)), clock.now);
 }
 

@@ -25,7 +25,12 @@ jobs:
   build:
     needs: release-please
     if: needs.release-please.outputs.created == 'true'
-    runs-on: macos-15
+    strategy:
+      # A Linux failure mustn't cancel the macOS archive's upload, or the other way round.
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:

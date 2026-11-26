@@ -40,7 +40,7 @@ Sntp& sntp() {
 }
 
 // Waits out each interval, then reports a sync if the network is up. The time itself
-// is the Mac's, which is already right, so only the status and the callback change.
+// is the computer's, which is already right, so only the status and the callback change.
 void work(uint64_t generation, milliseconds first) {
   Sntp& s = sntp();
   std::unique_lock<std::mutex> lock(s.mutex);
