@@ -491,7 +491,14 @@ int read_first_object(dl_phdr_info* info, size_t, void*) {
     while (at + sizeof(ElfW(Nhdr)) <= end) {
       const auto* note = reinterpret_cast<const ElfW(Nhdr)*>(at);
       const char* name = at + sizeof *note;
-      const auto* desc = reinterpret_cast<const uint8_t*>(name + ((note->n_namesz + 3) & ~3u));
+      const size_t name_size = (size_t{note->n_namesz} + 3) & ~size_t{3};
+      const size_t desc_size = (size_t{note->n_descsz} + 3) & ~size_t{3};
+      // A note whose sizes run past its segment is torn, and nothing after it can be trusted.
+      if (name_size > static_cast<size_t>(end - name) ||
+          desc_size > static_cast<size_t>(end - name) - name_size) {
+        break;
+      }
+      const auto* desc = reinterpret_cast<const uint8_t*>(name + name_size);
       if (note->n_type == NT_GNU_BUILD_ID && note->n_namesz == 4 &&
           std::memcmp(name, "GNU", 4) == 0) {
         size_t at_hex = 0;
@@ -500,7 +507,7 @@ int read_first_object(dl_phdr_info* info, size_t, void*) {
           at_hex += 2;
         }
       }
-      at = reinterpret_cast<const char*>(desc) + ((note->n_descsz + 3) & ~3u);
+      at = reinterpret_cast<const char*>(desc) + desc_size;
     }
   }
   return 1;
