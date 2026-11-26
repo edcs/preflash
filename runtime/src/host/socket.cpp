@@ -1,7 +1,9 @@
 #include "preflash/socket.h"
 
 #include <fcntl.h>
+#ifdef __APPLE__
 #include <libproc.h>
+#endif
 #include <poll.h>
 #include <sys/file.h>
 #include <sys/param.h>
@@ -516,8 +518,12 @@ void write_lines(std::shared_ptr<Connection> c) {
 // macOS raises SIGPIPE for a socket at the process, past any thread's mask, so a client
 // hanging up mid-write would stop the app. This turns it into an error from write.
 void ignore_hang_ups(int fd) {
+#ifdef SO_NOSIGPIPE
   const int on = 1;
   setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
+#else
+  (void)fd;
+#endif
 }
 
 void accept_clients() {
@@ -577,12 +583,17 @@ std::string answer_line(int fd) {
 
 // The process at the other end of a connection, as "pid N, name", or empty if macOS won't say.
 std::string peer(int fd) {
+#ifdef __APPLE__
   pid_t pid = 0;
   socklen_t size = sizeof pid;
   if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &size) != 0 || pid <= 0) return "";
   char name[2 * MAXCOMLEN + 1] = {};
   proc_name(pid, name, sizeof name);
   return "pid " + std::to_string(pid) + (name[0] ? std::string(", ") + name : "");
+#else
+  (void)fd;
+  return "";
+#endif
 }
 
 // Who answers on the socket, if anyone. Whatever doesn't reply in time still holds it.

@@ -218,19 +218,26 @@ function(preflash_embed_file file text out)
     set(terminator "    \".byte 0\\n\"\n")
   endif()
 
-  # The last byte keeps the end label inside the section, and .alt_entry stops
-  # the linker from treating it as a separate block it could move.
+  # The last byte keeps the end label inside the section, and on macOS .alt_entry
+  # stops the linker from treating it as a separate block it could move.
   set(generated "${CMAKE_CURRENT_BINARY_DIR}/embed/${name}.c")
+  if(APPLE)
+    set(section "__TEXT,__const")
+    set(alt_entry "    \".alt_entry _binary_${name}_end\\n\"\n")
+  else()
+    set(section ".rodata")
+    set(alt_entry "")
+  endif()
   string(CONCAT source
     "__asm__(\n"
-    "    \".section __TEXT,__const\\n\"\n"
+    "    \".section ${section}\\n\"\n"
     "    \".p2align 4\\n\"\n"
     "    \".globl _binary_${name}_start\\n\"\n"
     "    \"_binary_${name}_start:\\n\"\n"
     "    \".incbin \\\"${path}\\\"\\n\"\n"
     "${terminator}"
     "    \".globl _binary_${name}_end\\n\"\n"
-    "    \".alt_entry _binary_${name}_end\\n\"\n"
+    "${alt_entry}"
     "    \"_binary_${name}_end:\\n\"\n"
     "    \".byte 0\\n\");\n")
   preflash_write_if_changed("${generated}" "${source}")
@@ -403,7 +410,12 @@ function(preflash_link_app config_dir)
       # Whole-archive, so that app_main and constructors survive. Linking the target
       # as well carries over whatever it links to itself.
       target_link_libraries(preflash_app PRIVATE ${lib})
-      target_link_options(preflash_app PRIVATE "LINKER:-force_load,$<TARGET_FILE:${lib}>")
+      if(APPLE)
+        target_link_options(preflash_app PRIVATE "LINKER:-force_load,$<TARGET_FILE:${lib}>")
+      else()
+        target_link_options(preflash_app PRIVATE
+            "LINKER:--whole-archive,$<TARGET_FILE:${lib}>,--no-whole-archive")
+      endif()
     endif()
   endforeach()
 endfunction()

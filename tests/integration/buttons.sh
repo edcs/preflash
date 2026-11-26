@@ -301,6 +301,29 @@ running="$(pgrep -f -- "$exe" | tr '\n' ' ')"
 [ "$(field power)" = '"on"' ] || fail "the double reset didn't end on" "$(status_json)"
 # Each reset took its own press of RST, so none is left holding it in the new boot.
 [ "$(is_down RST)" = false ] || fail "a double reset left RST down" "$(status_json)"
+
+# A reset carries nothing over: after 20 more, the app holds no more descriptors or threads
+# than it did before them, and its serial port still answers. macOS has no cheap thread
+# count, so there only the descriptors are counted.
+open_fds() {
+  if [ -d "/proc/$pid" ]; then ls "/proc/$pid/fd" | wc -l; else lsof -p "$pid" | wc -l; fi
+}
+threads() {
+  if [ -d "/proc/$pid" ]; then ls "/proc/$pid/task" | wc -l; else echo 0; fi
+}
+fds_before="$(open_fds)"
+threads_before="$(threads)"
+for tap in $(seq 1 20); do
+  mark
+  button RST tap
+  saw "ready on"
+done
+firmware_answers
+fds_after="$(open_fds)"
+threads_after="$(threads)"
+[ "$fds_after" -le "$fds_before" ] || fail "20 resets left $fds_after descriptors open, from $fds_before"
+[ "$threads_after" -le "$threads_before" ] || fail "20 resets left $threads_after threads, from $threads_before"
+pf port --project "$project" > /dev/null || fail "the serial port stopped answering after 20 resets"
 quit
 
 echo "buttons.sh passed"

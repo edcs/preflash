@@ -1,6 +1,4 @@
-#include <crt_externs.h>
 #include <fcntl.h>
-#include <mach-o/dyld.h>
 #include <signal.h>
 #include <spawn.h>
 #include <sys/socket.h>
@@ -11,7 +9,6 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
-#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -29,6 +26,7 @@
 #include "preflash/crash.h"
 #include "preflash/hardware.h"
 #include "preflash/panel.h"
+#include "preflash/platform.h"
 #include "preflash/power.h"
 #include "preflash/socket.h"
 #include "preflash/touch.h"
@@ -95,10 +93,8 @@ std::string from_env(const char* name, const std::string& fallback) {
 // The folder the app runs from, which is its build folder, for a run with nothing set, as
 // when a script builds a project with cmake and runs the app itself.
 std::string app_dir() {
-  char path[PATH_MAX];
-  uint32_t size = sizeof path;
-  if (_NSGetExecutablePath(path, &size) != 0) return ".";
-  const std::string exe(path);
+  const std::string exe = platform::executable_path();
+  if (exe.empty()) return ".";
   const size_t slash = exe.rfind('/');
   return slash == std::string::npos ? "." : exe.substr(0, slash);
 }
@@ -134,8 +130,10 @@ int dial() {
     close(fd);
     return -1;
   }
+#ifdef SO_NOSIGPIPE
   const int on = 1;
   setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
+#endif
   const timeval patience{kSendPatienceSeconds, 0};
   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &patience, sizeof patience);
   return fd;
@@ -156,13 +154,19 @@ bool spawn() {
   sigset_t all;
   sigemptyset(&none);
   sigfillset(&all);
+  short flags = POSIX_SPAWN_SETSID | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF;
+#ifdef __APPLE__
+  flags |= POSIX_SPAWN_CLOEXEC_DEFAULT;
+#endif
   int err = posix_spawnattr_setsigmask(&attr, &none);
   if (!err) err = posix_spawnattr_setsigdefault(&attr, &all);
-  if (!err) {
-    err = posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT |
-                                              POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF);
-  }
+  if (!err) err = posix_spawnattr_setflags(&attr, flags);
   const std::string log = log_path();
+#ifndef __APPLE__
+  // Linux has no flag that keeps this process's descriptors out of the window, so the child
+  // closes all but the standard three, which are opened afresh below.
+  if (!err) err = posix_spawn_file_actions_addclosefrom_np(&actions, 3);
+#endif
   if (!err) err = posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
   if (!err) err = posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
   if (!err) {
@@ -172,7 +176,7 @@ bool spawn() {
   pid_t pid;
   char* const argv[] = {const_cast<char*>(g_exe.c_str()), const_cast<char*>(g_socket.c_str()),
                         nullptr};
-  if (!err) err = posix_spawn(&pid, g_exe.c_str(), &actions, &attr, argv, *_NSGetEnviron());
+  if (!err) err = posix_spawn(&pid, g_exe.c_str(), &actions, &attr, argv, platform::environment());
   posix_spawn_file_actions_destroy(&actions);
   posix_spawnattr_destroy(&attr);
   if (err) {

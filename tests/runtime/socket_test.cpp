@@ -76,8 +76,10 @@ class Client {
     EXPECT_GE(fd_, 0);
     timeval wait = {5, 0};
     setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &wait, sizeof wait);
+#ifdef SO_NOSIGPIPE
     const int on = 1;
     setsockopt(fd_, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
+#endif
   }
   ~Client() {
     if (fd_ >= 0) close(fd_);
@@ -252,8 +254,10 @@ TEST(SocketClaim, GivesATricklingHolderOneDeadlineInAll) {
     const int client = accept(server, nullptr, nullptr);
     // claim hangs up at its deadline, before done is set, and a write after that would raise
     // SIGPIPE at the process.
+#ifdef SO_NOSIGPIPE
     const int on = 1;
     setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
+#endif
     while (!done) {
       if (write(client, "x", 1) != 1) break;
       std::this_thread::sleep_for(std::chrono::milliseconds(100));

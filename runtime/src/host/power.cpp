@@ -1,7 +1,5 @@
 #include "preflash/power.h"
 
-#include <crt_externs.h>
-#include <mach-o/dyld.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -20,6 +18,7 @@
 #include "preflash/chips.h"
 #include "preflash/fail.h"
 #include "preflash/hardware.h"
+#include "preflash/platform.h"
 #include "preflash/port.h"
 #include "preflash/serial.h"
 #include "preflash/socket.h"
@@ -121,7 +120,7 @@ std::vector<std::string> env_for(Mode next, Reset reason) {
   static constexpr const char* kReplaced[] = {kPowerEnv, kHeldEnv, kResetEnv, kOldRestartedEnv,
                                               kExpanderEnv};
   std::vector<std::string> env;
-  for (char** entry = *_NSGetEnviron(); *entry; ++entry) {
+  for (char** entry = platform::environment(); *entry; ++entry) {
     const std::string text(*entry);
     const bool replaced = std::any_of(std::begin(kReplaced), std::end(kReplaced),
                                       [&text](const char* name) { return is_named(text, name); });
@@ -151,9 +150,8 @@ void enter(Mode next, Reset reason) {
   // locked for as long as it sits in a read.
   std::fflush(stdout);
   std::fflush(stderr);
-  char path[4096];
-  uint32_t size = sizeof path;
-  if (_NSGetExecutablePath(path, &size) != 0) {
+  const std::string path = platform::executable_path();
+  if (path.empty()) {
     preflash_unsupported(caller, "the executable's path is too long to re-run");
   }
   carry_chips_across_restart();
@@ -177,7 +175,7 @@ void enter(Mode next, Reset reason) {
   serial::wait_sent();
   // Those waits take a while, and a quit that arrived meanwhile has been told yes.
   if (socket::quitting()) socket::quit();
-  exec_clean(path, *_NSGetArgv(), envp.data());
+  exec_clean(path.c_str(), platform::arguments(), envp.data());
   preflash_unsupported(caller, "re-running the executable failed");
 }
 
