@@ -48,7 +48,7 @@ mkdir "$project/managed_components"
 rsync -a --exclude /demos --exclude /docs --exclude /examples --exclude /tests \
   "$lvgl/" "$project/managed_components/lvgl__lvgl/"
 log="$(cmake -S "$project" -B "$scratch/build" 2>&1)" || fail "configure" "$log"
-log="$(cmake --build "$scratch/build" --parallel 2>&1)" || fail "build" "$log"
+log="$(cmake --build "$scratch/build" --parallel "${PREFLASH_JOBS:-$(getconf _NPROCESSORS_ONLN)}" 2>&1)" || fail "build" "$log"
 app="$scratch/build/app"
 
 # The driver doesn't exist, so a window process that started SDL's video would fail, and the

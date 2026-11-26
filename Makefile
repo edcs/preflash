@@ -1,5 +1,8 @@
 .PHONY: test bench bash
 
+# Without a number, --parallel lets make start every compile at once.
+JOBS := $(or $(PREFLASH_JOBS),$(shell getconf _NPROCESSORS_ONLN))
+
 # macOS's own bash 3.2 exits 0 after an unbound variable when a script has an EXIT trap,
 # which would pass a failing integration script.
 bash:
@@ -9,7 +12,7 @@ test: bash
 	go test ./...
 	@if command -v node >/dev/null; then node --test tests/web/audio-worklet.test.mjs; else echo "node not found: skipping the sound buffer's tests"; fi
 	cmake -S tests/runtime -B build/tests
-	cmake --build build/tests --parallel
+	cmake --build build/tests --parallel $(JOBS)
 	ctest --test-dir build/tests --output-on-failure
 	tests/integration/build_fixture.sh
 	tests/integration/install.sh

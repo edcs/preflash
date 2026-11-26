@@ -197,6 +197,8 @@ preflash run [--project dir] [--board file] [--headless] [--sanitize address|thr
 - `~/.preflash/build/<name>-<hash>` holds the build.
 - `~/.preflash/state/<name>-<hash>` holds what firmware saves, such as NVS. Delete it for a factory-fresh device.
 
+A build runs one compile per CPU core. Each C++ compile holds its own memory, so on a shared or many-core machine, set `PREFLASH_JOBS` to run fewer at once, such as `PREFLASH_JOBS=8`. `make test` honours it too.
+
 ### The window, buttons and power
 
 The window is a process of its own, `preflash-window`, built beside the app. It stays where it is while the firmware restarts, whether by `esp_restart`, RST, a power change or a crash, and keeps the last frame up until the new boot draws. Power-off and download mode run no firmware, so they black the panel out, and the boot after them starts from black as the board does. Under `preflash run`, closing the window quits the app and quitting the app closes the window. The terminal app keeps the window up while it rebuilds or restarts the app, and closes it when you quit the terminal app. If the window process dies, the app starts a new one. The window writes its errors to a log beside the control socket, `~/Library/Caches/preflash/<hash>.window.log` (`~/.cache/preflash/<hash>.window.log` on Linux, or under `$XDG_CACHE_HOME` if you set it). If no window stays open, the app stops with `preflash: couldn't open the window: ` and the log's last line. `--headless` runs with no window and without starting SDL at all, so it works in CI or on a locked screen, and buttons, rotation and power still work from the command line and the socket.
