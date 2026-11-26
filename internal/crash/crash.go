@@ -1,17 +1,17 @@
 // Package crash reads the report a crashed app leaves behind and ties it to source. The app
-// can only write addresses from a signal handler, so naming them happens here, with atos.
+// can only write addresses from a signal handler, so naming them happens here, with atos on a Mac and addr2line on Linux.
 package crash
 
 import (
 	"bytes"
-	"debug/macho"
-	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,9 +20,6 @@ import (
 const (
 	// nullReach is how far past null a struct's field can be and still mean a null pointer.
 	nullReach = 0x1000
-	// uuidCommand is LC_UUID, which debug/macho hands over as raw bytes.
-	uuidCommand    = 0x1b
-	uuidCommandLen = 24
 	// managedFolder holds a project's downloaded components, which aren't its own code.
 	managedFolder = "managed_components"
 )
@@ -109,35 +106,18 @@ func hasSource(stack []Frame) bool {
 	return slices.ContainsFunc(stack, func(f Frame) bool { return f.File != "" })
 }
 
-// fileUUID reads an executable's build ID, or nothing if it has gone.
-func fileUUID(path string) string {
-	file, err := macho.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer file.Close()
-	for _, load := range file.Loads {
-		raw := load.Raw()
-		if len(raw) >= uuidCommandLen && binary.LittleEndian.Uint32(raw) == uuidCommand {
-			id := raw[8:uuidCommandLen]
-			return strings.ToUpper(fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:]))
-		}
-	}
-	return ""
-}
-
 func parseAddress(text string) (uint64, bool) {
 	value, err := strconv.ParseUint(strings.TrimPrefix(text, "0x"), 16, 64)
 	return value, err == nil
 }
 
 func (r *Report) inApp(address uint64) bool {
-	load, ok := parseAddress(r.LoadAddress)
-	return ok && address >= load && address < load+r.ImageSize
+	return r.inImage(address)
 }
 
 // symbolise names the frames that are in the app. System code above and between them says
-// nothing a firmware developer can act on.
+// nothing a firmware developer can act on. Each OS supplies name, which turns the addresses
+// into one group of frames apiece (more than one where a call was inlined).
 func (r *Report) symbolise(run Runner) []Frame {
 	var kept []string
 	var asked []string
@@ -164,9 +144,8 @@ func (r *Report) symbolise(run Runner) []Frame {
 		return nil
 	}
 	if !r.Rebuilt {
-		args := append([]string{"-o", r.symbols(run), "-l", r.LoadAddress, "-i", "-fullPath"}, asked...)
-		if output, err := run("atos", args...); err == nil {
-			return withoutThreadStart(dropStaleLink(parseAtos(string(output)), lrAt))
+		if groups, err := r.name(run, asked); err == nil {
+			return withoutThreadStart(dropStaleLink(groups, lrAt))
 		}
 	}
 	stack := make([]Frame, 0, len(kept))
@@ -178,75 +157,19 @@ func (r *Report) symbolise(run Runner) []Frame {
 	return stack
 }
 
-// symbols gives the file for atos to read. The build leaves debug information in its objects,
-// and atos only reads a dSYM, so this gathers one the first time an app crashes. That takes
-// seconds, which nobody should pay on every build.
-func (r *Report) symbols(run Runner) string {
-	dsym := r.Executable + ".dSYM"
-	dwarf := filepath.Join(dsym, "Contents", "Resources", "DWARF", filepath.Base(r.Executable))
-	built, err := os.Stat(r.Executable)
-	if err != nil {
-		return r.Executable
-	}
-	if gathered, err := os.Stat(dwarf); err == nil && !gathered.ModTime().Before(built.ModTime()) {
-		return dwarf
-	}
-	if _, err := run("dsymutil", r.Executable, "-o", dsym); err != nil {
-		return r.Executable
-	}
-	if _, err := os.Stat(dwarf); err != nil {
-		return r.Executable
-	}
-	return dwarf
-}
-
-// withoutThreadStart drops what every thread begins with: the C++ library's frames, and the
+// withoutThreadStart drops what every thread begins with: the C++ library's frames (libc++ or libstdc++), and the
 // wrapper that starts a task.
 func withoutThreadStart(stack []Frame) []Frame {
 	end := len(stack)
 	for end > 1 {
 		function := stack[end-1].Function
-		if !strings.Contains(function, "std::__1::") && !strings.Contains(function, "xTaskCreatePinnedToCore::") {
+		if !strings.Contains(function, "std::__1::") && !strings.Contains(function, "std::thread::") && function != "execute_native_thread_routine" &&
+			!strings.Contains(function, "xTaskCreatePinnedToCore::") {
 			break
 		}
 		end--
 	}
 	return stack[:end]
-}
-
-// atosLine is atos's answer for an address it knows the source of, and one it doesn't.
-var (
-	atosSource = regexp.MustCompile(`^(.+) \(in [^)]*\) \((.+):(\d+)\)$`)
-	atosSymbol = regexp.MustCompile(`^(.+) \(in [^)]*\)`)
-)
-
-// parseAtos gives each address's frames. With -i, one address can be several, for inlining,
-// and a blank line ends each.
-func parseAtos(output string) [][]Frame {
-	var groups [][]Frame
-	for _, group := range strings.Split(output, "\n\n") {
-		var frames []Frame
-		for _, line := range strings.Split(group, "\n") {
-			if line = strings.TrimSpace(line); line != "" {
-				frames = append(frames, parseAtosLine(line))
-			}
-		}
-		if len(frames) > 0 {
-			groups = append(groups, frames)
-		}
-	}
-	return groups
-}
-
-func parseAtosLine(line string) Frame {
-	if m := atosSource.FindStringSubmatch(line); m != nil {
-		number, _ := strconv.Atoi(m[3])
-		return Frame{Function: functionName(m[1]), File: m[2], Line: number}
-	}
-	if m := atosSymbol.FindStringSubmatch(line); m != nil {
-		return Frame{Function: functionName(m[1])}
-	}
-	return Frame{Function: line}
 }
 
 // dropStaleLink flattens the groups. The link register only adds a caller for a leaf function:
@@ -486,13 +409,27 @@ func (r *Report) Text() string {
 	return out.String()
 }
 
-// Debugger is the command that attaches lldb to a stopped app.
-func Debugger(pid int) *exec.Cmd {
-	words := strings.Fields(os.Getenv("PREFLASH_LLDB"))
-	if len(words) == 0 {
-		words = []string{"lldb"}
+// debuggerWords is the debugger's command, from PREFLASH_LLDB or else the OS's own. The
+// variable keeps its name from when only lldb was supported.
+func debuggerWords() []string {
+	if words := strings.Fields(os.Getenv("PREFLASH_LLDB")); len(words) > 0 {
+		return words
 	}
+	if runtime.GOOS == "darwin" {
+		return []string{"lldb"}
+	}
+	return []string{"gdb"}
+}
+
+// Debugger is the command that attaches a debugger to a stopped app.
+func Debugger(pid int) *exec.Cmd {
+	words := debuggerWords()
 	return exec.Command(words[0], append(words[1:], "-p", strconv.Itoa(pid))...)
+}
+
+// DebuggerName is what the screen calls the debugger.
+func DebuggerName() string {
+	return filepath.Base(debuggerWords()[0])
 }
 
 // Editor is the command that opens a file at a line. Most editors take +line, and the
@@ -515,13 +452,41 @@ func Editor(file string, line int) *exec.Cmd {
 	return exec.Command(words[0], args...)
 }
 
-// Copy puts text on the Mac's clipboard.
+// Copy puts text on the clipboard.
 func Copy(text string) error {
-	name := os.Getenv("PREFLASH_PBCOPY")
+	name, args := clipboardCommand()
 	if name == "" {
-		name = "pbcopy"
+		return errors.New("no clipboard tool found: install wl-clipboard or xclip")
 	}
-	cmd := exec.Command(name)
+	cmd := exec.Command(name, args...)
 	cmd.Stdin = strings.NewReader(text)
 	return cmd.Run()
+}
+
+// clipboardCommand picks the tool that fills the clipboard. On Linux that depends on the
+// session: wl-copy only works under Wayland, and the X tools need an X server, which Wayland
+// desktops usually still offer.
+func clipboardCommand() (string, []string) {
+	if name := os.Getenv("PREFLASH_PBCOPY"); name != "" {
+		return name, nil
+	}
+	if runtime.GOOS == "darwin" {
+		return "pbcopy", nil
+	}
+	type tool struct {
+		name string
+		args []string
+	}
+	var candidates []tool
+	if os.Getenv("WAYLAND_DISPLAY") != "" {
+		candidates = append(candidates, tool{"wl-copy", nil})
+	}
+	candidates = append(candidates, tool{"xclip", []string{"-selection", "clipboard"}},
+		tool{"xsel", []string{"--clipboard", "--input"}})
+	for _, c := range candidates {
+		if path, err := exec.LookPath(c.name); err == nil {
+			return path, c.args
+		}
+	}
+	return "", nil
 }
