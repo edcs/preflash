@@ -142,7 +142,7 @@ expect '"key":"greeting"' "$output"
 output="$(pf hardware --project "$project")"
 expect "plugged in" "$output"
 expect "not fitted" "$output"
-expect "Mac's connection" "$output"
+expect "the computer's connection" "$output"
 pf hardware --json --project "$project" | python3 -I -c '
 import json, sys
 items = {i["name"]: i for i in json.load(sys.stdin)}

@@ -54,9 +54,9 @@ var (
 )
 
 // resolveCrash names a report's frames. Tests replace it.
-var resolveCrash = resolveWithAtos
+var resolveCrash = symbolise
 
-func resolveWithAtos(r *crash.Report, project string) { r.Resolve(project, crash.RunCommand) }
+func symbolise(r *crash.Report, project string) { r.Resolve(project, crash.RunCommand) }
 
 // Event is something that happened to the build or the app.
 type Event any
@@ -454,7 +454,7 @@ func describe(state *os.ProcessState) (bool, string) {
 	case syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP:
 		return false, "The app was terminated."
 	default:
-		return true, "The app died: " + signal.String() + "."
+		return true, "The app died: " + signalName(signal) + "."
 	}
 }
 
@@ -833,4 +833,25 @@ func (w *lineWriter) flush() {
 		w.emit(string(w.partial))
 		w.partial = nil
 	}
+}
+
+// signalName words a signal as macOS does, so the app's death reads the same on either system:
+// Linux calls SIGABRT "aborted" and SIGTRAP "trace/breakpoint trap" where macOS says "abort
+// trap" and "trace/BPT trap".
+func signalName(signal syscall.Signal) string {
+	switch signal {
+	case syscall.SIGABRT:
+		return "abort trap"
+	case syscall.SIGSEGV:
+		return "segmentation fault"
+	case syscall.SIGBUS:
+		return "bus error"
+	case syscall.SIGILL:
+		return "illegal instruction"
+	case syscall.SIGFPE:
+		return "floating point exception"
+	case syscall.SIGTRAP:
+		return "trace/BPT trap"
+	}
+	return signal.String()
 }

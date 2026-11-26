@@ -288,3 +288,18 @@ func TestTheThreadStartIsLeftOffTheStack(t *testing.T) {
 	r.Resolve("/p", fakeNames(threadStartOutput))
 	require.Len(t, r.Stack, 1)
 }
+
+// At -O0 libstdc++ puts its own invoke helpers between the firmware's lambda and the thread's
+// invoker, and they're no more the firmware's than the thread start is.
+func TestLibstdcxxInvokeFramesAreLeftOffTheStack(t *testing.T) {
+	stack := []Frame{
+		{Function: "task(void*)"},
+		{Function: "xTaskCreatePinnedToCore::$_0::operator()() const"},
+		{Function: "void std::__invoke_impl<void, a>(std::__invoke_other, a&&)"},
+		{Function: "std::__invoke_result<a>::type std::__invoke<a>(a&&)"},
+		{Function: "std::thread::_Invoker<std::tuple<a> >::_M_invoke<0ul>(std::_Index_tuple<0ul>)"},
+	}
+	got := withoutThreadStart(stack)
+	require.Len(t, got, 1)
+	assert.Equal(t, "task(void*)", got[0].Function)
+}

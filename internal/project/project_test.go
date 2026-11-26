@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -291,7 +292,49 @@ func TestSerialLinkIsRelativeToTheProject(t *testing.T) {
 	}
 }
 
+func TestCacheDirFollowsXDGOnLinux(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("macOS keeps its cache in Library/Caches")
+	}
+	t.Setenv("HOME", "/home/someone")
+	t.Setenv("XDG_CACHE_HOME", "/x")
+	assert.Equal(t, "/x/preflash", CacheDir())
+	t.Setenv("XDG_CACHE_HOME", "")
+	assert.Equal(t, "/home/someone/.cache/preflash", CacheDir())
+}
+
+func TestCacheDirIsInLibraryCachesOnMacOS(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("only macOS uses Library/Caches")
+	}
+	t.Setenv("HOME", "/Users/someone")
+	assert.Equal(t, "/Users/someone/Library/Caches/preflash", CacheDir())
+}
+
+func TestSocketPathFallsBackPastTheLimitOnLinux(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the 108-byte limit is Linux's")
+	}
+	t.Setenv("HOME", "/home/someone")
+	t.Setenv("XDG_CACHE_HOME", "/"+strings.Repeat("x", 100))
+	t.Setenv("TMPDIR", "/tmp/short")
+
+	path := Project{Dir: "/x/demo"}.SocketPath()
+	assert.True(t, strings.HasPrefix(path, "/tmp/short/"), path)
+	assert.Less(t, len(path), socketPathLimit)
+
+	// A cache folder of 77 bytes is too long for macOS's 104 but still fits Linux's 108.
+	long := "/" + strings.Repeat("x", 76)
+	t.Setenv("XDG_CACHE_HOME", long)
+	path = Project{Dir: "/x/demo"}.SocketPath()
+	assert.True(t, strings.HasPrefix(path, long+"/preflash/"), path)
+	assert.NoError(t, Project{Dir: "/x/demo"}.checkSocketPath())
+}
+
 func TestSocketPathFitsAUnixSocket(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("the path is checked under Library/Caches")
+	}
 	t.Setenv("HOME", "/Users/someone/with/a/fairly/long/home/folder")
 	p := Project{Dir: "/some/very/deep/folder/" + strings.Repeat("x", 200)}
 
@@ -302,6 +345,9 @@ func TestSocketPathFitsAUnixSocket(t *testing.T) {
 }
 
 func TestSocketPathFallsBackWhenHomeIsLong(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("a long HOME only matters where the cache is under it")
+	}
 	t.Setenv("HOME", "/Users/"+strings.Repeat("x", 100))
 	t.Setenv("TMPDIR", "/tmp/short")
 
@@ -314,13 +360,23 @@ func TestSocketPathFallsBackWhenHomeIsLong(t *testing.T) {
 func TestRunRefusesASocketPathThatCannotFit(t *testing.T) {
 	t.Setenv("HOME", "/Users/"+strings.Repeat("x", 100))
 	t.Setenv("TMPDIR", "/tmp/"+strings.Repeat("y", 100))
+	t.Setenv("XDG_CACHE_HOME", "")
 
-	assert.ErrorContains(t, Project{Dir: "/x/demo"}.checkSocketPath(), "too long")
+	err := Project{Dir: "/x/demo"}.checkSocketPath()
+	assert.ErrorContains(t, err, "too long")
+	if runtime.GOOS == "darwin" {
+		assert.ErrorContains(t, err, "use a shorter HOME or TMPDIR")
+	} else {
+		assert.ErrorContains(t, err, "use a shorter HOME, XDG_CACHE_HOME or TMPDIR")
+	}
 }
 
 // A HOME whose cache folder fits the control socket but not the window's, which is two bytes
 // longer, falls back to the temporary folder, and fails there the same way.
 func TestSocketPathLeavesRoomForTheWindowsSocket(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("the sizes are worked out for macOS's 104 bytes")
+	}
 	// "/Library/Caches/preflash/" + 12 hex digits + ".sock" is 42 bytes, so a HOME of 60 leaves
 	// the control socket 102 bytes, which fits, and the window's 104, which doesn't.
 	home := "/Users/" + strings.Repeat("x", 53)
@@ -582,7 +638,12 @@ func TestBuildStartsTheCacheAfreshWhenTheToolchainChanges(t *testing.T) {
 	assert.False(t, keepsCache(before...), "a folder no build has stamped")
 	assert.True(t, keepsCache(before...), "the same toolchain")
 	assert.False(t, keepsCache("CMAKE_VERSION=4.5.0", "SDK=/Xcode/MacOSX.sdk"), "a newer CMake")
-	assert.False(t, keepsCache("CMAKE_VERSION=4.5.0", "SDK=/CommandLineTools/MacOSX.sdk"), "another SDK")
+	if runtime.GOOS == "darwin" {
+		assert.False(t, keepsCache("CMAKE_VERSION=4.5.0", "SDK=/CommandLineTools/MacOSX.sdk"), "another SDK")
+	} else {
+		// Linux has no SDK to change, so the failing configure below starts from another stamp.
+		assert.False(t, keepsCache("CMAKE_VERSION=4.4.9", "SDK=/Xcode/MacOSX.sdk"), "another CMake")
+	}
 	keepsCache("CMAKE_VERSION=4.5.0", "SDK=/Xcode/MacOSX.sdk", "FAIL=-S")
 	assert.False(t, keepsCache("CMAKE_VERSION=4.5.0", "SDK=/Xcode/MacOSX.sdk"), "after a configure that failed")
 }

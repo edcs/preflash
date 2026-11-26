@@ -84,7 +84,7 @@ std::vector<Item> items_for(const Board& board) {
     items.push_back({"battery", "Battery", "", true,
                      {{kNoBattery, "not fitted"}, {"100", "100%"}, {"50", "50%"}, {"15", "15%"}, {"0", "0%"}}});
   }
-  items.push_back({"wifi", "Wi-Fi", "Network", true, {{"mac", "Mac's connection"}}});
+  items.push_back({"wifi", "Wi-Fi", "Network", true, {{"mac", "the computer's connection"}}});
   items.push_back({"internet", "Internet", "Network", true, {{"real", "real"}, {"offline", "offline"}}});
   if (has_chip(board, "pcf85063")) {
     items.push_back({"rtc", "RTC", "Break something", false, {{kHealthy, kHealthy}, {"flat", "flat backup cell"}}});

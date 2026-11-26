@@ -30,10 +30,17 @@ include(FetchContent)
 if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
   set(preflash_extract_timestamp DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 endif()
+if(APPLE)
+  set(preflash_cache "$ENV{HOME}/Library/Caches/preflash")
+elseif(IS_ABSOLUTE "$ENV{XDG_CACHE_HOME}")
+  set(preflash_cache "$ENV{XDG_CACHE_HOME}/preflash")
+else()
+  set(preflash_cache "$ENV{HOME}/.cache/preflash")
+endif()
 FetchContent_Declare(preflash_json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
     URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
-    DOWNLOAD_DIR "$ENV{HOME}/Library/Caches/preflash"
+    DOWNLOAD_DIR "${preflash_cache}"
     ${preflash_extract_timestamp}
     SOURCE_SUBDIR no-cmake-build)
 FetchContent_MakeAvailable(preflash_json)
