@@ -38,13 +38,17 @@ struct Speaker {
   std::atomic<int> closers{0};
 };
 
+// Never destroyed: a socket thread can still remove its tap, under this lock, while the
+// process exits, and macOS aborts on locking a destroyed mutex.
 Speaker& speaker() {
-  static Speaker s;
+  static Speaker& s = *new Speaker;
   return s;
 }
 
 audio::Sink* g_sink = nullptr;  // under the speaker's lock
-std::vector<std::pair<int, audio::Tap*>> g_taps;  // under the speaker's lock
+// Never destroyed, for the same reason as the speaker.
+std::vector<std::pair<int, audio::Tap*>>& g_taps =
+    *new std::vector<std::pair<int, audio::Tap*>>;  // under the speaker's lock
 int g_next_tap = 1;
 std::mutex g_request_mutex;
 std::function<void()> g_request;
