@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0](https://github.com/edcs/preflash/compare/v0.3.0...v0.4.0) (2026-11-26)
+
+
+### Features
+
+* build and run the runtime on Linux ([#58](https://github.com/edcs/preflash/issues/58)) ([4dd731c](https://github.com/edcs/preflash/commit/4dd731c14d03aedb05892c19955382db22681fa3))
+* cap a build's parallel compiles with PREFLASH_JOBS ([#66](https://github.com/edcs/preflash/issues/66)) ([0e98981](https://github.com/edcs/preflash/commit/0e98981819566224c21a116db54f7a785b6908be))
+* keep Preflash's files in the Linux cache folder ([#63](https://github.com/edcs/preflash/issues/63)) ([ef56b50](https://github.com/edcs/preflash/commit/ef56b50863db91a05496128a67b3cee001522fde))
+* keep the app's sockets safe from SIGPIPE on Linux ([#59](https://github.com/edcs/preflash/issues/59)) ([f885419](https://github.com/edcs/preflash/commit/f885419a3b3593ee4164eb156df92afe8ae13aa0))
+* name crash frames, debug and copy on Linux ([#62](https://github.com/edcs/preflash/issues/62)) ([46e156b](https://github.com/edcs/preflash/commit/46e156ba7cb52f31b7514eeec767818b1406e5b3))
+* write crash reports on Linux ([#61](https://github.com/edcs/preflash/issues/61)) ([ffd3d8a](https://github.com/edcs/preflash/commit/ffd3d8ade979b976ea424675f305be988a75aa5e))
+
+
+### Bug Fixes
+
+* keep the codec's state alive through exit ([#57](https://github.com/edcs/preflash/issues/57)) ([895606c](https://github.com/edcs/preflash/commit/895606cd97c26cef211677c009fb38d469e9a346))
+* keep the speaker's lock alive while the app exits ([#69](https://github.com/edcs/preflash/issues/69)) ([15aee7c](https://github.com/edcs/preflash/commit/15aee7ca16c4b665011774d34252085426fbfaa2))
+* stop Linux hanging on exit and unwinding deleted tasks ([#60](https://github.com/edcs/preflash/issues/60)) ([3f0d3eb](https://github.com/edcs/preflash/commit/3f0d3eb4215ff63eec0f56c1f07421df45a172a1))
+* time a missing socket from when it went before calling a quit done ([#68](https://github.com/edcs/preflash/issues/68)) ([d191002](https://github.com/edcs/preflash/commit/d1910020bf47b75d38fc1457279139435f76e646))
+
 ## [0.3.0](https://github.com/edcs/preflash/compare/v0.2.0...v0.3.0) (2026-11-25)
 
 
