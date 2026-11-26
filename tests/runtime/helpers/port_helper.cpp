@@ -39,9 +39,11 @@ int attach() {
 void print_settings(int fd) {
   termios t{};
   tcgetattr(fd, &t);
+  const speed_t speed = cfgetospeed(&t);
+  // glibc before 2.42 gives back the B115200 code rather than the number of baud.
+  const unsigned long baud = speed == B115200 ? 115200 : static_cast<unsigned long>(speed);
   std::printf("echo=%s canonical=%s output=%s speed=%lu\n", (t.c_lflag & ECHO) ? "yes" : "no",
-              (t.c_lflag & ICANON) ? "yes" : "no", (t.c_oflag & OPOST) ? "cooked" : "raw",
-              static_cast<unsigned long>(cfgetospeed(&t)));
+              (t.c_lflag & ICANON) ? "yes" : "no", (t.c_oflag & OPOST) ? "cooked" : "raw", baud);
 }
 
 bool high_and_cloexec(int fd) {
